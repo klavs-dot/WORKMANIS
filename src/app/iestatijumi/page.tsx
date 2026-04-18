@@ -1,0 +1,499 @@
+"use client";
+
+import { useState } from "react";
+import { motion } from "framer-motion";
+import {
+  User,
+  Building2,
+  FileDown,
+  Globe,
+  Bell,
+  Landmark,
+  Mail,
+  CheckCircle2,
+  ArrowRight,
+} from "lucide-react";
+import { AppShell } from "@/components/layout/app-shell";
+import { PageHeader } from "@/components/business/headers";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label, Separator } from "@/components/ui/primitives";
+import { Switch } from "@/components/ui/switch-tabs";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+const sections = [
+  { id: "general", label: "Vispārīgie", icon: User },
+  { id: "companies", label: "Uzņēmumi", icon: Building2 },
+  { id: "export", label: "Eksports", icon: FileDown },
+  { id: "language", label: "Valoda", icon: Globe },
+  { id: "notifications", label: "Paziņojumi", icon: Bell },
+  { id: "bank", label: "Bankas integrācija", icon: Landmark },
+  { id: "email", label: "E-pasta importēšana", icon: Mail },
+];
+
+export default function IestatijumiPage() {
+  const [active, setActive] = useState("general");
+
+  return (
+    <AppShell>
+      <div className="space-y-6">
+        <PageHeader
+          title="Iestatījumi"
+          description="Pielāgojiet BillPilot savām vajadzībām"
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6 lg:gap-8">
+          {/* Side nav */}
+          <nav className="space-y-0.5">
+            {sections.map((s) => {
+              const Icon = s.icon;
+              const isActive = active === s.id;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setActive(s.id)}
+                  className={cn(
+                    "flex items-center gap-2.5 w-full rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors text-left",
+                    isActive
+                      ? "bg-graphite-100 text-graphite-900"
+                      : "text-graphite-600 hover:bg-graphite-50 hover:text-graphite-900"
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      isActive ? "text-graphite-900" : "text-graphite-400"
+                    )}
+                  />
+                  {s.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Content */}
+          <div>
+            <motion.div
+              key={active}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              {active === "general" && <GeneralSettings />}
+              {active === "companies" && <CompanySettings />}
+              {active === "export" && <ExportSettings />}
+              {active === "language" && <LanguageSettings />}
+              {active === "notifications" && <NotificationSettings />}
+              {active === "bank" && <BankIntegration />}
+              {active === "email" && <EmailImport />}
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function SettingsCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="p-6">
+      <div className="mb-5">
+        <h2 className="text-[16px] font-semibold tracking-tight text-graphite-900">
+          {title}
+        </h2>
+        {description && (
+          <p className="text-[12.5px] text-graphite-500 mt-0.5">
+            {description}
+          </p>
+        )}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+function FieldRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-2 md:gap-6 py-4 border-b border-graphite-100 last:border-0">
+      <div>
+        <Label>{label}</Label>
+        {hint && (
+          <p className="text-[11.5px] text-graphite-500 mt-0.5 leading-snug">
+            {hint}
+          </p>
+        )}
+      </div>
+      <div className="max-w-md">{children}</div>
+    </div>
+  );
+}
+
+function GeneralSettings() {
+  return (
+    <div className="space-y-4">
+      <SettingsCard
+        title="Profils"
+        description="Jūsu personīgā informācija"
+      >
+        <FieldRow label="Vārds, Uzvārds">
+          <Input defaultValue="Klāvs Bērziņš" />
+        </FieldRow>
+        <FieldRow label="E-pasta adrese">
+          <Input defaultValue="klavs@globalwolfmotors.com" type="email" />
+        </FieldRow>
+        <FieldRow label="Tālrunis">
+          <Input defaultValue="+371 29 000 000" type="tel" />
+        </FieldRow>
+        <div className="flex justify-end pt-4 gap-2">
+          <Button variant="ghost" size="sm">
+            Atcelt
+          </Button>
+          <Button size="sm">Saglabāt izmaiņas</Button>
+        </div>
+      </SettingsCard>
+    </div>
+  );
+}
+
+function CompanySettings() {
+  return (
+    <SettingsCard
+      title="Noklusējuma uzņēmums"
+      description="Uzņēmums, ar kuru sākt katru sesiju"
+    >
+      <FieldRow
+        label="Noklusējuma uzņēmums"
+        hint="Rēķiniem un maksājumiem, ja nav norādīts cits"
+      >
+        <Select defaultValue="gwm">
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="gwm">Global Wolf Motors</SelectItem>
+            <SelectItem value="drift">Drift Arena Liepāja</SelectItem>
+            <SelectItem value="mosphera">Mosphera</SelectItem>
+            <SelectItem value="visitliepaja">Visit Liepāja</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldRow>
+      <FieldRow
+        label="Pievienot uzņēmumu"
+        hint="Ievadiet reģistrācijas numuru, un automātiski aizpildīsim pārējo"
+      >
+        <div className="flex gap-2">
+          <Input placeholder="40003000000" />
+          <Button size="sm">Pievienot</Button>
+        </div>
+      </FieldRow>
+    </SettingsCard>
+  );
+}
+
+function ExportSettings() {
+  return (
+    <SettingsCard
+      title="Eksporta iestatījumi"
+      description="Pielāgojiet, kā dati tiek eksportēti"
+    >
+      <FieldRow label="Noklusējuma formāts">
+        <Select defaultValue="xlsx">
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
+            <SelectItem value="csv">CSV</SelectItem>
+            <SelectItem value="pdf">PDF</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldRow>
+      <FieldRow
+        label="Datumu formāts"
+        hint="Kā datumi tiks attēloti eksportos"
+      >
+        <Select defaultValue="lv">
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="lv">31.12.2026</SelectItem>
+            <SelectItem value="iso">2026-12-31</SelectItem>
+            <SelectItem value="us">12/31/2026</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldRow>
+      <FieldRow
+        label="Valūtas formāts"
+        hint="Decimālās atdalītājs"
+      >
+        <Select defaultValue="comma">
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="comma">1 234,56 €</SelectItem>
+            <SelectItem value="dot">€1,234.56</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldRow>
+    </SettingsCard>
+  );
+}
+
+function LanguageSettings() {
+  return (
+    <SettingsCard title="Valoda" description="Izvēlieties BillPilot valodu">
+      <FieldRow label="Interfeisa valoda">
+        <Select defaultValue="lv">
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="lv">Latviešu</SelectItem>
+            <SelectItem value="en">English</SelectItem>
+            <SelectItem value="ru">Русский</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldRow>
+      <FieldRow label="Reģions">
+        <Select defaultValue="lv">
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="lv">Latvija</SelectItem>
+            <SelectItem value="ee">Igaunija</SelectItem>
+            <SelectItem value="lt">Lietuva</SelectItem>
+          </SelectContent>
+        </Select>
+      </FieldRow>
+    </SettingsCard>
+  );
+}
+
+function NotificationSettings() {
+  const notifications = [
+    {
+      label: "Tuvojas apmaksas termiņš",
+      hint: "3 dienas pirms rēķina termiņa",
+      enabled: true,
+    },
+    {
+      label: "Jauns rēķins saņemts",
+      hint: "Kad e-pastā ienāk jauns rēķins",
+      enabled: true,
+    },
+    {
+      label: "Termiņš beidzies",
+      hint: "Kad rēķins kļūst nokavēts",
+      enabled: true,
+    },
+    {
+      label: "Abonementa cenas izmaiņas",
+      hint: "Kad mainās abonementa cena",
+      enabled: false,
+    },
+    {
+      label: "Nedēļas pārskats",
+      hint: "Katru pirmdien 9:00",
+      enabled: true,
+    },
+  ];
+
+  return (
+    <SettingsCard
+      title="Paziņojumi"
+      description="Izvēlieties, par ko jūs vēlaties tikt informēts"
+    >
+      <div className="-mt-2">
+        {notifications.map((n, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-between py-3.5 border-b border-graphite-100 last:border-0"
+          >
+            <div>
+              <p className="text-[13.5px] font-medium text-graphite-900">
+                {n.label}
+              </p>
+              <p className="text-[11.5px] text-graphite-500 mt-0.5">{n.hint}</p>
+            </div>
+            <Switch defaultChecked={n.enabled} />
+          </div>
+        ))}
+      </div>
+    </SettingsCard>
+  );
+}
+
+function BankIntegration() {
+  return (
+    <div className="space-y-4">
+      <Card className="p-6 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-100/50 to-transparent rounded-full blur-2xl" />
+        <div className="relative">
+          <div className="flex items-start justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                <Landmark className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
+                    SEB banka
+                  </h3>
+                  <Badge variant="muted">Nav pieslēgts</Badge>
+                </div>
+                <p className="text-[12.5px] text-graphite-500 mt-0.5">
+                  Automātiski sinhronizējiet darījumus un kontus
+                </p>
+              </div>
+            </div>
+            <Button size="sm">
+              Pieslēgties
+              <ArrowRight className="h-3 w-3" />
+            </Button>
+          </div>
+          <div className="rounded-xl bg-graphite-50/60 border border-graphite-100 p-3 text-[12px] text-graphite-600 leading-relaxed">
+            <span className="text-graphite-900 font-medium">Nākošais solis:</span>{" "}
+            Pieslēgšanās notiek caur SEB Open Banking API. Tas ļaus BillPilot redzēt rēķinu apmaksas statusus un automātiski atzīmēt apmaksātos rēķinus.
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-graphite-100 text-graphite-700 border border-graphite-200">
+              <Landmark className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
+                Swedbank
+              </h3>
+              <p className="text-[12.5px] text-graphite-500 mt-0.5">
+                Pieejams arī Swedbank pieslēgums
+              </p>
+            </div>
+          </div>
+          <Button variant="secondary" size="sm">
+            Pieslēgties
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function EmailImport() {
+  return (
+    <div className="space-y-4">
+      <Card className="p-6">
+        <div className="flex items-start justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-600 text-white">
+              <Mail className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
+                  E-pasta importēšana
+                </h3>
+                <Badge variant="success">
+                  <CheckCircle2 className="h-2.5 w-2.5" />
+                  Aktīvs
+                </Badge>
+              </div>
+              <p className="text-[12.5px] text-graphite-500 mt-0.5">
+                rekini@billpilot.lv
+              </p>
+            </div>
+          </div>
+          <Button variant="secondary" size="sm">
+            Kopēt adresi
+          </Button>
+        </div>
+        <div className="grid grid-cols-3 gap-3 pt-5 border-t border-graphite-100">
+          <div>
+            <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+              Šomēnes apstrādāti
+            </p>
+            <p className="mt-1.5 text-[22px] font-semibold tabular text-graphite-900">
+              24
+            </p>
+          </div>
+          <div>
+            <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+              Automātiski atpazīti
+            </p>
+            <p className="mt-1.5 text-[22px] font-semibold tabular text-graphite-900">
+              21
+            </p>
+          </div>
+          <div>
+            <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+              Precizitāte
+            </p>
+            <p className="mt-1.5 text-[22px] font-semibold tabular text-emerald-600">
+              87%
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h3 className="text-[14px] font-semibold tracking-tight text-graphite-900 mb-3">
+          Kā tas strādā
+        </h3>
+        <ol className="space-y-3 text-[12.5px] text-graphite-600 leading-relaxed">
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-graphite-900 text-white text-[10px] font-semibold">
+              1
+            </span>
+            Pārsūtiet rēķinu e-pastus uz{" "}
+            <span className="font-mono text-graphite-900">
+              rekini@billpilot.lv
+            </span>
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-graphite-900 text-white text-[10px] font-semibold">
+              2
+            </span>
+            AI automātiski nolasa piegādātāju, summu, IBAN un datumus
+          </li>
+          <li className="flex gap-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-graphite-900 text-white text-[10px] font-semibold">
+              3
+            </span>
+            Rēķins tiek pievienots sistēmā gaidot jūsu apstiprinājumu
+          </li>
+        </ol>
+      </Card>
+    </div>
+  );
+}
