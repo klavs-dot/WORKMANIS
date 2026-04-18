@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BillPilot — Finanšu pārvaldība",
+  title: "WORKMANIS — Uzņēmumu pārvaldība",
   description:
     "Premium tool abonementu, rēķinu un maksājumu pārvaldībai. Visiem jūsu uzņēmumiem vienuviet.",
 };

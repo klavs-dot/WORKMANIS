@@ -48,7 +48,7 @@ export default function IestatijumiPage() {
       <div className="space-y-6">
         <PageHeader
           title="Iestatījumi"
-          description="Pielāgojiet BillPilot savām vajadzībām"
+          description="Pielāgojiet WORKMANIS savām vajadzībām"
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6 lg:gap-8">
@@ -268,7 +268,7 @@ function ExportSettings() {
 
 function LanguageSettings() {
   return (
-    <SettingsCard title="Valoda" description="Izvēlieties BillPilot valodu">
+    <SettingsCard title="Valoda" description="Izvēlieties WORKMANIS valodu">
       <FieldRow label="Interfeisa valoda">
         <Select defaultValue="lv">
           <SelectTrigger>
@@ -381,7 +381,7 @@ function BankIntegration() {
           </div>
           <div className="rounded-xl bg-graphite-50/60 border border-graphite-100 p-3 text-[12px] text-graphite-600 leading-relaxed">
             <span className="text-graphite-900 font-medium">Nākošais solis:</span>{" "}
-            Pieslēgšanās notiek caur SEB Open Banking API. Tas ļaus BillPilot redzēt rēķinu apmaksas statusus un automātiski atzīmēt apmaksātos rēķinus.
+            Pieslēgšanās notiek caur SEB Open Banking API. Tas ļaus WORKMANIS redzēt rēķinu apmaksas statusus un automātiski atzīmēt apmaksātos rēķinus.
           </div>
         </div>
       </Card>
@@ -430,7 +430,7 @@ function EmailImport() {
                 </Badge>
               </div>
               <p className="text-[12.5px] text-graphite-500 mt-0.5">
-                rekini@billpilot.lv
+                rekini@workmanis.lv
               </p>
             </div>
           </div>
@@ -477,7 +477,7 @@ function EmailImport() {
             </span>
             Pārsūtiet rēķinu e-pastus uz{" "}
             <span className="font-mono text-graphite-900">
-              rekini@billpilot.lv
+              rekini@workmanis.lv
             </span>
           </li>
           <li className="flex gap-3">

@@ -66,10 +66,10 @@ export function Sidebar() {
         </div>
         <div className="flex flex-col leading-none">
           <span className="text-[14px] font-semibold tracking-tight text-graphite-900">
-            BillPilot
+            WORKMANIS
           </span>
           <span className="text-[10.5px] text-graphite-400 mt-0.5">
-            Finanšu pārvaldība
+            Uzņēmumu pārvaldība
           </span>
         </div>
       </div>
