@@ -19,6 +19,8 @@ const buttonVariants = cva(
           "bg-red-600 text-white hover:bg-red-700 shadow-soft-xs active:scale-[0.98]",
         success:
           "bg-emerald-600 text-white hover:bg-emerald-700 shadow-soft-xs active:scale-[0.98]",
+        "success-outline":
+          "bg-transparent border border-emerald-600 text-emerald-700 hover:bg-emerald-50 active:scale-[0.98]",
         link: "text-graphite-900 underline-offset-4 hover:underline",
       },
       size: {

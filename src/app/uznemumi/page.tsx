@@ -69,7 +69,7 @@ export default function UznemumiPage() {
             >
               <Card className={cn(
                 "p-6 hover:shadow-soft-md transition-all group",
-                activeCompany?.id === c.id && "ring-1 ring-emerald-500/40 shadow-soft-sm"
+                activeCompany?.id === c.id && "ring-2 ring-emerald-500/70 shadow-soft-md"
               )}>
                 <div className="flex items-start justify-between mb-5">
                   <div className="flex items-center gap-3">
@@ -137,17 +137,17 @@ export default function UznemumiPage() {
                 <div className="mt-5 flex gap-2">
                   {activeCompany?.id === c.id ? (
                     <Button
-                      variant="secondary"
+                      variant="success"
                       size="default"
                       className="flex-1"
-                      disabled
+                      onClick={() => handleSelect(c.id)}
                     >
                       <Check className="h-3.5 w-3.5" />
                       Izvēlēts
                     </Button>
                   ) : (
                     <Button
-                      variant="success"
+                      variant="success-outline"
                       size="default"
                       className="flex-1"
                       onClick={() => handleSelect(c.id)}
