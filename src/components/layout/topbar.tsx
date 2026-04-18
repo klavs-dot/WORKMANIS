@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { companies } from "@/lib/mock";
+import { useCompany } from "@/lib/company-context";
 import { cn } from "@/lib/utils";
 
 const dateRanges = [
@@ -23,17 +24,12 @@ const dateRanges = [
 ];
 
 export function Topbar() {
-  const [selectedCompany, setSelectedCompany] = useState("all");
+  const { activeCompany, setActiveCompany } = useCompany();
   const [dateRange, setDateRange] = useState("Šomēnes");
-  const activeCompany =
-    selectedCompany === "all"
-      ? null
-      : companies.find((c) => c.id === selectedCompany);
 
   return (
     <header className="sticky top-0 z-30 h-14 glass border-b border-graphite-100">
       <div className="flex h-full items-center gap-3 px-4 lg:px-6">
-        {/* Search */}
         <div className="relative flex-1 max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-graphite-400" />
           <input
@@ -51,7 +47,6 @@ export function Topbar() {
         </div>
 
         <div className="flex items-center gap-1.5 ml-auto">
-          {/* Date range */}
           <DropdownMenu>
             <DropdownMenuTrigger className="hidden md:flex items-center gap-1.5 h-9 px-3 rounded-lg border border-graphite-200 bg-white text-[12.5px] font-medium text-graphite-700 hover:border-graphite-300 transition-colors focus:outline-none">
               <Calendar className="h-3.5 w-3.5 text-graphite-500" />
@@ -73,52 +68,43 @@ export function Topbar() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Company switcher */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 h-9 px-3 rounded-lg border border-graphite-200 bg-white text-[12.5px] font-medium text-graphite-700 hover:border-graphite-300 transition-colors focus:outline-none">
-              <div className="flex h-5 w-5 items-center justify-center rounded-md bg-graphite-900 text-white text-[9px] font-semibold">
-                {activeCompany
-                  ? activeCompany.name.slice(0, 2).toUpperCase()
-                  : "ALL"}
-              </div>
-              <span className="truncate max-w-[140px]">
-                {activeCompany ? activeCompany.name : "Visi uzņēmumi"}
-              </span>
-              <ChevronDown className="h-3 w-3 text-graphite-400" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel>Uzņēmums</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setSelectedCompany("all")}>
+          {activeCompany && (
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-2 h-9 px-3 rounded-lg border border-graphite-200 bg-white text-[12.5px] font-medium text-graphite-700 hover:border-graphite-300 transition-colors focus:outline-none">
                 <div className="flex h-5 w-5 items-center justify-center rounded-md bg-graphite-900 text-white text-[9px] font-semibold">
-                  ALL
+                  {activeCompany.name.slice(0, 2).toUpperCase()}
                 </div>
-                <span className="flex-1">Visi uzņēmumi</span>
-                {selectedCompany === "all" && <Check className="h-3.5 w-3.5" />}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {companies.map((c) => (
-                <DropdownMenuItem
-                  key={c.id}
-                  onSelect={() => setSelectedCompany(c.id)}
-                >
-                  <div className="flex h-5 w-5 items-center justify-center rounded-md bg-graphite-900 text-white text-[9px] font-semibold">
-                    {c.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <span className="flex-1 truncate">{c.name}</span>
-                  {selectedCompany === c.id && <Check className="h-3.5 w-3.5" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <span className="truncate max-w-[160px]">
+                  {activeCompany.name}
+                </span>
+                <ChevronDown className="h-3 w-3 text-graphite-400" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>Pārslēgt uzņēmumu</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {companies.map((c) => (
+                  <DropdownMenuItem
+                    key={c.id}
+                    onSelect={() => setActiveCompany(c.id)}
+                  >
+                    <div className="flex h-5 w-5 items-center justify-center rounded-md bg-graphite-900 text-white text-[9px] font-semibold">
+                      {c.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="flex-1 truncate">{c.name}</span>
+                    {activeCompany.id === c.id && (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-          {/* Notifications */}
           <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-transparent hover:bg-graphite-100 transition-colors focus:outline-none">
             <Bell className="h-4 w-4 text-graphite-600" />
             <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-white" />
           </button>
 
-          {/* User avatar */}
           <DropdownMenu>
             <DropdownMenuTrigger className="focus:outline-none">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-graphite-900 text-white text-[11px] font-semibold transition-transform active:scale-95">
@@ -138,7 +124,17 @@ export function Topbar() {
               <DropdownMenuItem>Komandas iestatījumi</DropdownMenuItem>
               <DropdownMenuItem>Palīdzība</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>Atteikties</DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  // Clear active company and go to selector
+                  if (typeof window !== "undefined") {
+                    window.localStorage.removeItem("workmanis:active-company");
+                    window.location.href = "/";
+                  }
+                }}
+              >
+                Atteikties
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

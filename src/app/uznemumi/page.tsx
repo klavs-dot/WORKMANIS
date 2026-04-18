@@ -1,15 +1,25 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowRight, Plus, Receipt, Repeat, TrendingUp } from "lucide-react";
+import { ArrowRight, Plus, Receipt, Repeat, TrendingUp, Check } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { companies, invoices, subscriptions } from "@/lib/mock";
 import { formatCurrency, cn } from "@/lib/utils";
+import { useCompany } from "@/lib/company-context";
 
 export default function UznemumiPage() {
+  const router = useRouter();
+  const { activeCompany, setActiveCompany } = useCompany();
+
+  const handleSelect = (id: string) => {
+    setActiveCompany(id);
+    router.push("/parskats");
+  };
+
   const companyDetails = companies.map((c) => {
     const companyInvoices = invoices.filter((i) => i.companyId === c.id);
     const unpaid = companyInvoices.filter((i) => i.status !== "apmaksāts");
@@ -57,7 +67,10 @@ export default function UznemumiPage() {
                 ease: [0.22, 1, 0.36, 1],
               }}
             >
-              <Card className="p-6 hover:shadow-soft-md transition-all cursor-pointer group">
+              <Card className={cn(
+                "p-6 hover:shadow-soft-md transition-all group",
+                activeCompany?.id === c.id && "ring-1 ring-emerald-500/40 shadow-soft-sm"
+              )}>
                 <div className="flex items-start justify-between mb-5">
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-graphite-900 text-white text-[13px] font-semibold shadow-soft-sm">
@@ -122,10 +135,28 @@ export default function UznemumiPage() {
                 </div>
 
                 <div className="mt-5 flex gap-2">
-                  <Button variant="secondary" size="sm" className="flex-1">
-                    Skatīt profilu
-                  </Button>
-                  <Button variant="ghost" size="sm">
+                  {activeCompany?.id === c.id ? (
+                    <Button
+                      variant="secondary"
+                      size="default"
+                      className="flex-1"
+                      disabled
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Izvēlēts
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="success"
+                      size="default"
+                      className="flex-1"
+                      onClick={() => handleSelect(c.id)}
+                    >
+                      Izvēlēties
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="default">
                     Iestatījumi
                   </Button>
                 </div>
