@@ -145,7 +145,7 @@ function CompanyRow({
         className={cn(
           "p-3.5 flex items-center gap-3.5 transition-all",
           isActive
-            ? "border-graphite-900/20 shadow-soft-xs ring-1 ring-graphite-900/5"
+            ? "active-company-pulse shadow-soft-sm"
             : "hover:border-graphite-300"
         )}
       >
@@ -161,7 +161,7 @@ function CompanyRow({
           <div
             className={cn(
               "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white text-[13px] font-semibold tracking-tight shadow-soft-xs",
-              isActive ? "bg-graphite-900" : "bg-graphite-700"
+              isActive ? "bg-emerald-600" : "bg-graphite-700"
             )}
           >
             {initials}
@@ -170,17 +170,9 @@ function CompanyRow({
 
         {/* Name + legal name */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-[14.5px] font-semibold text-graphite-900 truncate">
-              {company.name}
-            </p>
-            {isActive && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[10px] font-semibold border border-emerald-100 shrink-0">
-                <span className="h-1 w-1 rounded-full bg-emerald-500" />
-                Aktīvs
-              </span>
-            )}
-          </div>
+          <p className="text-[14.5px] font-semibold text-graphite-900 truncate">
+            {company.name}
+          </p>
           <p className="text-[12px] text-graphite-500 truncate mt-0.5">
             {company.legalName || (
               <span className="italic text-graphite-400">
@@ -242,7 +234,17 @@ function CompanyRow({
               </>
             )}
           </Button>
-          {!isActive && (
+
+          {/* Active slot: Izvēlēts (success, larger) vs Izvēlēties (black) */}
+          {isActive ? (
+            <div
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white px-4 py-2 text-[13px] font-semibold shadow-soft-xs"
+              aria-label="Šis uzņēmums ir izvēlēts kā aktīvs"
+            >
+              <Check className="h-4 w-4" strokeWidth={2.75} />
+              Izvēlēts
+            </div>
+          ) : (
             <Button size="sm" onClick={onSelectActive}>
               <Check className="h-3.5 w-3.5" />
               Izvēlēties
