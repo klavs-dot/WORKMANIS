@@ -1,9 +1,10 @@
 // Generates invoice/delivery note numbers in format "DDMMGG-N"
 // Where N is incremented per day (persisted via localStorage)
+// PN akts (Pieņemšanas-nodošanas akts) uses format "PNDDMMGG-N"
 
 const COUNTERS_KEY = "workmanis:number-counters";
 
-type CounterType = "invoice" | "delivery";
+type CounterType = "invoice" | "delivery" | "pn_akts";
 
 interface Counters {
   [key: string]: number; // key: "invoice:DDMMGG" -> last N
@@ -34,7 +35,9 @@ function formatDatePart(d: Date = new Date()): string {
   return `${dd}${mm}${gg}`;
 }
 
-/** Generates next sequential number for today, e.g. "190426-1", "190426-2" */
+/** Generates next sequential number for today.
+ *  - invoice/delivery: "190426-1", "190426-2"
+ *  - pn_akts: "PN190426-1" (user-visible format requested by the user) */
 export function generateNumber(type: CounterType, date?: Date): string {
   const datePart = formatDatePart(date);
   const key = `${type}:${datePart}`;
@@ -42,7 +45,9 @@ export function generateNumber(type: CounterType, date?: Date): string {
   const next = (counters[key] || 0) + 1;
   counters[key] = next;
   writeCounters(counters);
-  return `${datePart}-${next}`;
+  return type === "pn_akts"
+    ? `PN${datePart}-${next}`
+    : `${datePart}-${next}`;
 }
 
 /** Preview next number without incrementing counter */
@@ -51,7 +56,9 @@ export function previewNumber(type: CounterType, date?: Date): string {
   const key = `${type}:${datePart}`;
   const counters = readCounters();
   const next = (counters[key] || 0) + 1;
-  return `${datePart}-${next}`;
+  return type === "pn_akts"
+    ? `PN${datePart}-${next}`
+    : `${datePart}-${next}`;
 }
 
 export function invoiceNumberLabel(raw: string): string {
@@ -60,4 +67,8 @@ export function invoiceNumberLabel(raw: string): string {
 
 export function deliveryNumberLabel(raw: string): string {
   return `Pavadzīme Nr. ${raw}`;
+}
+
+export function pnNumberLabel(raw: string): string {
+  return `PN akts Nr. ${raw}`;
 }

@@ -9,18 +9,15 @@ import {
   ShoppingBag,
   Users,
   Landmark,
-  Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
-import { Button } from "@/components/ui/button";
 import { IzejosieTab } from "@/components/billing/izejosie-tab";
 import { IenakosieTab } from "@/components/billing/ienakosie-tab";
 import { AutomatiskieTab } from "@/components/billing/automatiskie-tab";
 import { VeikalaTab } from "@/components/billing/veikala-tab";
 import { AlgasTab } from "@/components/billing/algas-tab";
 import { NodokliTab } from "@/components/billing/nodokli-tab";
-import { AccountingExportModal } from "@/components/billing/accounting-export-modal";
 import { cn } from "@/lib/utils";
 
 type TabKey =
@@ -46,7 +43,6 @@ const tabs: {
 
 export default function RekiniMaksajumiPage() {
   const [tab, setTab] = useState<TabKey>("izejosie");
-  const [exportOpen, setExportOpen] = useState(false);
 
   return (
     <AppShell>
@@ -54,16 +50,6 @@ export default function RekiniMaksajumiPage() {
         <PageHeader
           title="Rēķini & Maksājumi"
           description="Visu rēķinu, maksājumu un nodokļu pārvaldība vienuviet"
-          actions={
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setExportOpen(true)}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Grāmatvedībai
-            </Button>
-          }
         />
 
         {/* Segmented control */}
@@ -127,11 +113,6 @@ export default function RekiniMaksajumiPage() {
           </motion.div>
         </AnimatePresence>
       </div>
-
-      <AccountingExportModal
-        open={exportOpen}
-        onOpenChange={setExportOpen}
-      />
     </AppShell>
   );
 }

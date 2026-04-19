@@ -13,6 +13,7 @@ import {
   Sparkles,
   Save,
   Info,
+  FilePlus2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -57,6 +58,7 @@ import type {
   DepreciationPeriod,
 } from "@/lib/network-types";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { generateNumber, pnNumberLabel } from "@/lib/number-generator";
 
 // Mock parsed invoices — rotates by upload count for demo realism
 const mockParsings = [
@@ -92,7 +94,7 @@ interface ParsedFields {
 }
 
 export function IzejosieTab() {
-  const { outgoing, addOutgoing, markOutgoingPaid, setOutgoingMeta } =
+  const { outgoing, addOutgoing, markOutgoingPaid, setOutgoingMeta, attachOutgoingPN } =
     useBilling();
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -363,7 +365,29 @@ export function IzejosieTab() {
                       <OutgoingStatusBadge status={p.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end items-center gap-1">
+                        {p.pnAkts ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-100 px-2 py-1 text-[10.5px] font-semibold text-indigo-700 font-mono"
+                            title={pnNumberLabel(p.pnAkts)}
+                          >
+                            <FilePlus2 className="h-3 w-3" />
+                            {p.pnAkts}
+                          </span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const num = generateNumber("pn_akts");
+                              attachOutgoingPN(p.id, num);
+                            }}
+                            title="Ģenerēt PN aktu"
+                          >
+                            <FilePlus2 className="h-3 w-3" />
+                            Ģenerēt PN
+                          </Button>
+                        )}
                         <Button
                           variant={hasMeta ? "ghost" : "secondary"}
                           size="sm"

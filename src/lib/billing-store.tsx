@@ -40,6 +40,7 @@ export interface OutgoingPayment {
   status: OutgoingStatus;
   fileName?: string;
   accountingMeta?: OutgoingAccountingMeta;
+  pnAkts?: string;
   createdAt: string;
 }
 
@@ -56,6 +57,7 @@ export interface IncomingInvoice {
   dueDate: string;
   status: IncomingStatus;
   deliveryNote?: string; // "DDMMGG-N" if generated
+  pnAkts?: string; // "PNDDMMGG-N" if generated
   createdAt: string;
 }
 
@@ -97,10 +99,12 @@ interface BillingStore {
   markOutgoingPaid: (id: string) => void;
   setOutgoingMeta: (id: string, meta: OutgoingAccountingMeta) => void;
   clearOutgoingMeta: (id: string) => void;
+  attachOutgoingPN: (id: string, pn: string) => void;
 
   addIncoming: (i: Omit<IncomingInvoice, "id" | "createdAt">) => void;
   updateIncoming: (id: string, patch: Partial<IncomingInvoice>) => void;
   attachDeliveryNote: (id: string, note: string) => void;
+  attachIncomingPN: (id: string, pn: string) => void;
 
   addSalary: (s: Omit<Salary, "id">) => void;
   updateSalary: (id: string, patch: Partial<Salary>) => void;
@@ -271,7 +275,7 @@ function readStore() {
   }
 }
 
-function writeStore(data: Omit<BillingStore, "addOutgoing" | "markOutgoingPaid" | "setOutgoingMeta" | "clearOutgoingMeta" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
+function writeStore(data: Omit<BillingStore, "addOutgoing" | "markOutgoingPaid" | "setOutgoingMeta" | "clearOutgoingMeta" | "attachOutgoingPN" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "attachIncomingPN" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -346,6 +350,12 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       );
     },
 
+    attachOutgoingPN: (id, pn) => {
+      setOutgoing((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, pnAkts: pn } : p))
+      );
+    },
+
     addIncoming: (i) => {
       setIncoming((prev) => [
         { ...i, id: uid(), createdAt: new Date().toISOString() },
@@ -360,6 +370,11 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     attachDeliveryNote: (id, note) => {
       setIncoming((prev) =>
         prev.map((i) => (i.id === id ? { ...i, deliveryNote: note } : i))
+      );
+    },
+    attachIncomingPN: (id, pn) => {
+      setIncoming((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, pnAkts: pn } : i))
       );
     },
 

@@ -7,6 +7,7 @@ import {
   Download,
   Receipt,
   MoreHorizontal,
+  FilePlus2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -45,6 +46,7 @@ import {
   previewNumber,
   invoiceNumberLabel,
   deliveryNumberLabel,
+  pnNumberLabel,
 } from "@/lib/number-generator";
 
 // ============================================================
@@ -55,7 +57,8 @@ import {
 // ============================================================
 
 export function IenakosieTab() {
-  const { incoming, attachDeliveryNote, updateIncoming } = useBilling();
+  const { incoming, attachDeliveryNote, attachIncomingPN, updateIncoming } =
+    useBilling();
 
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [editingNumber, setEditingNumber] = useState<string | undefined>();
@@ -176,7 +179,29 @@ export function IenakosieTab() {
                       <IncomingStatusBadge status={inv.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1.5">
+                      <div className="flex justify-end gap-1.5 items-center">
+                        {inv.pnAkts ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-100 px-2 py-1 text-[10.5px] font-semibold text-indigo-700 font-mono"
+                            title={pnNumberLabel(inv.pnAkts)}
+                          >
+                            <FilePlus2 className="h-3 w-3" />
+                            {inv.pnAkts}
+                          </span>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const num = generateNumber("pn_akts");
+                              attachIncomingPN(inv.id, num);
+                            }}
+                            title="Ģenerēt PN aktu"
+                          >
+                            <FilePlus2 className="h-3 w-3" />
+                            Ģenerēt PN
+                          </Button>
+                        )}
                         {!inv.deliveryNote ? (
                           <Button
                             variant="secondary"

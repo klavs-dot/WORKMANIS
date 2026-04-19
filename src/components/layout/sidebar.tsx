@@ -12,6 +12,7 @@ import {
   Handshake,
   Boxes,
   Briefcase,
+  Calculator,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ const mainNav: NavItem[] = [
   { href: "/uznemumi", label: "Uzņēmumi / Struktūrvienības", icon: Building2 },
   { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
   { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
+  { href: "/gramatvedibai", label: "Grāmatvedībai", icon: Calculator },
   { href: "/klienti", label: "Klienti & Partneri", icon: Users },
   { href: "/distributori", label: "Distributori & Aģenti", icon: Handshake },
   { href: "/demo", label: "Demo produkcija", icon: Boxes },
