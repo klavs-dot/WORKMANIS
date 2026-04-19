@@ -5,8 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Download,
   FileSpreadsheet,
-  FileText,
-  FileCode2,
   Calendar,
   Sparkles,
   CheckCircle2,
@@ -18,6 +16,8 @@ import {
   FileSignature,
   FolderKanban,
   Calculator,
+  ArrowUpFromLine,
+  ArrowDownToLine,
   type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
@@ -315,38 +315,44 @@ function EksportiTab() {
       <div>
         <h3 className="text-[13px] font-semibold text-graphite-900 mb-3 tracking-tight flex items-center gap-1.5">
           <Sparkles className="h-3.5 w-3.5 text-violet-500" />
-          Papildu eksporti
+          Atsevišķi eksporti
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <ExportCard
-            title="Rēķinu saraksts (Excel)"
-            description="Strukturēta tabula ar visiem rēķiniem periodā — izejošie un ienākošie."
+            title="Izejošie rēķini"
+            description={`${filtered.out.length} izejošie rēķini periodā · PDF faili + Excel kopsavilkums`}
+            icon={ArrowUpFromLine}
+            tone="emerald"
+          />
+          <ExportCard
+            title="Ienākošie rēķini"
+            description={`${filtered.inc.length} ienākošie rēķini periodā · PDF faili + Excel kopsavilkums`}
+            icon={ArrowDownToLine}
+            tone="red"
+          />
+          <ExportCard
+            title="Rēķinu skaidrojumi"
+            description="Grāmatvedības skaidrojumi un kategorijas — ar saites uz attiecīgajiem rēķiniem."
             icon={FileSpreadsheet}
             tone="violet"
           />
           <ExportCard
-            title="Kases operāciju atskaite"
-            description="Visi kases un bankas ieņēmumi un izdevumi, apvienoti pa dienām."
-            icon={FileText}
-            tone="graphite"
-          />
-          <ExportCard
-            title="PVN pārskats"
-            description="PVN aprēķins par periodu — ienākošais, izejošais, maksājamais."
-            icon={FileSpreadsheet}
-            tone="emerald"
-          />
-          <ExportCard
-            title="Grāmatvedības žurnāls (XML)"
-            description="Eksports uz grāmatvedības sistēmām — Tildes Jumis, Zalktis, Horizon."
-            icon={FileCode2}
+            title="Ceļa zīmes"
+            description="Visas ceļa zīmes periodā ar maršrutiem un atskaitēm."
+            icon={Route}
             tone="sky"
           />
           <ExportCard
-            title="Bankas izraksta atspoguļojums"
-            description="Salīdzinājums ar bankas izrakstu — atrodi neatbilstības."
-            icon={FileSpreadsheet}
+            title="Komandējumi un rīkojumi"
+            description="Komandējumu rīkojumi, citi rīkojumi un to pielikumi."
+            icon={ClipboardList}
             tone="amber"
+          />
+          <ExportCard
+            title="Līgumi"
+            description="Visi periodā parakstītie vai aktuālie līgumi — klientu, piegādātāju, darbinieku."
+            icon={FileSignature}
+            tone="graphite"
           />
         </div>
 
@@ -475,7 +481,7 @@ function ExportCard({
   title: string;
   description: string;
   icon: LucideIcon;
-  tone: "violet" | "graphite" | "emerald" | "sky" | "amber";
+  tone: "violet" | "graphite" | "emerald" | "sky" | "amber" | "red";
 }) {
   const [state, setState] = useState<"idle" | "running" | "done">("idle");
 
@@ -494,6 +500,7 @@ function ExportCard({
     emerald: "bg-emerald-50 text-emerald-600 border-emerald-100",
     sky: "bg-sky-50 text-sky-600 border-sky-100",
     amber: "bg-amber-50 text-amber-600 border-amber-100",
+    red: "bg-red-50 text-red-600 border-red-100",
   };
 
   return (
