@@ -1,0 +1,428 @@
+/**
+ * Sheets schema — TypeScript single source of truth for the
+ * 25 company.gsheet tabs.
+ *
+ * Mirrors the COMPANY_TABS structure in the Apps Script setup
+ * script (setup-script.gs). When a column or table is added,
+ * update both files.
+ *
+ * The schema serves three purposes:
+ *   1. ID prefix lookup for SheetsClient.generateId()
+ *   2. Column order for write operations (must match what
+ *      Apps Script writes to the header row)
+ *   3. Type-level table name validation (TableName union)
+ */
+
+export interface TableSchema {
+  name: string;
+  /** Prefix for auto-generated IDs (e.g. 'cli' → 'cli-190426-1') */
+  idPrefix: string;
+  /** Business columns in order, after the universal A-D columns */
+  cols: readonly string[];
+}
+
+// ============================================================
+// company.gsheet tabs
+// ============================================================
+
+export const COMPANY_TABS = [
+  // 01 — company core
+  {
+    name: "01_requisites",
+    idPrefix: "req",
+    cols: [
+      "name",
+      "legal_name",
+      "reg_number",
+      "vat_number",
+      "address",
+      "iban",
+      "bic",
+      "phone",
+      "email",
+      "website",
+      "logo_drive_id",
+      "director_name",
+      "director_position",
+    ],
+  },
+
+  // 10 — relationships
+  {
+    name: "10_clients",
+    idPrefix: "cli",
+    cols: [
+      "name",
+      "type",
+      "reg_number",
+      "vat_number",
+      "personal_code",
+      "country_code",
+      "address",
+      "iban",
+      "email",
+      "phone",
+      "contact_person",
+      "notes",
+      "tags",
+      "first_invoice_date",
+      "total_invoiced_cents",
+    ],
+  },
+  {
+    name: "11_distributors",
+    idPrefix: "dis",
+    cols: [
+      "name",
+      "type",
+      "country_code",
+      "territory",
+      "reg_number",
+      "contact_person",
+      "email",
+      "phone",
+      "website",
+      "commission_pct",
+      "contract_start",
+      "contract_end",
+      "status",
+      "notes",
+    ],
+  },
+  {
+    name: "12_suppliers",
+    idPrefix: "sup",
+    cols: [
+      "name",
+      "reg_number",
+      "vat_number",
+      "iban",
+      "category",
+      "default_explanation",
+      "typical_account_code",
+      "website",
+      "email",
+      "phone",
+      "notes",
+      "first_invoice_date",
+      "last_invoice_date",
+    ],
+  },
+  {
+    name: "13_online_links",
+    idPrefix: "lnk",
+    cols: ["label", "url", "category", "login_email", "notes"],
+  },
+  {
+    name: "14_demo_units",
+    idPrefix: "dem",
+    cols: [
+      "serial_number",
+      "model",
+      "manufactured_date",
+      "current_holder",
+      "status",
+      "loaned_to_client_id",
+      "loaned_at",
+      "expected_return",
+      "returned_at",
+      "location",
+      "notes",
+    ],
+  },
+
+  // 20 — employees
+  {
+    name: "20_employees",
+    idPrefix: "emp",
+    cols: [
+      "first_name",
+      "last_name",
+      "personal_code",
+      "type",
+      "position",
+      "department",
+      "hired_date",
+      "terminated_date",
+      "salary_gross_cents",
+      "email",
+      "phone",
+      "address",
+      "ovp_expiry",
+      "safety_briefing_expiry",
+      "photo_drive_id",
+      "folder_drive_id",
+    ],
+  },
+  {
+    name: "21_contracts",
+    idPrefix: "con",
+    cols: [
+      "type",
+      "counterparty_kind",
+      "employee_id",
+      "client_id",
+      "supplier_id",
+      "external_party_name",
+      "title",
+      "start_date",
+      "end_date",
+      "signed_date",
+      "document_drive_id",
+      "status",
+      "notes",
+    ],
+  },
+  {
+    name: "22_bank_accounts",
+    idPrefix: "ban",
+    cols: ["employee_id", "iban", "bic", "bank_name", "is_primary", "label"],
+  },
+  {
+    name: "23_compliance",
+    idPrefix: "cmp",
+    cols: [
+      "employee_id",
+      "type",
+      "issued_date",
+      "expiry_date",
+      "document_drive_id",
+      "notes",
+    ],
+  },
+
+  // 30 — invoices and payments
+  {
+    name: "30_invoices_out",
+    idPrefix: "inv",
+    cols: [
+      "invoice_number",
+      "issued_date",
+      "due_date",
+      "client_id",
+      "description",
+      "subtotal_cents",
+      "vat_rate",
+      "vat_cents",
+      "total_cents",
+      "currency",
+      "status",
+      "paid_at",
+      "pdf_drive_id",
+      "pn_akts_id",
+      "delivery_note_id",
+      "template_id",
+      "notes",
+    ],
+  },
+  {
+    name: "31_invoices_in",
+    idPrefix: "out",
+    cols: [
+      "supplier_id",
+      "supplier_invoice_number",
+      "issued_date",
+      "due_date",
+      "description",
+      "amount_cents",
+      "iban",
+      "reference",
+      "currency",
+      "status",
+      "paid_at",
+      "pdf_drive_id",
+      "pn_akts_id",
+      "accounting_meta_id",
+      "parsed_by_ai",
+      "ai_confidence",
+      "needs_review",
+    ],
+  },
+  {
+    name: "32_pn_akti",
+    idPrefix: "pn",
+    cols: [
+      "pn_number",
+      "source",
+      "direction",
+      "invoice_out_id",
+      "invoice_in_id",
+      "issued_date",
+      "description",
+      "pdf_drive_id",
+      "original_filename",
+    ],
+  },
+  {
+    name: "33_delivery_notes",
+    idPrefix: "del",
+    cols: [
+      "delivery_number",
+      "invoice_out_id",
+      "issued_date",
+      "description",
+      "recipient_name",
+      "recipient_address",
+      "pdf_drive_id",
+    ],
+  },
+  {
+    name: "34_invoice_templates",
+    idPrefix: "tem",
+    cols: [
+      "name",
+      "client_id",
+      "description",
+      "subtotal_cents",
+      "vat_rate",
+      "recurrence",
+      "next_invoice_date",
+      "active",
+    ],
+  },
+  {
+    name: "35_payments",
+    idPrefix: "pay",
+    cols: [
+      "direction",
+      "category",
+      "invoice_out_id",
+      "invoice_in_id",
+      "salary_id",
+      "tax_id",
+      "counterparty",
+      "counterparty_iban",
+      "amount_cents",
+      "payment_date",
+      "bank_account_iban",
+      "bank_reference",
+      "source",
+      "imported_from_csv_filename",
+    ],
+  },
+  {
+    name: "36_salaries",
+    idPrefix: "sal",
+    cols: [
+      "employee_id",
+      "period",
+      "type",
+      "gross_cents",
+      "net_cents",
+      "iin_cents",
+      "sociala_cents",
+      "sociala_employer_cents",
+      "status",
+      "paid_at",
+      "iban_used",
+    ],
+  },
+  {
+    name: "37_taxes",
+    idPrefix: "tax",
+    cols: [
+      "name",
+      "tax_type",
+      "period",
+      "amount_cents",
+      "due_date",
+      "vid_iban",
+      "vid_reference",
+      "status",
+      "paid_at",
+    ],
+  },
+  {
+    name: "38_accounting_meta",
+    idPrefix: "met",
+    cols: [
+      "invoice_in_id",
+      "category",
+      "account_code",
+      "depreciation_period",
+      "explanation",
+      "created_by",
+      "reviewed_by_accountant",
+    ],
+  },
+
+  // 40 — assets
+  {
+    name: "40_assets",
+    idPrefix: "ass",
+    cols: [
+      "category",
+      "name",
+      "comment",
+      "status",
+      "note",
+      "note_color",
+      "reminder_date",
+      "folder_drive_id",
+      "acquired_date",
+      "acquired_cost_cents",
+    ],
+  },
+
+  // 50 — documents
+  {
+    name: "50_documents",
+    idPrefix: "doc",
+    cols: [
+      "kind",
+      "language",
+      "sender_kind",
+      "sender_id",
+      "sender_name",
+      "recipient_kind",
+      "recipient_id",
+      "recipient_name",
+      "subject",
+      "body",
+      "issued_date",
+      "pdf_drive_id",
+      "signed",
+      "signed_drive_id",
+    ],
+  },
+
+  // 99 — audit log
+  {
+    name: "99_audit_log",
+    idPrefix: "aud",
+    cols: [
+      "timestamp",
+      "actor",
+      "action",
+      "entity_table",
+      "entity_id",
+      "changes_json",
+      "ip_address",
+      "user_agent",
+    ],
+  },
+] as const satisfies readonly TableSchema[];
+
+// ============================================================
+// Type-level table name union
+// ============================================================
+
+/** Union of all valid table names — auto-derived from COMPANY_TABS */
+export type TableName = (typeof COMPANY_TABS)[number]["name"];
+
+// ============================================================
+// Helpers
+// ============================================================
+
+/**
+ * Look up the schema for a table. Throws if the table name doesn't
+ * exist (which TypeScript should have caught at compile time, but
+ * this is a defensive runtime check for safety).
+ */
+export function getTableSchema(table: TableName): TableSchema {
+  const found = COMPANY_TABS.find((t) => t.name === table);
+  if (!found) {
+    throw new Error(`Unknown table: ${table}`);
+  }
+  return found;
+}
