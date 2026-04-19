@@ -8,15 +8,6 @@ import {
   Copy,
   Pencil,
   AlertCircle,
-  Mail,
-  Phone,
-  Globe,
-  Landmark,
-  Hash,
-  Receipt,
-  MapPin,
-  Truck,
-  FileText,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
@@ -34,45 +25,40 @@ import type { Company, CopyFormat } from "@/lib/types";
 export default function UznemumiPage() {
   const { companies, activeCompany, setActiveCompany, updateCompany } =
     useCompany();
-  const [selectedId, setSelectedId] = useState<string>(
-    activeCompany?.id ?? companies[0]?.id ?? ""
-  );
-  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Company | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const selected = companies.find((c) => c.id === selectedId) ?? null;
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 1800);
+  };
 
-  const handleCopy = async (format: CopyFormat) => {
-    if (!selected) return;
-    const text = formatRequisites(selected, format);
+  const handleCopy = async (company: Company, format: CopyFormat) => {
+    const text = formatRequisites(company, format);
     try {
       await navigator.clipboard.writeText(text);
-      setToast("Nokopēts");
-      setTimeout(() => setToast(null), 1800);
+      showToast(`Nokopēts · ${company.name}`);
     } catch {
-      setToast("Kopēšana neizdevās");
-      setTimeout(() => setToast(null), 1800);
+      showToast("Kopēšana neizdevās");
     }
   };
 
   const handleSave = (patch: Partial<Company>) => {
-    if (!selected) return;
-    updateCompany(selected.id, patch);
+    if (!editing) return;
+    updateCompany(editing.id, patch);
   };
 
-  const handleUseCompany = () => {
-    if (!selected) return;
-    setActiveCompany(selected.id);
-    setToast(`Aktīvais: ${selected.name}`);
-    setTimeout(() => setToast(null), 1800);
+  const handleSelectActive = (company: Company) => {
+    setActiveCompany(company.id);
+    showToast(`Aktīvais: ${company.name}`);
   };
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="space-y-6 max-w-5xl">
         <PageHeader
           title="Uzņēmumi / Struktūrvienības"
-          description="Pārvaldi visus savus uzņēmumus un struktūrvienības vienuviet"
+          description="Ātri pārslēdzies starp uzņēmumiem un nokopē rekvizītus rēķiniem vai sarakstei"
           actions={
             <Button size="sm">
               <Plus className="h-3.5 w-3.5" />
@@ -81,44 +67,26 @@ export default function UznemumiPage() {
           }
         />
 
-        {/* ========= SELECTOR CARDS ========= */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+        <div className="space-y-2">
           {companies.map((c, i) => (
-            <SelectorCard
+            <CompanyRow
               key={c.id}
               company={c}
-              selected={selectedId === c.id}
               isActive={activeCompany?.id === c.id}
-              onClick={() => setSelectedId(c.id)}
               index={i}
+              onEdit={() => setEditing(c)}
+              onCopy={(f) => handleCopy(c, f)}
+              onSelectActive={() => handleSelectActive(c)}
             />
           ))}
         </div>
-
-        {/* ========= DETAIL PANEL ========= */}
-        {selected && (
-          <motion.div
-            key={selected.id}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <DetailPanel
-              company={selected}
-              isActive={activeCompany?.id === selected.id}
-              onEdit={() => setModalOpen(true)}
-              onCopy={handleCopy}
-              onUseCompany={handleUseCompany}
-            />
-          </motion.div>
-        )}
       </div>
 
       {/* Edit modal */}
       <RequisitesModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        company={selected}
+        open={!!editing}
+        onOpenChange={(o) => !o && setEditing(null)}
+        company={editing}
         onSave={handleSave}
       />
 
@@ -141,105 +109,23 @@ export default function UznemumiPage() {
 }
 
 // ============================================================
-// Selector card — minimal: logo/initials + name + selected ring
+// Horizontal row: logo + name/legal name + action buttons
 // ============================================================
 
-function SelectorCard({
+function CompanyRow({
   company,
-  selected,
   isActive,
-  onClick,
   index,
-}: {
-  company: Company;
-  selected: boolean;
-  isActive: boolean;
-  onClick: () => void;
-  index: number;
-}) {
-  const initials = company.name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: index * 0.03 }}
-      onClick={onClick}
-      className={cn(
-        "relative flex flex-col items-center justify-center gap-2.5 rounded-xl border bg-white p-4 transition-all",
-        "hover:border-graphite-300 hover:shadow-soft-xs",
-        selected
-          ? "border-graphite-900 shadow-soft-sm"
-          : "border-graphite-200"
-      )}
-    >
-      {/* Active badge */}
-      {isActive && (
-        <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[9.5px] font-semibold border border-emerald-100">
-          <span className="h-1 w-1 rounded-full bg-emerald-500" />
-          Aktīvs
-        </span>
-      )}
-
-      {company.logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={company.logoUrl}
-          alt={company.name}
-          className="h-12 w-12 rounded-xl object-cover"
-        />
-      ) : (
-        <div
-          className={cn(
-            "flex h-12 w-12 items-center justify-center rounded-xl text-white text-[14px] font-semibold tracking-tight shadow-soft-xs",
-            selected ? "bg-graphite-900" : "bg-graphite-700"
-          )}
-        >
-          {initials}
-        </div>
-      )}
-
-      <p
-        className={cn(
-          "text-center text-[12.5px] font-medium leading-tight line-clamp-2 transition-colors",
-          selected ? "text-graphite-900" : "text-graphite-700"
-        )}
-      >
-        {company.name}
-      </p>
-
-      {/* Selected indicator dot */}
-      {selected && (
-        <motion.span
-          layoutId="selector-dot"
-          className="absolute -bottom-[5px] left-1/2 -translate-x-1/2 h-1 w-10 rounded-full bg-graphite-900"
-        />
-      )}
-    </motion.button>
-  );
-}
-
-// ============================================================
-// Detail panel
-// ============================================================
-
-function DetailPanel({
-  company,
-  isActive,
   onEdit,
   onCopy,
-  onUseCompany,
+  onSelectActive,
 }: {
   company: Company;
   isActive: boolean;
+  index: number;
   onEdit: () => void;
   onCopy: (f: CopyFormat) => void;
-  onUseCompany: () => void;
+  onSelectActive: () => void;
 }) {
   const filled = hasRequisites(company);
   const initials = company.name
@@ -250,194 +136,120 @@ function DetailPanel({
     .toUpperCase();
 
   return (
-    <Card className="overflow-hidden">
-      {/* Header */}
-      <div className="p-5 md:p-6 border-b border-graphite-100 flex flex-col md:flex-row md:items-center gap-4 md:justify-between">
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-graphite-900 text-white text-[14px] font-semibold shadow-soft-sm">
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.03 }}
+    >
+      <Card
+        className={cn(
+          "p-3.5 flex items-center gap-3.5 transition-all",
+          isActive
+            ? "border-graphite-900/20 shadow-soft-xs ring-1 ring-graphite-900/5"
+            : "hover:border-graphite-300"
+        )}
+      >
+        {/* Logo / initials */}
+        {company.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={company.logoUrl}
+            alt={company.name}
+            className="h-11 w-11 shrink-0 rounded-xl object-cover"
+          />
+        ) : (
+          <div
+            className={cn(
+              "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white text-[13px] font-semibold tracking-tight shadow-soft-xs",
+              isActive ? "bg-graphite-900" : "bg-graphite-700"
+            )}
+          >
             {initials}
           </div>
-          <div>
-            <h2 className="text-[20px] font-semibold tracking-tight text-graphite-900">
+        )}
+
+        {/* Name + legal name */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-[14.5px] font-semibold text-graphite-900 truncate">
               {company.name}
-            </h2>
-            <p className="text-[12.5px] text-graphite-500 mt-0.5">
-              {company.legalName || (
-                <span className="italic">Juridiskais nosaukums nav norādīts</span>
-              )}
             </p>
+            {isActive && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[10px] font-semibold border border-emerald-100 shrink-0">
+                <span className="h-1 w-1 rounded-full bg-emerald-500" />
+                Aktīvs
+              </span>
+            )}
           </div>
+          <p className="text-[12px] text-graphite-500 truncate mt-0.5">
+            {company.legalName || (
+              <span className="italic text-graphite-400">
+                Juridiskais nosaukums nav norādīts
+              </span>
+            )}
+          </p>
         </div>
 
-        {/* Action bar */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Missing requisites warning (subtle) */}
+        {!filled && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium border border-amber-100 shrink-0"
+            title="Rekvizīti nav pievienoti"
+          >
+            <AlertCircle className="h-2.5 w-2.5" />
+            Rekvizīti
+          </span>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 shrink-0">
           {filled && (
             <>
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 onClick={() => onCopy("lv")}
+                title="Kopēt latviešu valodā"
               >
                 <Copy className="h-3.5 w-3.5" />
-                Kopēt latviešu valodā
+                LV
               </Button>
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 onClick={() => onCopy("en")}
+                title="Kopēt angļu valodā"
               >
                 <Copy className="h-3.5 w-3.5" />
-                Kopēt angļu valodā
+                EN
               </Button>
             </>
           )}
-          {filled ? (
-            <Button size="sm" onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5" />
-              Labot rekvizītus
-            </Button>
-          ) : (
-            <Button size="sm" onClick={onEdit}>
-              <Plus className="h-3.5 w-3.5" />
-              Pievienot rekvizītus
-            </Button>
-          )}
+          <Button
+            variant={filled ? "ghost" : "secondary"}
+            size="sm"
+            onClick={onEdit}
+          >
+            {filled ? (
+              <>
+                <Pencil className="h-3.5 w-3.5" />
+                Labot
+              </>
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5" />
+                Pievienot rekvizītus
+              </>
+            )}
+          </Button>
           {!isActive && (
-            <Button variant="success-outline" size="sm" onClick={onUseCompany}>
+            <Button size="sm" onClick={onSelectActive}>
               <Check className="h-3.5 w-3.5" />
-              Izvēlēties aktīvo
+              Izvēlēties
             </Button>
           )}
         </div>
-      </div>
-
-      {/* Body */}
-      {!filled ? (
-        <EmptyRequisites onAdd={onEdit} />
-      ) : (
-        <div className="p-5 md:p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-          <RequisiteRow
-            icon={FileText}
-            label="Juridiskais nosaukums"
-            value={company.legalName}
-          />
-          <RequisiteRow
-            icon={Hash}
-            label="Reģistrācijas numurs"
-            value={company.regNumber}
-            mono
-          />
-          <RequisiteRow
-            icon={Receipt}
-            label="PVN numurs"
-            value={company.vatNumber}
-            mono
-          />
-          <RequisiteRow
-            icon={MapPin}
-            label="Juridiskā adrese"
-            value={company.legalAddress}
-          />
-          <RequisiteRow
-            icon={Truck}
-            label="Faktiskā / piegādes adrese"
-            value={company.deliveryAddress}
-          />
-          <RequisiteRow
-            icon={Mail}
-            label="E-pasts saziņai"
-            value={company.contactEmail}
-          />
-          <RequisiteRow
-            icon={Mail}
-            label="E-pasts rēķiniem"
-            value={company.invoiceEmail}
-          />
-          <RequisiteRow
-            icon={Phone}
-            label="Telefona numurs"
-            value={company.phone}
-          />
-          <RequisiteRow
-            icon={Globe}
-            label="Mājaslapa"
-            value={company.website}
-          />
-          <RequisiteRow
-            icon={Landmark}
-            label="Bankas nosaukums"
-            value={company.bankName}
-          />
-          <RequisiteRow
-            icon={Landmark}
-            label="IBAN"
-            value={company.iban}
-            mono
-          />
-          <RequisiteRow
-            icon={Landmark}
-            label="SWIFT"
-            value={company.swift}
-            mono
-          />
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function RequisiteRow({
-  icon: Icon,
-  label,
-  value,
-  mono,
-}: {
-  icon: typeof Mail;
-  label: string;
-  value?: string;
-  mono?: boolean;
-}) {
-  const isEmpty = !value || !value.trim();
-  return (
-    <div className="flex items-start gap-3">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-graphite-50 text-graphite-400 border border-graphite-100 mt-0.5">
-        <Icon className="h-3 w-3" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-          {label}
-        </p>
-        <p
-          className={cn(
-            "mt-0.5 text-[13.5px] text-graphite-900 break-words",
-            mono && "font-mono text-[12.5px]",
-            isEmpty && "text-graphite-300 italic"
-          )}
-        >
-          {isEmpty ? "Nav norādīts" : value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function EmptyRequisites({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div className="p-10 text-center">
-      <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-100 mb-3">
-        <AlertCircle className="h-5 w-5" />
-      </div>
-      <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
-        Rekvizīti vēl nav pievienoti
-      </h3>
-      <p className="mt-1.5 text-[12.5px] text-graphite-500 max-w-md mx-auto">
-        Pievieno uzņēmuma rekvizītus, lai ātri kopētu tos rēķinos, līgumos un
-        sarakstē latviešu vai angļu valodā.
-      </p>
-      <Button size="sm" className="mt-4" onClick={onAdd}>
-        <Plus className="h-3.5 w-3.5" />
-        Pievienot rekvizītus
-      </Button>
-    </div>
+      </Card>
+    </motion.div>
   );
 }
