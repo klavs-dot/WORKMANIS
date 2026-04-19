@@ -4,9 +4,12 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Plus,
-  Download,
   Receipt,
   MoreHorizontal,
+  FileText,
+  Pencil,
+  Check,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -111,10 +114,6 @@ export function IenakosieTab() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm">
-            <Download className="h-3.5 w-3.5" />
-            Eksportēt PDF
-          </Button>
           <Button size="sm" onClick={openNewInvoice}>
             <Plus className="h-3.5 w-3.5" />
             Izrakstīt rēķinu
@@ -207,23 +206,35 @@ export function IenakosieTab() {
                               <MoreHorizontal className="h-3.5 w-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" className="min-w-[200px]">
+                            <DropdownMenuItem>
+                              <FileText className="h-3.5 w-3.5 text-graphite-500" />
+                              Lejupielādēt rēķinu
+                            </DropdownMenuItem>
+                            {inv.deliveryNote && (
+                              <DropdownMenuItem>
+                                <Receipt className="h-3.5 w-3.5 text-emerald-600" />
+                                Lejupielādēt pavadzīmi
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={() => openEditInvoice(inv)}>
+                              <Pencil className="h-3.5 w-3.5 text-graphite-500" />
                               Labot
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onSelect={() =>
-                                updateIncoming(inv.id, { status: "apmaksats" })
-                              }
-                            >
-                              Atzīmēt kā apmaksātu
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Download className="h-3.5 w-3.5" />
-                              Lejupielādēt PDF
-                            </DropdownMenuItem>
+                            {inv.status !== "apmaksats" && (
+                              <DropdownMenuItem
+                                onSelect={() =>
+                                  updateIncoming(inv.id, { status: "apmaksats" })
+                                }
+                              >
+                                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                Atzīmēt kā apmaksātu
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-red-600 focus:text-red-700">
+                              <Trash2 className="h-3.5 w-3.5" />
                               Dzēst
                             </DropdownMenuItem>
                           </DropdownMenuContent>
