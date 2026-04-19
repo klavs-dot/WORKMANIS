@@ -37,7 +37,7 @@ const tabs: {
   { key: "ienakosie", label: "Ienākošie", icon: ArrowDownToLine },
   { key: "automatiskie", label: "Automātiskie & Internetā", icon: Globe },
   { key: "veikala", label: "Fiziskie maksājumi", icon: ShoppingBag },
-  { key: "algas", label: "Algas & Darbinieki", icon: Users },
+  { key: "algas", label: "Algas", icon: Users },
   { key: "nodokli", label: "Nodokļi", icon: Landmark },
 ];
 

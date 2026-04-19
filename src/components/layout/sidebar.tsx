@@ -13,6 +13,7 @@ import {
   Boxes,
   Briefcase,
   Calculator,
+  IdCard,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ const navGroups: NavGroup[] = [
       { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
       { href: "/gramatvedibai", label: "Grāmatvedībai & Lietvedībai", icon: Calculator },
       { href: "/aktivi", label: "Aktīvi", icon: Package },
+      { href: "/darbinieki", label: "Darbinieki", icon: IdCard },
     ],
   },
   {

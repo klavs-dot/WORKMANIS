@@ -71,10 +71,14 @@ export type SalaryStatus = "sagatavots" | "izmaksats";
 export interface Salary {
   id: string;
   employee: string;
+  /** Optional FK to /lib/employees-store Employee.id */
+  employeeId?: string;
   amount: number;
   period: string;
   type: SalaryType;
   status: SalaryStatus;
+  /** ISO timestamp when status flipped to 'izmaksats' */
+  paidAt?: string;
 }
 
 export type TaxStatus = "sagatavots" | "apmaksats";
@@ -383,7 +387,19 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     },
     updateSalary: (id, patch) => {
       setSalaries((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, ...patch } : s))
+        prev.map((s) => {
+          if (s.id !== id) return s;
+          const next = { ...s, ...patch };
+          // Auto-stamp paidAt the first time status flips to 'izmaksats'
+          if (
+            patch.status === "izmaksats" &&
+            s.status !== "izmaksats" &&
+            !next.paidAt
+          ) {
+            next.paidAt = new Date().toISOString();
+          }
+          return next;
+        })
       );
     },
 
