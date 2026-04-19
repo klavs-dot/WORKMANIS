@@ -7,11 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { companies as seedCompanies } from "@/lib/mock";
 import type { Company } from "@/lib/types";
 
 const STORAGE_KEY = "workmanis:active-company";
 const COMPANIES_KEY = "workmanis:companies";
+
+// Empty seed — companies are added by the user via the UI
+const seedCompanies: Company[] = [];
 
 interface CompanyContextValue {
   companies: Company[];

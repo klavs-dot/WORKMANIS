@@ -37,68 +37,7 @@ interface AssetStore {
 
 const STORAGE_KEY = "workmanis:assets-store";
 
-const seedAssets: Asset[] = [
-  {
-    id: "as-seed-1",
-    category: "domeni",
-    name: "wolftrike.eu",
-    comment: "Reģistrēts 2024, atjauno līdz 2027",
-    status: "aktivs",
-    note: "Svarīgs",
-    noteColor: "zala",
-    createdAt: "2026-04-10T10:00:00Z",
-  },
-  {
-    id: "as-seed-2",
-    category: "domeni",
-    name: "driftarena.lv",
-    comment: "Publiskais domēns Drift Arena biznesam",
-    status: "aktivs",
-    note: "Publisks",
-    noteColor: "zala",
-    createdAt: "2026-04-10T10:01:00Z",
-  },
-  {
-    id: "as-seed-3",
-    category: "automasinas",
-    name: "BMW 1 Series",
-    comment: "Drift projekts · nepabeigts",
-    status: "apkalposana",
-    note: "Jāpabeidz",
-    noteColor: "sarkana",
-    createdAt: "2026-04-10T10:02:00Z",
-  },
-  {
-    id: "as-seed-4",
-    category: "automasinas",
-    name: "Mosphera demo unit",
-    comment: "Izstādēm un klientu prezentācijām",
-    status: "aktivs",
-    note: "Rezervēts",
-    noteColor: "zala",
-    createdAt: "2026-04-10T10:03:00Z",
-  },
-  {
-    id: "as-seed-5",
-    category: "citi",
-    name: "3D printeris Prusa MK4",
-    comment: "Prototipu izgatavošanai",
-    status: "aktivs",
-    note: "Ražošanā",
-    noteColor: "zala",
-    createdAt: "2026-04-10T10:04:00Z",
-  },
-  {
-    id: "as-seed-6",
-    category: "citi",
-    name: "Serveris Supermicro",
-    comment: "Iekšējais dev vide · Liepāja birojs",
-    status: "aktivs",
-    note: "Arhīvs",
-    noteColor: "pelēka",
-    createdAt: "2026-04-10T10:05:00Z",
-  },
-];
+const seedAssets: Asset[] = [];
 
 function readAssets(): Asset[] {
   if (typeof window === "undefined") return seedAssets;

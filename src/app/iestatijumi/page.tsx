@@ -12,6 +12,11 @@ import {
   Mail,
   CheckCircle2,
   ArrowRight,
+  Database,
+  Download,
+  Upload,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
@@ -28,12 +33,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 const sections = [
   { id: "general", label: "Vispārīgie", icon: User },
   { id: "companies", label: "Uzņēmumi", icon: Building2 },
   { id: "export", label: "Eksports", icon: FileDown },
+  { id: "data", label: "Dati un dublējumi", icon: Database },
   { id: "language", label: "Valoda", icon: Globe },
   { id: "notifications", label: "Paziņojumi", icon: Bell },
   { id: "bank", label: "Bankas integrācija", icon: Landmark },
@@ -91,6 +104,7 @@ export default function IestatijumiPage() {
               {active === "general" && <GeneralSettings />}
               {active === "companies" && <CompanySettings />}
               {active === "export" && <ExportSettings />}
+              {active === "data" && <DataManagementSettings />}
               {active === "language" && <LanguageSettings />}
               {active === "notifications" && <NotificationSettings />}
               {active === "bank" && <BankIntegration />}
@@ -263,6 +277,349 @@ function ExportSettings() {
         </Select>
       </FieldRow>
     </SettingsCard>
+  );
+}
+
+// ============================================================
+// Data management — backup, restore, reset all localStorage
+// ============================================================
+
+/**
+ * All localStorage keys WORKMANIS owns. Keep this in sync with
+ * the STORAGE_KEY constants scattered across the store files.
+ * If a new store is added, append its key here so export/import/reset
+ * work correctly.
+ */
+const WORKMANIS_STORAGE_KEYS = [
+  "workmanis:active-company",
+  "workmanis:companies",
+  "workmanis:billing-store",
+  "workmanis:number-counters",
+  "workmanis:assets-store",
+  "workmanis:clients-store",
+  "workmanis:templates-store",
+  "workmanis:distributors",
+  "workmanis:demo-products",
+  "workmanis:business-contacts",
+  "workmanis:online-links",
+  "workmanis:employees",
+  "workmanis:orders",
+  "workmanis:documents",
+] as const;
+
+function DataManagementSettings() {
+  const [resetOpen, setResetOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<{
+    keysFound: string[];
+    keysSkipped: string[];
+  } | null>(null);
+  const [pendingImport, setPendingImport] = useState<Record<
+    string,
+    string
+  > | null>(null);
+
+  const exportToJSON = () => {
+    if (typeof window === "undefined") return;
+    const dump: Record<string, string | null> = {};
+    for (const key of WORKMANIS_STORAGE_KEYS) {
+      dump[key] = window.localStorage.getItem(key);
+    }
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      app: "WORKMANIS",
+      data: dump,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `workmanis-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || !parsed.data) {
+        alert(
+          "Nederīgs faila formāts. Failam jābūt WORKMANIS dublējumam ar 'data' lauku."
+        );
+        return;
+      }
+      const data = parsed.data as Record<string, unknown>;
+      const keysFound: string[] = [];
+      const keysSkipped: string[] = [];
+      const validData: Record<string, string> = {};
+      for (const key of Object.keys(data)) {
+        if ((WORKMANIS_STORAGE_KEYS as readonly string[]).includes(key)) {
+          if (typeof data[key] === "string") {
+            keysFound.push(key);
+            validData[key] = data[key] as string;
+          } else if (data[key] === null) {
+            // Stored as null in export — skip without flagging
+          } else {
+            keysSkipped.push(`${key} (nepareizs tips)`);
+          }
+        } else {
+          keysSkipped.push(`${key} (nezināms)`);
+        }
+      }
+      setImportPreview({ keysFound, keysSkipped });
+      setPendingImport(validData);
+      setImportOpen(true);
+    } catch (e) {
+      alert(`Neizdevās nolasīt JSON failu: ${(e as Error).message}`);
+    }
+  };
+
+  const confirmImport = () => {
+    if (!pendingImport || typeof window === "undefined") return;
+    // Replace each key with the imported value
+    for (const [key, value] of Object.entries(pendingImport)) {
+      window.localStorage.setItem(key, value);
+    }
+    setImportOpen(false);
+    setPendingImport(null);
+    setImportPreview(null);
+    // Reload so all stores re-hydrate from the imported localStorage
+    window.location.reload();
+  };
+
+  const confirmReset = () => {
+    if (typeof window === "undefined") return;
+    for (const key of WORKMANIS_STORAGE_KEYS) {
+      window.localStorage.removeItem(key);
+    }
+    setResetOpen(false);
+    // Hard reload so every store starts fresh
+    window.location.href = "/";
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Export */}
+      <SettingsCard
+        title="Eksportēt datus"
+        description="Lejupielādējiet visus savus WORKMANIS datus kā JSON failu drošības dublējumam"
+      >
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-graphite-50/60 border border-graphite-100">
+          <Download className="h-4 w-4 shrink-0 mt-0.5 text-graphite-500" />
+          <div className="flex-1 text-[12.5px] text-graphite-600 leading-relaxed">
+            Tiks eksportētas visas {WORKMANIS_STORAGE_KEYS.length} datu
+            grupas — uzņēmumi, klienti, rēķini, darbinieki, dokumenti un
+            aktīvi. Failu var izmantot vēlāk, lai atjaunotu datus vai
+            pārnestu uz citu pārlūku.
+          </div>
+        </div>
+        <div className="flex justify-end pt-1">
+          <Button size="sm" onClick={exportToJSON}>
+            <Download className="h-3.5 w-3.5" />
+            Lejupielādēt JSON dublējumu
+          </Button>
+        </div>
+      </SettingsCard>
+
+      {/* Import */}
+      <SettingsCard
+        title="Importēt datus"
+        description="Atjaunojiet datus no iepriekš eksportēta JSON dublējuma"
+      >
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50/60 border border-amber-200/70">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+          <div className="flex-1 text-[12.5px] text-amber-900 leading-relaxed">
+            <span className="font-medium">Uzmanību:</span> imports aizvietos
+            visus pašreizējos datus. Pirms importēšanas iesakām eksportēt
+            esošos datus kā drošības dublējumu.
+          </div>
+        </div>
+        <div className="flex justify-end pt-1">
+          <input
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            id="data-import-input"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleImportFile(f);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              document.getElementById("data-import-input")?.click()
+            }
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Izvēlēties JSON failu
+          </Button>
+        </div>
+      </SettingsCard>
+
+      {/* Reset — destructive zone */}
+      <SettingsCard
+        title="Iztīrīt visus datus"
+        description="Neatgriezeniski dzēsiet visus WORKMANIS datus no šī pārlūka"
+      >
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-red-50/60 border border-red-200/70">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+          <div className="flex-1 text-[12.5px] text-red-900 leading-relaxed">
+            <span className="font-medium">Bīstama darbība:</span> tiks
+            neatgriezeniski dzēsti visi uzņēmumi, klienti, rēķini, darbinieki
+            un visi pārējie dati no šī pārlūka. Šo darbību nevar atsaukt.
+            Pirms turpināšanas eksportējiet datus.
+          </div>
+        </div>
+        <div className="flex justify-end pt-1">
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setResetOpen(true)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Iztīrīt visus datus
+          </Button>
+        </div>
+      </SettingsCard>
+
+      {/* ─── Reset confirmation ─── */}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="h-4 w-4" />
+              Apstiprināt datu dzēšanu
+            </DialogTitle>
+            <DialogDescription>
+              Šī darbība neatgriezeniski iztīrīs visus localStorage datus
+              no šī pārlūka. Vai turpināt?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg bg-graphite-50 border border-graphite-100 p-3 text-[11.5px] text-graphite-600 leading-relaxed">
+            Tiks dzēsti šādu grupu dati:
+            <ul className="mt-2 space-y-0.5 font-mono text-[10.5px]">
+              {WORKMANIS_STORAGE_KEYS.map((k) => (
+                <li key={k} className="text-graphite-500">
+                  · {k}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setResetOpen(false)}
+            >
+              Atcelt
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={confirmReset}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Jā, iztīrīt visu
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Import confirmation with preview ─── */}
+      <Dialog
+        open={importOpen}
+        onOpenChange={(o) => {
+          if (!o) {
+            setImportOpen(false);
+            setPendingImport(null);
+            setImportPreview(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-4 w-4 text-graphite-500" />
+              Apstiprināt importu
+            </DialogTitle>
+            <DialogDescription>
+              Pārbaudiet, kuri dati tiks ielādēti no faila. Pašreizējie dati
+              tiks aizvietoti.
+            </DialogDescription>
+          </DialogHeader>
+
+          {importPreview && (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-emerald-50/60 border border-emerald-100 p-3">
+                <p className="text-[11.5px] font-semibold text-emerald-800 mb-1.5">
+                  Tiks ielādēts ({importPreview.keysFound.length})
+                </p>
+                {importPreview.keysFound.length === 0 ? (
+                  <p className="text-[11px] text-emerald-700">Nekas</p>
+                ) : (
+                  <ul className="space-y-0.5 font-mono text-[10.5px]">
+                    {importPreview.keysFound.map((k) => (
+                      <li key={k} className="text-emerald-700">
+                        · {k}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {importPreview.keysSkipped.length > 0 && (
+                <div className="rounded-lg bg-graphite-50 border border-graphite-100 p-3">
+                  <p className="text-[11.5px] font-semibold text-graphite-700 mb-1.5">
+                    Tiks izlaists ({importPreview.keysSkipped.length})
+                  </p>
+                  <ul className="space-y-0.5 font-mono text-[10.5px]">
+                    {importPreview.keysSkipped.map((k) => (
+                      <li key={k} className="text-graphite-500">
+                        · {k}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setImportOpen(false);
+                setPendingImport(null);
+                setImportPreview(null);
+              }}
+            >
+              Atcelt
+            </Button>
+            <Button
+              size="sm"
+              onClick={confirmImport}
+              disabled={
+                !importPreview || importPreview.keysFound.length === 0
+              }
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Importēt un pārlādēt
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

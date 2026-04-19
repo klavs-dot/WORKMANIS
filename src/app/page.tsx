@@ -3,16 +3,14 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowRight, Receipt, Repeat, TrendingUp, Plus } from "lucide-react";
+import { ArrowRight, Plus, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { companies, invoices, subscriptions } from "@/lib/mock";
-import { formatCurrency } from "@/lib/utils";
 import { useCompany } from "@/lib/company-context";
 
 export default function CompanySelectorPage() {
   const router = useRouter();
-  const { activeCompany, setActiveCompany, hydrated } = useCompany();
+  const { companies, activeCompany, setActiveCompany, hydrated } = useCompany();
 
   // If user already has a selection, send them straight to dashboard
   useEffect(() => {
@@ -25,27 +23,6 @@ export default function CompanySelectorPage() {
     setActiveCompany(id);
     router.push("/parskats");
   };
-
-  const companyDetails = companies.map((c) => {
-    const compInvoices = invoices.filter((i) => i.companyId === c.id);
-    const unpaid = compInvoices.filter((i) => i.status !== "apmaksāts");
-    const subs = subscriptions.filter(
-      (s) => s.companyId === c.id && s.status === "aktīvs"
-    );
-    const monthly = subs.reduce((sum, s) => {
-      if (s.periodicity === "mēnesis") return sum + s.price;
-      if (s.periodicity === "gads") return sum + s.price / 12;
-      return sum + s.price / 3;
-    }, 0);
-    return {
-      ...c,
-      invoicesCount: compInvoices.length,
-      unpaidCount: unpaid.length,
-      unpaidTotal: unpaid.reduce((s, i) => s + i.total, 0),
-      subscriptionsCount: subs.length,
-      monthly,
-    };
-  });
 
   if (!hydrated) {
     return (
@@ -94,7 +71,6 @@ export default function CompanySelectorPage() {
         </div>
       </header>
 
-      {/* Hero */}
       <main className="mx-auto max-w-[1280px] px-6 lg:px-10 py-12 lg:py-16">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -106,117 +82,127 @@ export default function CompanySelectorPage() {
             Sākums
           </p>
           <h1 className="text-[36px] md:text-[44px] font-semibold tracking-tight text-graphite-900 text-display-lg leading-[1.1]">
-            Izvēlieties uzņēmumu
+            {companies.length === 0
+              ? "Sveiks WORKMANIS"
+              : "Izvēlieties uzņēmumu"}
           </h1>
           <p className="mt-3 text-[15px] text-graphite-500 max-w-lg leading-relaxed">
-            Sāciet sesiju ar vienu no uzņēmumiem. Visi rēķini, abonementi un maksājumi tiks rādīti šim uzņēmumam.
+            {companies.length === 0
+              ? "Lai sāktu, pievienojiet pirmo uzņēmumu vai struktūrvienību. Visi rēķini, klienti un dokumenti tiks glabāti šim uzņēmumam."
+              : "Sāciet sesiju ar vienu no uzņēmumiem. Visi rēķini, abonementi un maksājumi tiks rādīti šim uzņēmumam."}
           </p>
         </motion.div>
 
-        {/* Company cards */}
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
-          {companyDetails.map((c, i) => (
-            <motion.div
-              key={c.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.5,
-                delay: 0.1 + i * 0.06,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-            >
-              <Card className="p-6 hover:shadow-soft-md transition-all group h-full flex flex-col">
-                <div className="flex items-start justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-graphite-900 text-white text-[14px] font-semibold shadow-soft-sm">
-                      {c.name.slice(0, 2).toUpperCase()}
+        {companies.length === 0 ? (
+          /* ─── Empty state ─── */
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.15 }}
+            className="mt-10"
+          >
+            <Card className="p-10 lg:p-14 text-center max-w-2xl">
+              <div className="flex h-14 w-14 mx-auto items-center justify-center rounded-2xl bg-graphite-100 text-graphite-700 mb-5">
+                <Building2 className="h-6 w-6" strokeWidth={1.5} />
+              </div>
+              <h2 className="text-[20px] font-semibold tracking-tight text-graphite-900">
+                Vēl nav neviena uzņēmuma
+              </h2>
+              <p className="mt-2 text-[13.5px] text-graphite-500 max-w-md mx-auto leading-relaxed">
+                Pievienojiet pirmo uzņēmumu, struktūrvienību vai biedrību.
+                Pēc tam varēsiet pievienot klientus, rēķinus, darbiniekus
+                un visu pārējo.
+              </p>
+              <Button
+                size="lg"
+                className="mt-6"
+                onClick={() => router.push("/uznemumi")}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Pievienot pirmo uzņēmumu
+              </Button>
+            </Card>
+          </motion.div>
+        ) : (
+          <>
+            {/* Company cards */}
+            <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
+              {companies.map((c, i) => (
+                <motion.div
+                  key={c.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.5,
+                    delay: 0.1 + i * 0.06,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                >
+                  <Card className="p-6 hover:shadow-soft-md transition-all group h-full flex flex-col">
+                    <div className="flex items-start gap-3 mb-5">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-graphite-900 text-white text-[14px] font-semibold shadow-soft-sm">
+                        {c.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-[17px] font-semibold tracking-tight text-graphite-900 truncate">
+                          {c.name}
+                        </h3>
+                        {c.legalName && (
+                          <p className="text-[12px] text-graphite-500 mt-0.5 truncate">
+                            {c.legalName}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-[17px] font-semibold tracking-tight text-graphite-900">
-                        {c.name}
-                      </h3>
-                      <p className="text-[12px] text-graphite-500 mt-0.5">
-                        {c.legalName}
-                      </p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="flex gap-1.5 mb-5">
-                  <span className="inline-flex items-center rounded-md bg-graphite-50 border border-graphite-100 px-2 py-0.5 text-[10.5px] font-mono text-graphite-600">
-                    {c.regNumber}
-                  </span>
-                  <span className="inline-flex items-center rounded-md bg-graphite-50 border border-graphite-100 px-2 py-0.5 text-[10.5px] font-mono text-graphite-600">
-                    {c.vatNumber}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3 py-5 border-y border-graphite-100">
-                  <div>
-                    <div className="flex items-center gap-1 text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-                      <Receipt className="h-2.5 w-2.5" />
-                      Rēķini
-                    </div>
-                    <p className="mt-1.5 text-[20px] font-semibold tabular tracking-tight text-graphite-900">
-                      {c.unpaidCount}
-                    </p>
-                    {c.unpaidTotal > 0 && (
-                      <p className="text-[11px] text-graphite-500 tabular">
-                        {formatCurrency(c.unpaidTotal).replace(/,\d+/, "")}
-                      </p>
+                    {(c.regNumber || c.vatNumber) && (
+                      <div className="flex flex-wrap gap-1.5 mb-5">
+                        {c.regNumber && (
+                          <span className="inline-flex items-center rounded-md bg-graphite-50 border border-graphite-100 px-2 py-0.5 text-[10.5px] font-mono text-graphite-600">
+                            {c.regNumber}
+                          </span>
+                        )}
+                        {c.vatNumber && (
+                          <span className="inline-flex items-center rounded-md bg-graphite-50 border border-graphite-100 px-2 py-0.5 text-[10.5px] font-mono text-graphite-600">
+                            {c.vatNumber}
+                          </span>
+                        )}
+                      </div>
                     )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1 text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-                      <Repeat className="h-2.5 w-2.5" />
-                      Abonementi
-                    </div>
-                    <p className="mt-1.5 text-[20px] font-semibold tabular tracking-tight text-graphite-900">
-                      {c.subscriptionsCount}
-                    </p>
-                    <p className="text-[11px] text-graphite-500">aktīvi</p>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1 text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-                      <TrendingUp className="h-2.5 w-2.5" />
-                      Mēneša
-                    </div>
-                    <p className="mt-1.5 text-[20px] font-semibold tabular tracking-tight text-graphite-900">
-                      {formatCurrency(c.monthly).replace(/,\d+/, "")}
-                    </p>
-                    <p className="text-[11px] text-graphite-500">izmaksas</p>
-                  </div>
-                </div>
 
-                <div className="mt-5">
-                  <Button
-                    variant="success"
-                    size="lg"
-                    className="w-full"
-                    onClick={() => handleSelect(c.id)}
-                  >
-                    Izvēlēties
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </Card>
+                    <div className="mt-auto pt-2">
+                      <Button
+                        variant="success"
+                        size="lg"
+                        className="w-full"
+                        onClick={() => handleSelect(c.id)}
+                      >
+                        Izvēlēties
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Add new company */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+              className="mt-8 flex items-center justify-center"
+            >
+              <button
+                onClick={() => router.push("/uznemumi")}
+                className="inline-flex items-center gap-2 text-[13px] text-graphite-500 hover:text-graphite-900 transition-colors px-3 py-2 rounded-lg hover:bg-graphite-100"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Pievienot jaunu uzņēmumu
+              </button>
             </motion.div>
-          ))}
-        </div>
-
-        {/* Add new company */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-          className="mt-8 flex items-center justify-center"
-        >
-          <button className="inline-flex items-center gap-2 text-[13px] text-graphite-500 hover:text-graphite-900 transition-colors px-3 py-2 rounded-lg hover:bg-graphite-100">
-            <Plus className="h-3.5 w-3.5" />
-            Pievienot jaunu uzņēmumu
-          </button>
-        </motion.div>
+          </>
+        )}
       </main>
     </div>
   );
