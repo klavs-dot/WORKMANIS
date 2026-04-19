@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SessionProvider } from "next-auth/react";
 import { CompanyProvider } from "@/lib/company-context";
 import { BillingProvider } from "@/lib/billing-store";
 import { AssetProvider } from "@/lib/assets-store";
@@ -23,21 +24,23 @@ export default function RootLayout({
   return (
     <html lang="lv">
       <body>
-        <CompanyProvider>
-          <BillingProvider>
-            <AssetProvider>
-              <ClientsProvider>
-                <NetworkProvider>
-                  <EmployeesProvider>
-                    <OrdersProvider>
-                      <DocumentsProvider>{children}</DocumentsProvider>
-                    </OrdersProvider>
-                  </EmployeesProvider>
-                </NetworkProvider>
-              </ClientsProvider>
-            </AssetProvider>
-          </BillingProvider>
-        </CompanyProvider>
+        <SessionProvider>
+          <CompanyProvider>
+            <BillingProvider>
+              <AssetProvider>
+                <ClientsProvider>
+                  <NetworkProvider>
+                    <EmployeesProvider>
+                      <OrdersProvider>
+                        <DocumentsProvider>{children}</DocumentsProvider>
+                      </OrdersProvider>
+                    </EmployeesProvider>
+                  </NetworkProvider>
+                </ClientsProvider>
+              </AssetProvider>
+            </BillingProvider>
+          </CompanyProvider>
+        </SessionProvider>
       </body>
     </html>
   );

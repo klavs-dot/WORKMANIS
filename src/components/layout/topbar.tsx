@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, Check } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +14,15 @@ import { useCompany } from "@/lib/company-context";
 
 export function Topbar() {
   const { companies, activeCompany, setActiveCompany } = useCompany();
+  const { data: session } = useSession();
+
+  const userName = session?.user?.name ?? "Lietotājs";
+  const userEmail = session?.user?.email ?? "";
+  const userInitials = (userName || "?")
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 
   return (
     <header className="sticky top-0 z-30 h-14 glass border-b border-graphite-100">
@@ -53,17 +63,19 @@ export function Topbar() {
           <DropdownMenu>
             <DropdownMenuTrigger className="focus:outline-none">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-graphite-900 text-white text-[11px] font-semibold transition-transform active:scale-95">
-                KB
+                {userInitials || "?"}
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <div className="px-2.5 py-2 border-b border-graphite-100 mb-1">
-                <p className="text-[13px] font-medium text-graphite-900">
-                  Klāvs Bērziņš
+                <p className="text-[13px] font-medium text-graphite-900 truncate">
+                  {userName}
                 </p>
-                <p className="text-[11.5px] text-graphite-500 mt-0.5">
-                  klavs@globalwolfmotors.com
-                </p>
+                {userEmail && (
+                  <p className="text-[11.5px] text-graphite-500 mt-0.5 truncate">
+                    {userEmail}
+                  </p>
+                )}
               </div>
               <DropdownMenuItem>Mans profils</DropdownMenuItem>
               <DropdownMenuItem>Komandas iestatījumi</DropdownMenuItem>
@@ -71,11 +83,11 @@ export function Topbar() {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={() => {
-                  // Clear active company and go to selector
+                  // Sign out via NextAuth and clear local company selection
                   if (typeof window !== "undefined") {
                     window.localStorage.removeItem("workmanis:active-company");
-                    window.location.href = "/";
                   }
+                  signOut({ redirectTo: "/login" });
                 }}
               >
                 Atteikties
