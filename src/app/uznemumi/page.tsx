@@ -168,11 +168,11 @@ function CompanyRow({
               {initials}
             </div>
           )}
-          <div className="min-w-0 max-w-[260px]">
-            <p className="text-[14.5px] font-semibold text-graphite-900 truncate">
+          <div className="min-w-0 max-w-[260px] min-h-[40px] flex flex-col justify-center">
+            <p className="text-[14.5px] font-semibold text-graphite-900 truncate leading-tight">
               {company.name}
             </p>
-            <p className="text-[12px] text-graphite-500 truncate mt-0.5">
+            <p className="text-[12px] text-graphite-500 truncate mt-0.5 leading-tight">
               {company.legalName || (
                 <span className="italic text-graphite-400">
                   Juridiskais nosaukums nav norādīts
@@ -182,25 +182,24 @@ function CompanyRow({
           </div>
         </div>
 
-        {/* ============ CENTER: primary action ============ */}
+        {/* ============ CENTER: primary action — fixed dimensions
+              so the center button sits identical across all rows ============ */}
         {isActive ? (
           <div
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white px-5 py-2 text-[13.5px] font-semibold shadow-soft-sm shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white text-[13.5px] font-semibold shadow-soft-sm shrink-0 h-10 w-[140px]"
             aria-label="Šis uzņēmums ir izvēlēts kā aktīvs"
           >
             <Check className="h-4 w-4" strokeWidth={2.75} />
             Izvēlēts
           </div>
         ) : (
-          <Button
-            variant="default"
-            size="default"
+          <button
             onClick={onSelectActive}
-            className="shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-graphite-900 text-white text-[13.5px] font-semibold shadow-soft-xs hover:bg-graphite-800 active:scale-[0.98] transition-all shrink-0 h-10 w-[140px]"
           >
-            <Check className="h-3.5 w-3.5" />
+            <Check className="h-4 w-4" strokeWidth={2.5} />
             Izvēlēties
-          </Button>
+          </button>
         )}
 
         {/* ============ RIGHT GROUP: secondary actions ============ */}
