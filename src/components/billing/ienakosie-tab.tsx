@@ -5,15 +5,11 @@ import { motion } from "framer-motion";
 import {
   Plus,
   Download,
-  FileText,
   Receipt,
   MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/primitives";
 import {
   Table,
   TableHeader,
@@ -36,9 +32,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/primitives";
 import { IncomingStatusBadge } from "@/components/business/billing-status-badges";
+import { InvoiceModal } from "./invoice-modal";
 import { useBilling } from "@/lib/billing-store";
-import type { IncomingInvoice, IncomingStatus } from "@/lib/billing-store";
+import type { IncomingInvoice } from "@/lib/billing-store";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   generateNumber,
@@ -52,34 +52,13 @@ import {
 // Single spreadsheet with multiple tabs (one per category).
 // On addIncoming / attachDeliveryNote → append row to the
 // correct tab. On status change → update the row in place.
-// See: https://developers.google.com/sheets/api/reference/rest
 // ============================================================
 
-type InvoiceFormState = {
-  client: string;
-  description: string;
-  amount: string;
-  vat: string;
-  date: string;
-  dueDate: string;
-};
-
-const emptyInvoice = (): InvoiceFormState => ({
-  client: "",
-  description: "",
-  amount: "",
-  vat: "",
-  date: new Date().toISOString().slice(0, 10),
-  dueDate: "",
-});
-
 export function IenakosieTab() {
-  const { incoming, addIncoming, attachDeliveryNote, updateIncoming } =
-    useBilling();
+  const { incoming, attachDeliveryNote, updateIncoming } = useBilling();
 
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [editing, setEditing] = useState<IncomingInvoice | null>(null);
-  const [form, setForm] = useState<InvoiceFormState>(emptyInvoice());
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [editingNumber, setEditingNumber] = useState<string | undefined>();
 
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryInvoice, setDeliveryInvoice] =
@@ -90,53 +69,13 @@ export function IenakosieTab() {
   });
 
   const openNewInvoice = () => {
-    setEditing(null);
-    setForm(emptyInvoice());
-    setInvoiceOpen(true);
+    setEditingNumber(undefined);
+    setInvoiceModalOpen(true);
   };
 
   const openEditInvoice = (inv: IncomingInvoice) => {
-    setEditing(inv);
-    setForm({
-      client: inv.client,
-      description: inv.description,
-      amount: String(inv.amount),
-      vat: String(inv.vat),
-      date: inv.date,
-      dueDate: inv.dueDate,
-    });
-    setInvoiceOpen(true);
-  };
-
-  const submitInvoice = () => {
-    const amount = parseFloat(form.amount) || 0;
-    const vat = parseFloat(form.vat) || 0;
-
-    if (editing) {
-      // Editing existing → DO NOT generate new number
-      updateIncoming(editing.id, {
-        client: form.client,
-        description: form.description,
-        amount,
-        vat,
-        date: form.date,
-        dueDate: form.dueDate,
-      });
-    } else {
-      // New invoice → generate number for today
-      const number = generateNumber("invoice");
-      addIncoming({
-        number,
-        client: form.client,
-        description: form.description,
-        amount,
-        vat,
-        date: form.date,
-        dueDate: form.dueDate,
-        status: "gaidam_apmaksu" as IncomingStatus,
-      });
-    }
-    setInvoiceOpen(false);
+    setEditingNumber(inv.number);
+    setInvoiceModalOpen(true);
   };
 
   const openDelivery = (inv: IncomingInvoice) => {
@@ -155,12 +94,11 @@ export function IenakosieTab() {
     setDeliveryOpen(false);
   };
 
-  const previewInvoiceNum = invoiceOpen && !editing ? previewNumber("invoice") : null;
   const previewDeliveryNum = deliveryOpen ? previewNumber("delivery") : null;
 
   return (
     <div className="space-y-6">
-      {/* Header with action */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
@@ -202,7 +140,7 @@ export function IenakosieTab() {
                   <TableHead className="text-right">Summa</TableHead>
                   <TableHead>Termiņš</TableHead>
                   <TableHead>Statuss</TableHead>
-                  <TableHead className="text-right w-[200px]">
+                  <TableHead className="text-right w-[220px]">
                     Darbības
                   </TableHead>
                 </TableRow>
@@ -262,7 +200,7 @@ export function IenakosieTab() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => openEditInvoice(inv)}>
-                              Rediģēt
+                              Labot
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onSelect={() =>
@@ -291,98 +229,12 @@ export function IenakosieTab() {
         </Card>
       </motion.div>
 
-      {/* Invoice form modal */}
-      <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editing ? "Rediģēt rēķinu" : "Izrakstīt jaunu rēķinu"}
-            </DialogTitle>
-            <DialogDescription>
-              {editing ? (
-                <>
-                  Numurs:{" "}
-                  <span className="font-mono text-graphite-700">
-                    {invoiceNumberLabel(editing.number)}
-                  </span>
-                </>
-              ) : previewInvoiceNum ? (
-                <>
-                  Tiks piešķirts numurs:{" "}
-                  <span className="font-mono text-graphite-700">
-                    {invoiceNumberLabel(previewInvoiceNum)}
-                  </span>
-                </>
-              ) : null}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 pt-2">
-            <Field label="Klients">
-              <Input
-                value={form.client}
-                onChange={(e) => setForm({ ...form, client: e.target.value })}
-                placeholder="Klienta nosaukums vai SIA"
-              />
-            </Field>
-            <Field label="Apraksts">
-              <Textarea
-                value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
-                placeholder="Pakalpojuma vai preces apraksts"
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Summa (bez PVN)">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                  placeholder="0,00"
-                />
-              </Field>
-              <Field label="PVN (21%)">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={form.vat}
-                  onChange={(e) => setForm({ ...form, vat: e.target.value })}
-                  placeholder="0,00"
-                />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Datums">
-                <Input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                />
-              </Field>
-              <Field label="Apmaksas termiņš">
-                <Input
-                  type="date"
-                  value={form.dueDate}
-                  onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                />
-              </Field>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="ghost" size="sm" onClick={() => setInvoiceOpen(false)}>
-              Atcelt
-            </Button>
-            <Button size="sm" onClick={submitInvoice} disabled={!form.client}>
-              <FileText className="h-3.5 w-3.5" />
-              {editing ? "Saglabāt" : "Izrakstīt rēķinu"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* New / edit invoice modal */}
+      <InvoiceModal
+        open={invoiceModalOpen}
+        onOpenChange={setInvoiceModalOpen}
+        editingNumber={editingNumber}
+      />
 
       {/* Delivery note modal */}
       <Dialog open={deliveryOpen} onOpenChange={setDeliveryOpen}>
@@ -427,7 +279,8 @@ export function IenakosieTab() {
               </div>
 
               <div className="grid gap-4 pt-2">
-                <Field label="Apraksts">
+                <div className="space-y-1.5">
+                  <Label>Apraksts</Label>
                   <Textarea
                     value={deliveryForm.description}
                     onChange={(e) =>
@@ -437,8 +290,9 @@ export function IenakosieTab() {
                       })
                     }
                   />
-                </Field>
-                <Field label="Datums">
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Datums</Label>
                   <Input
                     type="date"
                     value={deliveryForm.date}
@@ -449,7 +303,7 @@ export function IenakosieTab() {
                       })
                     }
                   />
-                </Field>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4">
@@ -469,21 +323,6 @@ export function IenakosieTab() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      {children}
     </div>
   );
 }

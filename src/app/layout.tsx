@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CompanyProvider } from "@/lib/company-context";
 import { BillingProvider } from "@/lib/billing-store";
 import { AssetProvider } from "@/lib/assets-store";
+import { ClientsProvider } from "@/lib/clients-store";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,7 +21,9 @@ export default function RootLayout({
       <body>
         <CompanyProvider>
           <BillingProvider>
-            <AssetProvider>{children}</AssetProvider>
+            <AssetProvider>
+              <ClientsProvider>{children}</ClientsProvider>
+            </AssetProvider>
           </BillingProvider>
         </CompanyProvider>
       </body>
