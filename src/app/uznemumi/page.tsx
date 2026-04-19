@@ -143,49 +143,46 @@ function CompanyRow({
     >
       <Card
         className={cn(
-          "p-3.5 flex items-center gap-3.5 transition-all",
+          "p-3.5 flex items-center justify-between gap-4 transition-all",
           isActive
             ? "active-company-pulse shadow-soft-sm"
             : "hover:border-graphite-300"
         )}
       >
-        {/* Logo / initials */}
-        {company.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={company.logoUrl}
-            alt={company.name}
-            className="h-11 w-11 shrink-0 rounded-xl object-cover"
-          />
-        ) : (
-          <div
-            className={cn(
-              "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white text-[13px] font-semibold tracking-tight shadow-soft-xs",
-              isActive ? "bg-emerald-600" : "bg-graphite-700"
-            )}
-          >
-            {initials}
+        {/* ============ LEFT GROUP: logo + name ============ */}
+        <div className="flex items-center gap-3.5 min-w-0 flex-shrink">
+          {company.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={company.logoUrl}
+              alt={company.name}
+              className="h-11 w-11 shrink-0 rounded-xl object-cover"
+            />
+          ) : (
+            <div
+              className={cn(
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white text-[13px] font-semibold tracking-tight shadow-soft-xs",
+                isActive ? "bg-emerald-600" : "bg-graphite-700"
+              )}
+            >
+              {initials}
+            </div>
+          )}
+          <div className="min-w-0 max-w-[260px]">
+            <p className="text-[14.5px] font-semibold text-graphite-900 truncate">
+              {company.name}
+            </p>
+            <p className="text-[12px] text-graphite-500 truncate mt-0.5">
+              {company.legalName || (
+                <span className="italic text-graphite-400">
+                  Juridiskais nosaukums nav norādīts
+                </span>
+              )}
+            </p>
           </div>
-        )}
-
-        {/* Name + legal name */}
-        <div className="min-w-0 max-w-[280px]">
-          <p className="text-[14.5px] font-semibold text-graphite-900 truncate">
-            {company.name}
-          </p>
-          <p className="text-[12px] text-graphite-500 truncate mt-0.5">
-            {company.legalName || (
-              <span className="italic text-graphite-400">
-                Juridiskais nosaukums nav norādīts
-              </span>
-            )}
-          </p>
         </div>
 
-        {/* Left spacer — pushes primary action to horizontal centre */}
-        <div className="flex-1" />
-
-        {/* PRIMARY ACTION — centered */}
+        {/* ============ CENTER: primary action ============ */}
         {isActive ? (
           <div
             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white px-5 py-2 text-[13.5px] font-semibold shadow-soft-sm shrink-0"
@@ -206,22 +203,17 @@ function CompanyRow({
           </Button>
         )}
 
-        {/* Right spacer — balances the layout so the primary action sits in the card's horizontal centre */}
-        <div className="flex-1" />
-
-        {/* Missing requisites warning (subtle) */}
-        {!filled && (
-          <span
-            className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium border border-amber-100 shrink-0"
-            title="Rekvizīti nav pievienoti"
-          >
-            <AlertCircle className="h-2.5 w-2.5" />
-            Rekvizīti
-          </span>
-        )}
-
-        {/* Secondary actions (right side) */}
+        {/* ============ RIGHT GROUP: secondary actions ============ */}
         <div className="flex items-center gap-1 shrink-0">
+          {!filled && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium border border-amber-100 mr-1"
+              title="Rekvizīti nav pievienoti"
+            >
+              <AlertCircle className="h-2.5 w-2.5" />
+              Rekvizīti
+            </span>
+          )}
           {filled && (
             <>
               <Button
