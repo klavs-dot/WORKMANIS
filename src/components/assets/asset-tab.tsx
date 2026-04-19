@@ -7,6 +7,7 @@ import {
   Pencil,
   Trash2,
   MoreHorizontal,
+  AlertCircle,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -137,6 +138,9 @@ export function AssetTab({
                 <AnimatePresence initial={false}>
                   {items.map((asset) => {
                     const colorCfg = noteColorClasses[asset.noteColor];
+                    const today = new Date().toISOString().slice(0, 10);
+                    const needsAttention =
+                      !!asset.reminderDate && asset.reminderDate <= today;
                     return (
                       <motion.tr
                         key={asset.id}
@@ -145,16 +149,40 @@ export function AssetTab({
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, height: 0 }}
                         transition={{ duration: 0.25 }}
-                        className="border-b border-graphite-100 transition-colors hover:bg-graphite-50/60"
+                        className={cn(
+                          "border-b border-graphite-100 transition-colors hover:bg-graphite-50/60",
+                          // Attention rows: red left border + subtle red wash
+                          needsAttention &&
+                            "bg-red-50/40 hover:bg-red-50/70 border-l-2 border-l-red-500"
+                        )}
                       >
                         <TableCell>
                           <div className="flex items-center gap-2.5">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-graphite-50 text-graphite-700 border border-graphite-100">
-                              <Icon className="h-3 w-3" />
+                            <div
+                              className={cn(
+                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border",
+                                needsAttention
+                                  ? "bg-red-50 text-red-600 border-red-100"
+                                  : "bg-graphite-50 text-graphite-700 border-graphite-100"
+                              )}
+                            >
+                              {needsAttention ? (
+                                <AlertCircle className="h-3 w-3" />
+                              ) : (
+                                <Icon className="h-3 w-3" />
+                              )}
                             </div>
-                            <span className="font-medium text-graphite-900">
-                              {asset.name}
-                            </span>
+                            <div className="flex flex-col leading-tight">
+                              <span className="font-medium text-graphite-900">
+                                {asset.name}
+                              </span>
+                              {needsAttention && asset.reminderDate && (
+                                <span className="text-[10.5px] text-red-600 font-medium tabular mt-0.5">
+                                  Pievērst uzmanību no{" "}
+                                  {formatReminderDate(asset.reminderDate)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-graphite-600 max-w-[320px]">
@@ -260,4 +288,14 @@ export function AssetTab({
       </Dialog>
     </div>
   );
+}
+
+/**
+ * Format ISO date (YYYY-MM-DD) into Latvian short form like
+ * "20.04.2026" — used for the reminder hint under asset names.
+ */
+function formatReminderDate(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}.${m}.${y}`;
 }

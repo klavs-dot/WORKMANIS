@@ -236,6 +236,34 @@ export function AssetModal({
               </div>
             )}
           </div>
+
+          {/* Reminder date — flag this asset for attention from the chosen day */}
+          <div className="space-y-1.5">
+            <Label>Pievērst uzmanību no datuma</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={reminderDate}
+                onChange={(e) => setReminderDate(e.target.value)}
+                className="flex-1"
+              />
+              {reminderDate && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setReminderDate("")}
+                  aria-label="Notīrīt datumu"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+            <p className="text-[11px] text-graphite-500 leading-relaxed">
+              Sākot ar šo datumu, aktīvs tiks izcelts ar sarkanu rāmi un
+              parādīsies skaitā kreisajā navigācijā.
+            </p>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
