@@ -7,10 +7,28 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type {
+  AccountingCategory,
+  DepreciationPeriod,
+} from "./network-types";
 
 // ============= Types =============
 
 export type OutgoingStatus = "apstiprinat_banka" | "apmaksats";
+
+/** Accounting explanation attached to an outgoing payment.
+ *  NOTE: This metadata is intended to be synced to a Google Sheets
+ *  tab per category (Izejvielas / Saražotā produkcija / Saņemts
+ *  pakalpojums / Amortizācija), so the accountant can download
+ *  and review each invoice with full context. Sync layer will
+ *  be added on top of this store without changing its shape. */
+export interface OutgoingAccountingMeta {
+  category: AccountingCategory;
+  /** Only relevant when category === 'amortizacija' */
+  depreciationPeriod?: DepreciationPeriod;
+  explanation: string;
+  updatedAt: string;
+}
 
 export interface OutgoingPayment {
   id: string;
@@ -21,6 +39,7 @@ export interface OutgoingPayment {
   dueDate: string;
   status: OutgoingStatus;
   fileName?: string;
+  accountingMeta?: OutgoingAccountingMeta;
   createdAt: string;
 }
 
@@ -72,6 +91,8 @@ interface BillingStore {
 
   addOutgoing: (p: Omit<OutgoingPayment, "id" | "createdAt" | "status">) => void;
   markOutgoingPaid: (id: string) => void;
+  setOutgoingMeta: (id: string, meta: OutgoingAccountingMeta) => void;
+  clearOutgoingMeta: (id: string) => void;
 
   addIncoming: (i: Omit<IncomingInvoice, "id" | "createdAt">) => void;
   updateIncoming: (id: string, patch: Partial<IncomingInvoice>) => void;
@@ -107,7 +128,40 @@ const seedData = {
       iban: "LV77HABA0551000562189",
       dueDate: "2026-04-25",
       status: "apmaksats" as OutgoingStatus,
+      accountingMeta: {
+        category: "sanemts_pakalpojums",
+        explanation:
+          "Mēneša biznesa interneta un mobilo sakaru abonēšana Liepājas birojam.",
+        updatedAt: "2026-04-10T09:15:00Z",
+      },
       createdAt: "2026-04-10T08:30:00Z",
+    },
+    {
+      id: "out-seed-3",
+      supplier: "WP Suspension GmbH",
+      invoiceNumber: "WP-2026-0314",
+      amount: 12450.0,
+      iban: "AT611904300234573201",
+      dueDate: "2026-05-05",
+      status: "apstiprinat_banka" as OutgoingStatus,
+      accountingMeta: {
+        category: "amortizacija",
+        depreciationPeriod: 5,
+        explanation:
+          "Testa amortizatoru komplekts Mosphera nākamās paaudzes prototipam. Kapitalizējams kā ilgtermiņa ieguldījums.",
+        updatedAt: "2026-04-14T12:00:00Z",
+      },
+      createdAt: "2026-04-14T11:30:00Z",
+    },
+    {
+      id: "out-seed-4",
+      supplier: "SIA Nerosta Metāli",
+      invoiceNumber: "NM-26-221",
+      amount: 2380.5,
+      iban: "LV40HABA0551012345001",
+      dueDate: "2026-04-28",
+      status: "apstiprinat_banka" as OutgoingStatus,
+      createdAt: "2026-04-16T09:00:00Z",
     },
   ] as OutgoingPayment[],
   incoming: [
@@ -213,7 +267,7 @@ function readStore() {
   }
 }
 
-function writeStore(data: Omit<BillingStore, "addOutgoing" | "markOutgoingPaid" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
+function writeStore(data: Omit<BillingStore, "addOutgoing" | "markOutgoingPaid" | "setOutgoingMeta" | "clearOutgoingMeta" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -267,6 +321,24 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     markOutgoingPaid: (id) => {
       setOutgoing((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: "apmaksats" } : p))
+      );
+    },
+
+    setOutgoingMeta: (id, meta) => {
+      setOutgoing((prev) =>
+        prev.map((p) =>
+          p.id === id ? { ...p, accountingMeta: meta } : p
+        )
+      );
+    },
+
+    clearOutgoingMeta: (id) => {
+      setOutgoing((prev) =>
+        prev.map((p) => {
+          if (p.id !== id) return p;
+          const { accountingMeta: _, ...rest } = p;
+          return rest;
+        })
       );
     },
 

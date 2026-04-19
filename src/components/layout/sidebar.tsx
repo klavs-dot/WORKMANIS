@@ -5,13 +5,13 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   FileText,
-  Repeat,
-  Store,
   Building2,
-  BarChart3,
   Settings,
   Package,
   Users,
+  Handshake,
+  Boxes,
+  Briefcase,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -28,10 +28,10 @@ const mainNav: NavItem[] = [
   { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
   { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
   { href: "/klienti", label: "Klienti", icon: Users },
-  { href: "/abonementi", label: "Abonementi", icon: Repeat },
+  { href: "/distributori", label: "Distributori & Aģenti", icon: Handshake },
+  { href: "/demo", label: "Demo produkcija", icon: Boxes },
+  { href: "/partneri", label: "Partneri / Piegādātāji / Servisi", icon: Briefcase },
   { href: "/aktivi", label: "Aktīvi", icon: Package },
-  { href: "/piegadatji", label: "Piegādātāji", icon: Store },
-  { href: "/parskati", label: "Pārskati", icon: BarChart3 },
 ];
 
 const bottomNav: NavItem[] = [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -10,10 +10,14 @@ import {
   Eye,
   Send,
   Building2,
+  Sparkles,
+  Save,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/primitives";
 import {
   Table,
@@ -30,9 +34,28 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { OutgoingStatusBadge } from "@/components/business/billing-status-badges";
 import { useBilling } from "@/lib/billing-store";
-import type { OutgoingPayment } from "@/lib/billing-store";
+import type {
+  OutgoingAccountingMeta,
+  OutgoingPayment,
+} from "@/lib/billing-store";
+import {
+  accountingCategoryLabels,
+  depreciationLabel,
+  depreciationOptions,
+} from "@/lib/network-types";
+import type {
+  AccountingCategory,
+  DepreciationPeriod,
+} from "@/lib/network-types";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
 // Mock parsed invoices — rotates by upload count for demo realism
@@ -69,7 +92,8 @@ interface ParsedFields {
 }
 
 export function IzejosieTab() {
-  const { outgoing, addOutgoing, markOutgoingPaid } = useBilling();
+  const { outgoing, addOutgoing, markOutgoingPaid, setOutgoingMeta } =
+    useBilling();
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<
@@ -78,6 +102,7 @@ export function IzejosieTab() {
   const [openedInvoice, setOpenedInvoice] = useState<OutgoingPayment | null>(
     null
   );
+  const [metaEditing, setMetaEditing] = useState<OutgoingPayment | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadCountRef = useRef(0);
 
@@ -296,59 +321,81 @@ export function IzejosieTab() {
                 <TableHead>Rēķina numurs</TableHead>
                 <TableHead className="text-right">Summa</TableHead>
                 <TableHead>Termiņš</TableHead>
+                <TableHead>Kategorija</TableHead>
                 <TableHead>Statuss</TableHead>
-                <TableHead className="w-[140px] text-right">Darbības</TableHead>
+                <TableHead className="w-[200px] text-right">Darbības</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {outgoing.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-graphite-50 text-graphite-700 border border-graphite-100">
-                        <Building2 className="h-3 w-3" />
+              {outgoing.map((p) => {
+                const hasMeta = !!p.accountingMeta;
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-graphite-50 text-graphite-700 border border-graphite-100">
+                          <Building2 className="h-3 w-3" />
+                        </div>
+                        <span className="font-medium text-graphite-900">
+                          {p.supplier}
+                        </span>
                       </div>
-                      <span className="font-medium text-graphite-900">
-                        {p.supplier}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-[12px] text-graphite-600">
-                    {p.invoiceNumber}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold text-graphite-900 tabular">
-                    {formatCurrency(p.amount)}
-                  </TableCell>
-                  <TableCell className="text-graphite-600 tabular">
-                    {formatDate(p.dueDate)}
-                  </TableCell>
-                  <TableCell>
-                    <OutgoingStatusBadge status={p.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setOpenedInvoice(p)}
-                        title="Apskatīt"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                      {p.status === "apstiprinat_banka" && (
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => markOutgoingPaid(p.id)}
-                        >
-                          <Check className="h-3 w-3" />
-                          Apmaksāts
-                        </Button>
+                    </TableCell>
+                    <TableCell className="font-mono text-[12px] text-graphite-600">
+                      {p.invoiceNumber}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-graphite-900 tabular">
+                      {formatCurrency(p.amount)}
+                    </TableCell>
+                    <TableCell className="text-graphite-600 tabular">
+                      {formatDate(p.dueDate)}
+                    </TableCell>
+                    <TableCell>
+                      {hasMeta ? (
+                        <AccountingMetaTag meta={p.accountingMeta!} />
+                      ) : (
+                        <span className="text-[11px] text-graphite-400 italic">
+                          Nav aizpildīts
+                        </span>
                       )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <OutgoingStatusBadge status={p.status} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant={hasMeta ? "ghost" : "secondary"}
+                          size="sm"
+                          onClick={() => setMetaEditing(p)}
+                          title="Skaidrojums grāmatvedībai"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          {hasMeta ? "Labot" : "Skaidrojums"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setOpenedInvoice(p)}
+                          title="Apskatīt"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        {p.status === "apstiprinat_banka" && (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => markOutgoingPaid(p.id)}
+                            title="Atzīmēt kā apmaksātu"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -407,6 +454,18 @@ export function IzejosieTab() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Accounting meta modal */}
+      <AccountingMetaModal
+        invoice={metaEditing}
+        onClose={() => setMetaEditing(null)}
+        onSave={(meta) => {
+          if (metaEditing) {
+            setOutgoingMeta(metaEditing.id, meta);
+            setMetaEditing(null);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -434,5 +493,176 @@ function ParsedField({
         {value}
       </p>
     </div>
+  );
+}
+
+// ============================================================
+// Accounting meta tag shown in invoice row
+// ============================================================
+
+function AccountingMetaTag({ meta }: { meta: OutgoingAccountingMeta }) {
+  const label =
+    meta.category === "amortizacija" && meta.depreciationPeriod
+      ? `Amortizācija · ${depreciationLabel(meta.depreciationPeriod)}`
+      : accountingCategoryLabels[meta.category];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[10.5px] font-medium border bg-violet-50 border-violet-100 text-violet-700 max-w-[220px]"
+      title={meta.explanation}
+    >
+      <Sparkles className="h-2.5 w-2.5 shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+// ============================================================
+// Accounting meta modal
+//
+// NOTE: These fields will later be synced to a Google Sheets
+// spreadsheet (one tab per accounting category), so the
+// accountant can download and review each invoice with
+// explanation. Sync layer will sit on top of this store
+// without changing its shape.
+// ============================================================
+
+function AccountingMetaModal({
+  invoice,
+  onClose,
+  onSave,
+}: {
+  invoice: OutgoingPayment | null;
+  onClose: () => void;
+  onSave: (meta: OutgoingAccountingMeta) => void;
+}) {
+  const [category, setCategory] = useState<AccountingCategory>("izejvielas");
+  const [period, setPeriod] = useState<DepreciationPeriod>(5);
+  const [explanation, setExplanation] = useState("");
+
+  useEffect(() => {
+    if (!invoice) return;
+    if (invoice.accountingMeta) {
+      setCategory(invoice.accountingMeta.category);
+      setPeriod(invoice.accountingMeta.depreciationPeriod ?? 5);
+      setExplanation(invoice.accountingMeta.explanation);
+    } else {
+      setCategory("izejvielas");
+      setPeriod(5);
+      setExplanation("");
+    }
+  }, [invoice]);
+
+  const submit = () => {
+    const meta: OutgoingAccountingMeta = {
+      category,
+      depreciationPeriod:
+        category === "amortizacija" ? period : undefined,
+      explanation: explanation.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+    onSave(meta);
+  };
+
+  return (
+    <Dialog open={!!invoice} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        {invoice && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Skaidrojums grāmatvedībai</DialogTitle>
+              <DialogDescription>
+                {invoice.supplier} · rēķins {invoice.invoiceNumber}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-1">
+              <div className="space-y-1.5">
+                <Label>Kategorija</Label>
+                <Select
+                  value={category}
+                  onValueChange={(v) => setCategory(v as AccountingCategory)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(
+                      Object.keys(
+                        accountingCategoryLabels
+                      ) as AccountingCategory[]
+                    ).map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {accountingCategoryLabels[c]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {category === "amortizacija" && (
+                  <motion.div
+                    key="period"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="space-y-1.5 overflow-hidden"
+                  >
+                    <Label>Nolietojuma periods</Label>
+                    <Select
+                      value={String(period)}
+                      onValueChange={(v) =>
+                        setPeriod(Number(v) as DepreciationPeriod)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {depreciationOptions.map((p) => (
+                          <SelectItem key={p} value={String(p)}>
+                            {depreciationLabel(p)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-1.5">
+                <Label>Skaidrojums</Label>
+                <Textarea
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
+                  placeholder="Īss apraksts grāmatvedim — kam izlietots, kā grāmatojams…"
+                  className="min-h-[90px]"
+                />
+              </div>
+
+              <div className="rounded-lg border border-graphite-100 bg-graphite-50/50 p-3 flex items-start gap-2.5">
+                <Info className="h-3.5 w-3.5 text-graphite-400 mt-0.5 shrink-0" />
+                <p className="text-[11.5px] text-graphite-500 leading-relaxed">
+                  Šī informācija vēlāk tiks sinhronizēta ar Google Sheets
+                  reģistriem un būs pieejama grāmatvedim kā lejupielādējams
+                  eksports.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="ghost" size="sm" onClick={onClose}>
+                <X className="h-3.5 w-3.5" />
+                Atcelt
+              </Button>
+              <Button size="sm" onClick={submit}>
+                <Save className="h-3.5 w-3.5" />
+                Saglabāt
+              </Button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
