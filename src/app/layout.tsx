@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { CompanyProvider } from "@/lib/company-context";
 import { BillingProvider } from "@/lib/billing-store";
+import { AssetProvider } from "@/lib/assets-store";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +19,9 @@ export default function RootLayout({
     <html lang="lv">
       <body>
         <CompanyProvider>
-          <BillingProvider>{children}</BillingProvider>
+          <BillingProvider>
+            <AssetProvider>{children}</AssetProvider>
+          </BillingProvider>
         </CompanyProvider>
       </body>
     </html>

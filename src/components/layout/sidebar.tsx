@@ -10,6 +10,7 @@ import {
   Building2,
   BarChart3,
   Settings,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ const mainNav: NavItem[] = [
   { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
   { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
   { href: "/abonementi", label: "Abonementi", icon: Repeat },
+  { href: "/aktivi", label: "Aktīvi", icon: Package },
   { href: "/piegadatji", label: "Piegādātāji", icon: Store },
   { href: "/parskati", label: "Pārskati", icon: BarChart3 },
 ];
