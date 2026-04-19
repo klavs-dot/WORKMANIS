@@ -4,9 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Receipt,
+  FileText,
   Repeat,
-  ArrowLeftRight,
   Store,
   Building2,
   BarChart3,
@@ -25,9 +24,8 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { href: "/uznemumi", label: "Uzņēmumi", icon: Building2 },
   { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
-  { href: "/rekini", label: "Rēķini", icon: Receipt, badge: "3" },
+  { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
   { href: "/abonementi", label: "Abonementi", icon: Repeat },
-  { href: "/maksajumi", label: "Maksājumi", icon: ArrowLeftRight },
   { href: "/piegadatji", label: "Piegādātāji", icon: Store },
   { href: "/parskati", label: "Pārskati", icon: BarChart3 },
 ];
