@@ -153,8 +153,8 @@ export default function PartneriPage() {
     <AppShell>
       <div className="space-y-6">
         <PageHeader
-          title="Partneri / Piegādātāji / Servisi"
-          description="Biznesa kontaktu vienots reģistrs"
+          title="Iepirkumi"
+          description="Biznesa kontaktu vienots reģistrs — ražotāji, piegādātāji, pakalpojumi, loģistika"
           actions={
             <Button size="sm" onClick={openNewEntry}>
               <Plus className="h-3.5 w-3.5" />

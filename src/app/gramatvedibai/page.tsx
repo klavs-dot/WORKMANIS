@@ -67,8 +67,8 @@ export default function GramatvedibaiPage() {
     <AppShell>
       <div className="space-y-6">
         <PageHeader
-          title="Grāmatvedībai"
-          description="Dokumentu un eksportu centrālā pārvaldība grāmatvedības vajadzībām"
+          title="Grāmatvedībai & Lietvedībai"
+          description="Dokumentu un eksportu centrālā pārvaldība grāmatvedības un lietvedības vajadzībām"
         />
 
         {/* Segmented tabs */}

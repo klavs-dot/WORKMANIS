@@ -24,16 +24,37 @@ interface NavItem {
   badge?: string;
 }
 
-const mainNav: NavItem[] = [
-  { href: "/uznemumi", label: "Uzņēmumi / Struktūrvienības", icon: Building2 },
-  { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
-  { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
-  { href: "/gramatvedibai", label: "Grāmatvedībai", icon: Calculator },
-  { href: "/klienti", label: "Klienti & Partneri", icon: Users },
-  { href: "/distributori", label: "Distributori & Aģenti", icon: Handshake },
-  { href: "/demo", label: "Demo produkcija", icon: Boxes },
-  { href: "/partneri", label: "Partneri / Piegādātāji / Servisi", icon: Briefcase },
-  { href: "/aktivi", label: "Aktīvi", icon: Package },
+interface NavGroup {
+  items: NavItem[];
+}
+
+// Three visually separated blocks with a blank line between them.
+// Content per the user's spec:
+//   1) Company context
+//   2) Financial & operational workflows
+//   3) Relationships & external partners
+const navGroups: NavGroup[] = [
+  {
+    items: [
+      { href: "/uznemumi", label: "Uzņēmumi / Struktūrvienības", icon: Building2 },
+      { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
+    ],
+  },
+  {
+    items: [
+      { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
+      { href: "/gramatvedibai", label: "Grāmatvedībai & Lietvedībai", icon: Calculator },
+      { href: "/aktivi", label: "Aktīvi", icon: Package },
+    ],
+  },
+  {
+    items: [
+      { href: "/demo", label: "Demo produkcija", icon: Boxes },
+      { href: "/distributori", label: "Distributori & Aģenti", icon: Handshake },
+      { href: "/partneri", label: "Iepirkumi", icon: Briefcase },
+      { href: "/klienti", label: "Klienti & Partneri", icon: Users },
+    ],
+  },
 ];
 
 const bottomNav: NavItem[] = [
@@ -85,51 +106,64 @@ export function Sidebar() {
             Galvenā
           </span>
         </div>
-        <ul className="space-y-0.5">
-          {mainNav.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-all",
-                    isActive
-                      ? "bg-white text-graphite-900 shadow-soft-xs border border-graphite-200/60"
-                      : "text-graphite-600 hover:text-graphite-900 hover:bg-white/60"
-                  )}
-                >
-                  <Icon
+
+        {navGroups.map((group, groupIdx) => (
+          <ul
+            key={groupIdx}
+            className={cn(
+              "space-y-0.5",
+              // Spacer between groups — first group has no top margin,
+              // subsequent groups are pushed down with a subtle divider
+              // that reads as a breathing space rather than a hard rule.
+              groupIdx > 0 &&
+                "mt-4 pt-4 border-t border-graphite-200/40"
+            )}
+          >
+            {group.items.map((item) => {
+              const isActive =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
                     className={cn(
-                      "h-4 w-4 transition-colors",
+                      "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-all",
                       isActive
-                        ? "text-graphite-900"
-                        : "text-graphite-400 group-hover:text-graphite-600"
+                        ? "bg-white text-graphite-900 shadow-soft-xs border border-graphite-200/60"
+                        : "text-graphite-600 hover:text-graphite-900 hover:bg-white/60"
                     )}
-                    strokeWidth={2}
-                  />
-                  <span className="flex-1">{item.label}</span>
-                  {item.badge && (
-                    <span
+                  >
+                    <Icon
                       className={cn(
-                        "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular",
+                        "h-4 w-4 transition-colors",
                         isActive
-                          ? "bg-graphite-900 text-white"
-                          : "bg-red-50 text-red-600 border border-red-100"
+                          ? "text-graphite-900"
+                          : "text-graphite-400 group-hover:text-graphite-600"
                       )}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                      strokeWidth={2}
+                    />
+                    <span className="flex-1">{item.label}</span>
+                    {item.badge && (
+                      <span
+                        className={cn(
+                          "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular",
+                          isActive
+                            ? "bg-graphite-900 text-white"
+                            : "bg-red-50 text-red-600 border border-red-100"
+                        )}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ))}
       </nav>
 
       {/* Bottom */}
