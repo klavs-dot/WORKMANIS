@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FilePlus2, Upload, Sparkles, ChevronDown, X } from "lucide-react";
+import { FilePlus2, Upload, Sparkles, ChevronDown, X, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -49,19 +49,26 @@ export function PnAktsButton({
             <ChevronDown className="h-2.5 w-2.5 opacity-60" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[180px]">
+        <DropdownMenuContent align="end" className="min-w-[200px]">
           <DropdownMenuItem disabled className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-semibold">
             PN akts pievienots
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem>
+            <Download className="h-3.5 w-3.5 text-graphite-500" />
+            Lejupielādēt PN aktu
+          </DropdownMenuItem>
           {onRemove && (
-            <DropdownMenuItem
-              className="text-red-600 focus:text-red-700"
-              onSelect={() => onRemove()}
-            >
-              <X className="h-3.5 w-3.5" />
-              Noņemt PN aktu
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-700"
+                onSelect={() => onRemove()}
+              >
+                <X className="h-3.5 w-3.5" />
+                Noņemt PN aktu
+              </DropdownMenuItem>
+            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

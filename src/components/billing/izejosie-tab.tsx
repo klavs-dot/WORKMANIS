@@ -14,6 +14,8 @@ import {
   Save,
   Info,
   Landmark,
+  Download,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -60,6 +62,7 @@ import type {
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
+import { EditOutgoingModal } from "@/components/billing/edit-outgoing-modal";
 
 // Mock parsed invoices — rotates by upload count for demo realism
 const mockParsings = [
@@ -95,7 +98,7 @@ interface ParsedFields {
 }
 
 export function IzejosieTab() {
-  const { outgoing, addOutgoing, markOutgoingPaid, setOutgoingMeta, attachOutgoingPN, detachOutgoingPN } =
+  const { outgoing, addOutgoing, updateOutgoing, markOutgoingPaid, setOutgoingMeta, attachOutgoingPN, detachOutgoingPN } =
     useBilling();
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -106,6 +109,7 @@ export function IzejosieTab() {
     null
   );
   const [metaEditing, setMetaEditing] = useState<OutgoingPayment | null>(null);
+  const [editing, setEditing] = useState<OutgoingPayment | null>(null);
   const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadCountRef = useRef(0);
@@ -472,6 +476,31 @@ export function IzejosieTab() {
                   </dd>
                 </div>
               </dl>
+
+              {/* Action bar */}
+              <div className="flex flex-wrap justify-end gap-2 pt-4 mt-4 border-t border-graphite-100">
+                <Button variant="ghost" size="sm">
+                  <Download className="h-3.5 w-3.5" />
+                  Lejupielādēt rēķinu
+                </Button>
+                {openedInvoice.pnAkts && (
+                  <Button variant="ghost" size="sm">
+                    <Download className="h-3.5 w-3.5" />
+                    Lejupielādēt PN aktu
+                  </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setEditing(openedInvoice);
+                    setOpenedInvoice(null);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Labot datus
+                </Button>
+              </div>
             </>
           )}
         </DialogContent>
@@ -493,6 +522,18 @@ export function IzejosieTab() {
       <BankExchangePanel
         open={bankPanelOpen}
         onOpenChange={setBankPanelOpen}
+      />
+
+      {/* Edit outgoing payment modal */}
+      <EditOutgoingModal
+        payment={editing}
+        onClose={() => setEditing(null)}
+        onSave={(patch) => {
+          if (editing) {
+            updateOutgoing(editing.id, patch);
+            setEditing(null);
+          }
+        }}
       />
     </div>
   );

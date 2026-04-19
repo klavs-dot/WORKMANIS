@@ -106,6 +106,7 @@ interface BillingStore {
   taxes: Tax[];
 
   addOutgoing: (p: Omit<OutgoingPayment, "id" | "createdAt" | "status">) => void;
+  updateOutgoing: (id: string, patch: Partial<OutgoingPayment>) => void;
   markOutgoingPaid: (id: string) => void;
   setOutgoingMeta: (id: string, meta: OutgoingAccountingMeta) => void;
   clearOutgoingMeta: (id: string) => void;
@@ -297,7 +298,7 @@ function readStore() {
   }
 }
 
-function writeStore(data: Omit<BillingStore, "addOutgoing" | "markOutgoingPaid" | "setOutgoingMeta" | "clearOutgoingMeta" | "attachOutgoingPN" | "detachOutgoingPN" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "attachIncomingPN" | "detachIncomingPN" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
+function writeStore(data: Omit<BillingStore, "addOutgoing" | "updateOutgoing" | "markOutgoingPaid" | "setOutgoingMeta" | "clearOutgoingMeta" | "attachOutgoingPN" | "detachOutgoingPN" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "attachIncomingPN" | "detachIncomingPN" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -347,6 +348,11 @@ export function BillingProvider({ children }: { children: ReactNode }) {
         },
         ...prev,
       ]);
+    },
+    updateOutgoing: (id, patch) => {
+      setOutgoing((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, ...patch } : p))
+      );
     },
     markOutgoingPaid: (id) => {
       setOutgoing((prev) =>
