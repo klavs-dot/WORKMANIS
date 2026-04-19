@@ -143,7 +143,7 @@ function CompanyRow({
     >
       <Card
         className={cn(
-          "p-3.5 flex items-center justify-between gap-4 transition-all",
+          "px-3.5 flex items-center justify-between gap-4 transition-all h-[68px]",
           isActive
             ? "active-company-pulse shadow-soft-sm"
             : "hover:border-graphite-300"
