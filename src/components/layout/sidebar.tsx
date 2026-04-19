@@ -24,7 +24,7 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-  { href: "/uznemumi", label: "Uzņēmumi", icon: Building2 },
+  { href: "/uznemumi", label: "Uzņēmumi / Struktūrvienības", icon: Building2 },
   { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
   { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
   { href: "/klienti", label: "Klienti", icon: Users },

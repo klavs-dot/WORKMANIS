@@ -10,7 +10,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { companies } from "@/lib/mock";
 import { useCompany } from "@/lib/company-context";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +23,7 @@ const dateRanges = [
 ];
 
 export function Topbar() {
-  const { activeCompany, setActiveCompany } = useCompany();
+  const { companies, activeCompany, setActiveCompany } = useCompany();
   const [dateRange, setDateRange] = useState("Šomēnes");
 
   return (

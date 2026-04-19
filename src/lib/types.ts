@@ -14,16 +14,35 @@ export type SubscriptionStatus = "aktīvs" | "pauzēts" | "atcelts";
 
 export type Periodicity = "mēnesis" | "gads" | "ceturksnis";
 
-export interface Company {
+export interface CompanyRequisites {
+  legalName?: string;
+  regNumber?: string;
+  vatNumber?: string;
+  legalAddress?: string;
+  deliveryAddress?: string;
+  contactEmail?: string;
+  invoiceEmail?: string;
+  iban?: string;
+  bankName?: string;
+  swift?: string;
+  phone?: string;
+  website?: string;
+}
+
+export type CopyFormat = "lv" | "en";
+
+export interface Company extends CompanyRequisites {
   id: string;
   name: string;
-  legalName: string;
-  regNumber: string;
-  vatNumber: string;
   color: string; // tailwind class suffix for subtle identification
+  logoUrl?: string;
   activeInvoices: number;
   subscriptions: number;
   monthlySpend: number;
+  /** Original kept for backward compatibility; also present in CompanyRequisites */
+  legalName: string;
+  regNumber: string;
+  vatNumber: string;
 }
 
 export interface Supplier {
