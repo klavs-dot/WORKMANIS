@@ -13,6 +13,7 @@ import {
   Sparkles,
   Save,
   Info,
+  Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -58,6 +59,7 @@ import type {
 } from "@/lib/network-types";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
+import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 
 // Mock parsed invoices — rotates by upload count for demo realism
 const mockParsings = [
@@ -104,6 +106,7 @@ export function IzejosieTab() {
     null
   );
   const [metaEditing, setMetaEditing] = useState<OutgoingPayment | null>(null);
+  const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadCountRef = useRef(0);
 
@@ -302,13 +305,24 @@ export function IzejosieTab() {
 
       {/* List of prepared payments */}
       <Card className="overflow-hidden">
-        <div className="p-5 border-b border-graphite-100">
-          <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
-            Sagatavotie maksājumi
-          </h3>
-          <p className="mt-0.5 text-[12.5px] text-graphite-500">
-            Gaida apstiprinājumu bankā vai jau apmaksāti
-          </p>
+        <div className="p-5 border-b border-graphite-100 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
+              Sagatavotie maksājumi
+            </h3>
+            <p className="mt-0.5 text-[12.5px] text-graphite-500">
+              Gaida apstiprinājumu bankā vai jau apmaksāti
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setBankPanelOpen(true)}
+            className="shrink-0"
+          >
+            <Landmark className="h-3.5 w-3.5" />
+            Uz banku
+          </Button>
         </div>
         {outgoing.length === 0 ? (
           <div className="p-12 text-center text-[13px] text-graphite-500">
@@ -473,6 +487,12 @@ export function IzejosieTab() {
             setMetaEditing(null);
           }
         }}
+      />
+
+      {/* Bank exchange side-panel */}
+      <BankExchangePanel
+        open={bankPanelOpen}
+        onOpenChange={setBankPanelOpen}
       />
     </div>
   );
