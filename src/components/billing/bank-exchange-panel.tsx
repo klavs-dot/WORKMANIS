@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useBilling } from "@/lib/billing-store";
 import { useCompany } from "@/lib/company-context";
+import { useEmployees } from "@/lib/employees-store";
 import {
   generatePain001XML,
   parseBankStatementCSV,
@@ -26,33 +27,119 @@ import {
 } from "@/lib/bank-exchange";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
+export type BankExchangeMode = "outgoing" | "salaries" | "taxes";
+
+const modeCopy: Record<
+  BankExchangeMode,
+  { heading: string; exportLabel: string; itemNoun: string }
+> = {
+  outgoing: {
+    heading: "Sagatavot maksājumu uzdevumu",
+    exportLabel: "neapmaksāti rēķini",
+    itemNoun: "rēķini",
+  },
+  salaries: {
+    heading: "Sagatavot algu maksājumus",
+    exportLabel: "sagatavotās algas",
+    itemNoun: "algas",
+  },
+  taxes: {
+    heading: "Sagatavot nodokļu maksājumus",
+    exportLabel: "sagatavotie nodokļi",
+    itemNoun: "nodokļi",
+  },
+};
+
 export function BankExchangePanel({
   open,
   onOpenChange,
+  mode = "outgoing",
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  mode?: BankExchangeMode;
 }) {
-  const { outgoing, markOutgoingPaid } = useBilling();
+  const { outgoing, salaries, taxes, markOutgoingPaid, updateSalary, updateTax } =
+    useBilling();
   const { activeCompany } = useCompany();
+  const { employees } = useEmployees();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── Export: selected payments to send to bank ───
-  const unpaid = useMemo(
-    () => outgoing.filter((p) => p.status !== "apmaksats"),
-    [outgoing]
-  );
+  const copy = modeCopy[mode];
+
+  // ─── Build unified "items" list based on mode ───
+  type BatchListItem = {
+    id: string;
+    name: string; // display name (supplier / employee / tax name)
+    subtitle: string; // invoice number / period / due date
+    amount: number;
+    iban?: string;
+    reference: string;
+    dueDate?: string;
+  };
+
+  const items = useMemo<BatchListItem[]>(() => {
+    if (mode === "outgoing") {
+      return outgoing
+        .filter((p) => p.status !== "apmaksats")
+        .map((p) => ({
+          id: p.id,
+          name: p.supplier,
+          subtitle: p.invoiceNumber,
+          amount: p.amount,
+          iban: p.iban,
+          reference: p.invoiceNumber,
+          dueDate: p.dueDate,
+        }));
+    }
+    if (mode === "salaries") {
+      return salaries
+        .filter((s) => s.status === "sagatavots")
+        .map((s) => {
+          const emp = employees.find((e) => e.id === s.employeeId);
+          const primaryBank = emp?.bankAccounts.find((b) => b.isPrimary);
+          return {
+            id: s.id,
+            name: s.employee,
+            subtitle: `${s.period} · ${salaryTypeLabel(s.type)}`,
+            amount: s.amount,
+            iban: primaryBank?.iban,
+            reference: `Alga ${s.period}`,
+          };
+        });
+    }
+    // taxes
+    return taxes
+      .filter((t) => t.status === "sagatavots")
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        subtitle: `Termiņš ${formatDate(t.dueDate)}`,
+        amount: t.amount,
+        iban: undefined, // taxes IBAN must be configured by manager; warn in UI
+        reference: t.name,
+        dueDate: t.dueDate,
+      }));
+  }, [mode, outgoing, salaries, taxes, employees]);
+
+  const markAsPaidInStore = (id: string) => {
+    if (mode === "outgoing") markOutgoingPaid(id);
+    else if (mode === "salaries") updateSalary(id, { status: "izmaksats" });
+    else if (mode === "taxes") updateTax(id, { status: "apmaksats" });
+  };
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [exportState, setExportState] = useState<"idle" | "downloading" | "done">(
     "idle"
   );
 
-  const selectedItems = unpaid.filter((p) => selectedIds.has(p.id));
-  const selectedTotal = selectedItems.reduce((s, p) => s + p.amount, 0);
+  const selectedItems = items.filter((i) => selectedIds.has(i.id));
+  const selectedTotal = selectedItems.reduce((s, i) => s + i.amount, 0);
+  const selectedMissingIban = selectedItems.some((i) => !i.iban);
 
   const toggleAll = () => {
-    if (selectedIds.size === unpaid.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(unpaid.map((p) => p.id)));
+    if (selectedIds.size === items.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(items.map((i) => i.id)));
   };
 
   const toggleOne = (id: string) => {
@@ -63,7 +150,7 @@ export function BankExchangePanel({
   };
 
   const downloadXML = () => {
-    if (selectedItems.length === 0) return;
+    if (selectedItems.length === 0 || selectedMissingIban) return;
     setExportState("downloading");
 
     const xml = generatePain001XML(
@@ -72,12 +159,12 @@ export function BankExchangePanel({
         debtorIban: activeCompany?.iban || "LV00NOTPROVIDED",
         requestedExecutionDate: new Date().toISOString().slice(0, 10),
       },
-      selectedItems.map((p) => ({
-        name: p.supplier,
-        iban: p.iban,
-        amount: p.amount,
-        reference: p.invoiceNumber,
-        remittance: `${p.invoiceNumber} ${p.supplier}`.trim(),
+      selectedItems.map((i) => ({
+        name: i.name,
+        iban: i.iban || "",
+        amount: i.amount,
+        reference: i.reference,
+        remittance: `${i.reference} ${i.name}`.trim(),
       }))
     );
 
@@ -85,8 +172,14 @@ export function BankExchangePanel({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const stamp = new Date().toISOString().slice(0, 10);
+    const prefix =
+      mode === "outgoing"
+        ? "payment-batch"
+        : mode === "salaries"
+          ? "salary-batch"
+          : "tax-batch";
     a.href = url;
-    a.download = `payment-batch-${stamp}.xml`;
+    a.download = `${prefix}-${stamp}.xml`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -96,7 +189,7 @@ export function BankExchangePanel({
     setTimeout(() => setExportState("idle"), 2400);
   };
 
-  // ─── Import: parse uploaded CSV and match ───
+  // ─── Import: parse uploaded CSV and match (outgoing mode only) ───
   const [parsedTxs, setParsedTxs] = useState<ParsedTransaction[]>([]);
   const [matches, setMatches] = useState<InvoiceMatch[]>([]);
   const [importStage, setImportStage] = useState<"idle" | "review">("idle");
@@ -104,7 +197,10 @@ export function BankExchangePanel({
   const onFilePicked = async (file: File) => {
     const text = await file.text();
     const txs = parseBankStatementCSV(text);
-    const m = matchTransactionsToInvoices(txs, unpaid);
+    const m = matchTransactionsToInvoices(
+      txs,
+      outgoing.filter((p) => p.status !== "apmaksats")
+    );
     setParsedTxs(txs);
     setMatches(m);
     setImportStage("review");
@@ -118,7 +214,6 @@ export function BankExchangePanel({
         applied++;
       }
     });
-    // Simple feedback — could be toast
     alert(`Atzīmēti kā apmaksāti: ${applied} rēķini`);
     setParsedTxs([]);
     setMatches([]);
@@ -178,18 +273,18 @@ export function BankExchangePanel({
                 <div className="flex items-center gap-2 mb-3">
                   <ArrowUpFromLine className="h-3.5 w-3.5 text-emerald-600" />
                   <h3 className="text-[13px] font-semibold tracking-tight text-graphite-900">
-                    Sagatavot maksājumu uzdevumu
+                    {copy.heading}
                   </h3>
                 </div>
                 <p className="text-[11.5px] text-graphite-500 mb-3 leading-relaxed">
-                  Izvēlies rēķinus → lejupielādē XML failu → augšupielādē savā
-                  internetbankā kā batch maksājumu paketi. Darbojas ar SEB,
+                  Izvēlies {copy.itemNoun} → lejupielādē XML failu → augšupielādē
+                  savā internetbankā kā batch maksājumu paketi. Darbojas ar SEB,
                   Swedbank, Citadele un Luminor.
                 </p>
 
-                {unpaid.length === 0 ? (
+                {items.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-graphite-200 bg-graphite-50/30 p-5 text-center text-[12px] text-graphite-500">
-                    Nav neviena neapmaksāta rēķina
+                    Nav {copy.exportLabel}
                   </div>
                 ) : (
                   <div className="rounded-lg border border-graphite-200 overflow-hidden">
@@ -197,44 +292,46 @@ export function BankExchangePanel({
                     <div className="flex items-center gap-2 bg-graphite-50/60 border-b border-graphite-100 px-3 py-2">
                       <input
                         type="checkbox"
-                        checked={selectedIds.size === unpaid.length}
+                        checked={selectedIds.size === items.length}
                         onChange={toggleAll}
                         className="h-3.5 w-3.5 rounded border-graphite-300 accent-graphite-900"
                       />
                       <span className="text-[11px] text-graphite-600 font-medium">
                         {selectedIds.size === 0
-                          ? `Izvēlies no ${unpaid.length} neapmaksātiem`
-                          : `${selectedIds.size} no ${unpaid.length} · ${formatCurrency(selectedTotal)}`}
+                          ? `Izvēlies no ${items.length}`
+                          : `${selectedIds.size} no ${items.length} · ${formatCurrency(selectedTotal)}`}
                       </span>
                     </div>
                     {/* Rows */}
                     <div className="max-h-[240px] overflow-y-auto">
-                      {unpaid.map((p) => (
+                      {items.map((i) => (
                         <label
-                          key={p.id}
+                          key={i.id}
                           className="flex items-center gap-2.5 px-3 py-2 border-b border-graphite-100 last:border-b-0 hover:bg-graphite-50/40 cursor-pointer"
                         >
                           <input
                             type="checkbox"
-                            checked={selectedIds.has(p.id)}
-                            onChange={() => toggleOne(p.id)}
+                            checked={selectedIds.has(i.id)}
+                            onChange={() => toggleOne(i.id)}
                             className="h-3.5 w-3.5 rounded border-graphite-300 accent-graphite-900"
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 justify-between">
                               <span className="text-[12.5px] font-medium text-graphite-900 truncate">
-                                {p.supplier}
+                                {i.name}
                               </span>
                               <span className="text-[12.5px] font-semibold text-graphite-900 tabular shrink-0">
-                                {formatCurrency(p.amount)}
+                                {formatCurrency(i.amount)}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 text-[10.5px] text-graphite-500 mt-0.5">
-                              <span className="font-mono truncate">
-                                {p.invoiceNumber}
-                              </span>
-                              <span>·</span>
-                              <span className="tabular">{formatDate(p.dueDate)}</span>
+                              <span className="truncate">{i.subtitle}</span>
+                              {!i.iban && (
+                                <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700 px-1 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider shrink-0">
+                                  <AlertCircle className="h-2.5 w-2.5" />
+                                  IBAN trūkst
+                                </span>
+                              )}
                             </div>
                           </div>
                         </label>
@@ -243,11 +340,23 @@ export function BankExchangePanel({
                   </div>
                 )}
 
+                {selectedMissingIban && (
+                  <p className="mt-2 text-[11px] text-amber-700 flex items-start gap-1.5">
+                    <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                    Dažiem izvēlētiem ierakstiem nav IBAN. Pievieno IBAN vispirms
+                    vai izslēdz šos ierakstus no izvēles.
+                  </p>
+                )}
+
                 <div className="mt-3 flex justify-end">
                   <Button
                     size="sm"
                     onClick={downloadXML}
-                    disabled={selectedItems.length === 0 || exportState !== "idle"}
+                    disabled={
+                      selectedItems.length === 0 ||
+                      exportState !== "idle" ||
+                      selectedMissingIban
+                    }
                   >
                     {exportState === "done" ? (
                       <>
@@ -264,7 +373,8 @@ export function BankExchangePanel({
                 </div>
               </section>
 
-              {/* ─── Section 2: Import ─── */}
+              {/* ─── Section 2: Import (outgoing mode only — matching happens against unpaid supplier invoices) ─── */}
+              {mode === "outgoing" && (
               <section className="px-6 py-5">
                 <div className="flex items-center gap-2 mb-3">
                   <ArrowDownToLine className="h-3.5 w-3.5 text-sky-600" />
@@ -390,6 +500,7 @@ export function BankExchangePanel({
                   </div>
                 )}
               </section>
+              )}
             </div>
 
             {/* Footnote */}
@@ -476,4 +587,19 @@ function ConfidenceBadge({
       Nezināms
     </span>
   );
+}
+
+function salaryTypeLabel(t: string): string {
+  switch (t) {
+    case "darba_alga":
+      return "Darba alga";
+    case "atvalinajums":
+      return "Atvaļinājums";
+    case "avansa_norekini":
+      return "Avansa norēķini";
+    case "piemaksa":
+      return "Piemaksa";
+    default:
+      return t;
+  }
 }

@@ -23,12 +23,14 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { TaxStatusBadge } from "@/components/business/billing-status-badges";
+import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { useBilling } from "@/lib/billing-store";
 import { formatCurrency, formatDate, daysUntil, cn } from "@/lib/utils";
 
 export function NodokliTab() {
   const { taxes, addTax, updateTax } = useBilling();
   const [open, setOpen] = useState(false);
+  const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const [form, setForm] = useState({ name: "", amount: "", dueDate: "" });
 
   const submit = () => {
@@ -62,10 +64,25 @@ export function NodokliTab() {
               : "Visi nodokļi šobrīd ir apmaksāti"}
           </p>
         </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          Pievienot nodokli
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Pievienot nodokli
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setBankPanelOpen(true)}
+            disabled={prepared.length === 0}
+          >
+            <Landmark className="h-3.5 w-3.5" />
+            Uz banku
+            {prepared.length > 0 && ` (${prepared.length})`}
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -213,6 +230,12 @@ export function NodokliTab() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <BankExchangePanel
+        open={bankPanelOpen}
+        onOpenChange={setBankPanelOpen}
+        mode="taxes"
+      />
     </div>
   );
 }

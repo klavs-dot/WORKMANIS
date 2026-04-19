@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Send,
   Check,
   Plus,
   Save,
   X,
   CalendarDays,
+  Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { SalaryStatusBadge } from "@/components/business/billing-status-badges";
+import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { useBilling } from "@/lib/billing-store";
 import type { SalaryType } from "@/lib/billing-store";
 import { useEmployees, fullName } from "@/lib/employees-store";
@@ -53,6 +54,7 @@ export function AlgasTab() {
   const { salaries, updateSalary, addSalary } = useBilling();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
+  const [bankPanelOpen, setBankPanelOpen] = useState(false);
 
   const prepared = salaries.filter((s) => s.status === "sagatavots");
   const totalPrepared = prepared.reduce((s, x) => s + x.amount, 0);
@@ -62,15 +64,6 @@ export function AlgasTab() {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelected(next);
-  };
-
-  const sendToBank = () => {
-    if (selected.size > 0) {
-      selected.forEach((id) => updateSalary(id, { status: "izmaksats" }));
-    } else {
-      prepared.forEach((s) => updateSalary(s.id, { status: "izmaksats" }));
-    }
-    setSelected(new Set());
   };
 
   return (
@@ -96,12 +89,12 @@ export function AlgasTab() {
           </Button>
           <Button
             size="sm"
-            onClick={sendToBank}
+            onClick={() => setBankPanelOpen(true)}
             disabled={prepared.length === 0}
           >
-            <Send className="h-3.5 w-3.5" />
-            Sagatavot maksājumu bankā
-            {selected.size > 0 && ` (${selected.size})`}
+            <Landmark className="h-3.5 w-3.5" />
+            Uz banku
+            {prepared.length > 0 && ` (${prepared.length})`}
           </Button>
         </div>
       </div>
@@ -239,6 +232,12 @@ export function AlgasTab() {
           addSalary(data);
           setCreateOpen(false);
         }}
+      />
+
+      <BankExchangePanel
+        open={bankPanelOpen}
+        onOpenChange={setBankPanelOpen}
+        mode="salaries"
       />
     </div>
   );
