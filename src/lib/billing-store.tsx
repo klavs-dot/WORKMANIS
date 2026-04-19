@@ -41,6 +41,10 @@ export interface OutgoingPayment {
   fileName?: string;
   accountingMeta?: OutgoingAccountingMeta;
   pnAkts?: string;
+  /** Whether the PN akts was generated in-app or uploaded as an existing PDF */
+  pnAktsSource?: "generated" | "uploaded";
+  /** Original file name when the PN akts was uploaded */
+  pnAktsFileName?: string;
   createdAt: string;
 }
 
@@ -58,6 +62,8 @@ export interface IncomingInvoice {
   status: IncomingStatus;
   deliveryNote?: string; // "DDMMGG-N" if generated
   pnAkts?: string; // "PNDDMMGG-N" if generated
+  pnAktsSource?: "generated" | "uploaded";
+  pnAktsFileName?: string;
   createdAt: string;
 }
 
@@ -103,12 +109,24 @@ interface BillingStore {
   markOutgoingPaid: (id: string) => void;
   setOutgoingMeta: (id: string, meta: OutgoingAccountingMeta) => void;
   clearOutgoingMeta: (id: string) => void;
-  attachOutgoingPN: (id: string, pn: string) => void;
+  attachOutgoingPN: (
+    id: string,
+    pn: string,
+    source?: "generated" | "uploaded",
+    fileName?: string
+  ) => void;
+  detachOutgoingPN: (id: string) => void;
 
   addIncoming: (i: Omit<IncomingInvoice, "id" | "createdAt">) => void;
   updateIncoming: (id: string, patch: Partial<IncomingInvoice>) => void;
   attachDeliveryNote: (id: string, note: string) => void;
-  attachIncomingPN: (id: string, pn: string) => void;
+  attachIncomingPN: (
+    id: string,
+    pn: string,
+    source?: "generated" | "uploaded",
+    fileName?: string
+  ) => void;
+  detachIncomingPN: (id: string) => void;
 
   addSalary: (s: Omit<Salary, "id">) => void;
   updateSalary: (id: string, patch: Partial<Salary>) => void;
@@ -279,7 +297,7 @@ function readStore() {
   }
 }
 
-function writeStore(data: Omit<BillingStore, "addOutgoing" | "markOutgoingPaid" | "setOutgoingMeta" | "clearOutgoingMeta" | "attachOutgoingPN" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "attachIncomingPN" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
+function writeStore(data: Omit<BillingStore, "addOutgoing" | "markOutgoingPaid" | "setOutgoingMeta" | "clearOutgoingMeta" | "attachOutgoingPN" | "detachOutgoingPN" | "addIncoming" | "updateIncoming" | "attachDeliveryNote" | "attachIncomingPN" | "detachIncomingPN" | "addSalary" | "updateSalary" | "addTax" | "updateTax">) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -354,9 +372,28 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       );
     },
 
-    attachOutgoingPN: (id, pn) => {
+    attachOutgoingPN: (id, pn, source = "generated", fileName) => {
       setOutgoing((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, pnAkts: pn } : p))
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                pnAkts: pn,
+                pnAktsSource: source,
+                pnAktsFileName: fileName,
+              }
+            : p
+        )
+      );
+    },
+
+    detachOutgoingPN: (id) => {
+      setOutgoing((prev) =>
+        prev.map((p) => {
+          if (p.id !== id) return p;
+          const { pnAkts: _a, pnAktsSource: _s, pnAktsFileName: _f, ...rest } = p;
+          return rest;
+        })
       );
     },
 
@@ -376,9 +413,28 @@ export function BillingProvider({ children }: { children: ReactNode }) {
         prev.map((i) => (i.id === id ? { ...i, deliveryNote: note } : i))
       );
     },
-    attachIncomingPN: (id, pn) => {
+    attachIncomingPN: (id, pn, source = "generated", fileName) => {
       setIncoming((prev) =>
-        prev.map((i) => (i.id === id ? { ...i, pnAkts: pn } : i))
+        prev.map((i) =>
+          i.id === id
+            ? {
+                ...i,
+                pnAkts: pn,
+                pnAktsSource: source,
+                pnAktsFileName: fileName,
+              }
+            : i
+        )
+      );
+    },
+
+    detachIncomingPN: (id) => {
+      setIncoming((prev) =>
+        prev.map((i) => {
+          if (i.id !== id) return i;
+          const { pnAkts: _a, pnAktsSource: _s, pnAktsFileName: _f, ...rest } = i;
+          return rest;
+        })
       );
     },
 
