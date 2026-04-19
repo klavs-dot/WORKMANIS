@@ -44,7 +44,7 @@ import {
   statusLabels,
   statusVariants,
   noteColorClasses,
-  noteColorLabels,
+  displayNote,
 } from "@/lib/assets-store";
 
 interface AssetTabProps {
@@ -172,7 +172,7 @@ export function AssetTab({
                         <TableCell>
                           <span
                             className={cn(
-                              "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium border",
+                              "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium border max-w-[200px]",
                               colorCfg.bg,
                               colorCfg.text,
                               colorCfg.border
@@ -180,11 +180,13 @@ export function AssetTab({
                           >
                             <span
                               className={cn(
-                                "h-1.5 w-1.5 rounded-full",
+                                "h-1.5 w-1.5 rounded-full shrink-0",
                                 colorCfg.dot
                               )}
                             />
-                            {noteColorLabels[asset.noteColor]}
+                            <span className="truncate">
+                              {displayNote(asset.note, asset.noteColor)}
+                            </span>
                           </span>
                         </TableCell>
                         <TableCell className="text-right">

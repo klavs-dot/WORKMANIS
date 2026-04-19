@@ -20,6 +20,7 @@ export interface Asset {
   name: string;
   comment: string;
   status: AssetStatus;
+  note: string;
   noteColor: AssetNoteColor;
   createdAt: string;
 }
@@ -41,6 +42,7 @@ const seedAssets: Asset[] = [
     name: "wolftrike.eu",
     comment: "Reģistrēts 2024, atjauno līdz 2027",
     status: "aktivs",
+    note: "Svarīgs",
     noteColor: "zala",
     createdAt: "2026-04-10T10:00:00Z",
   },
@@ -50,6 +52,7 @@ const seedAssets: Asset[] = [
     name: "driftarena.lv",
     comment: "Publiskais domēns Drift Arena biznesam",
     status: "aktivs",
+    note: "Publisks",
     noteColor: "zala",
     createdAt: "2026-04-10T10:01:00Z",
   },
@@ -59,6 +62,7 @@ const seedAssets: Asset[] = [
     name: "BMW 1 Series",
     comment: "Drift projekts · nepabeigts",
     status: "apkalposana",
+    note: "Jāpabeidz",
     noteColor: "sarkana",
     createdAt: "2026-04-10T10:02:00Z",
   },
@@ -68,6 +72,7 @@ const seedAssets: Asset[] = [
     name: "Mosphera demo unit",
     comment: "Izstādēm un klientu prezentācijām",
     status: "aktivs",
+    note: "Rezervēts",
     noteColor: "zala",
     createdAt: "2026-04-10T10:03:00Z",
   },
@@ -77,6 +82,7 @@ const seedAssets: Asset[] = [
     name: "3D printeris Prusa MK4",
     comment: "Prototipu izgatavošanai",
     status: "aktivs",
+    note: "Ražošanā",
     noteColor: "zala",
     createdAt: "2026-04-10T10:04:00Z",
   },
@@ -86,6 +92,7 @@ const seedAssets: Asset[] = [
     name: "Serveris Supermicro",
     comment: "Iekšējais dev vide · Liepāja birojs",
     status: "aktivs",
+    note: "Arhīvs",
     noteColor: "pelēka",
     createdAt: "2026-04-10T10:05:00Z",
   },
@@ -96,7 +103,18 @@ function readAssets(): Asset[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return seedAssets;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Partial<Asset>[];
+    // Migrate: ensure note field exists on older records
+    return parsed.map((a) => ({
+      id: a.id ?? Math.random().toString(36).slice(2, 10),
+      category: (a.category ?? "citi") as AssetCategory,
+      name: a.name ?? "",
+      comment: a.comment ?? "",
+      status: (a.status ?? "aktivs") as AssetStatus,
+      note: a.note ?? "",
+      noteColor: (a.noteColor ?? "pelēka") as AssetNoteColor,
+      createdAt: a.createdAt ?? new Date().toISOString(),
+    }));
   } catch {
     return seedAssets;
   }
@@ -173,6 +191,12 @@ export const noteColorLabels: Record<AssetNoteColor, string> = {
   zala: "Zaļa",
   pelēka: "Pelēka",
 };
+
+/** Default short text used when user leaves the note empty. */
+export function displayNote(note: string, color: AssetNoteColor): string {
+  if (note.trim().length > 0) return note;
+  return noteColorLabels[color];
+}
 
 export const noteColorClasses: Record<
   AssetNoteColor,

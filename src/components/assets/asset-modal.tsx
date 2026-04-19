@@ -62,6 +62,7 @@ export function AssetModal({
   const [name, setName] = useState("");
   const [comment, setComment] = useState("");
   const [status, setStatus] = useState<AssetStatus>("aktivs");
+  const [note, setNote] = useState("");
   const [noteColor, setNoteColor] = useState<AssetNoteColor>("zala");
 
   useEffect(() => {
@@ -70,11 +71,13 @@ export function AssetModal({
         setName(editing.name);
         setComment(editing.comment);
         setStatus(editing.status);
+        setNote(editing.note);
         setNoteColor(editing.noteColor);
       } else {
         setName("");
         setComment("");
         setStatus("aktivs");
+        setNote("");
         setNoteColor("zala");
       }
     }
@@ -83,9 +86,22 @@ export function AssetModal({
   const submit = () => {
     if (!name.trim()) return;
     if (editing) {
-      updateAsset(editing.id, { name: name.trim(), comment, status, noteColor });
+      updateAsset(editing.id, {
+        name: name.trim(),
+        comment,
+        status,
+        note: note.trim(),
+        noteColor,
+      });
     } else {
-      addAsset({ category, name: name.trim(), comment, status, noteColor });
+      addAsset({
+        category,
+        name: name.trim(),
+        comment,
+        status,
+        note: note.trim(),
+        noteColor,
+      });
     }
     onOpenChange(false);
   };
@@ -126,51 +142,52 @@ export function AssetModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Statuss</Label>
-              <Select
-                value={status}
-                onValueChange={(v) => setStatus(v as AssetStatus)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(statusLabels) as AssetStatus[]).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {statusLabels[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1.5">
+            <Label>Statuss</Label>
+            <Select
+              value={status}
+              onValueChange={(v) => setStatus(v as AssetStatus)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(statusLabels) as AssetStatus[]).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {statusLabels[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="space-y-1.5">
-              <Label>Piezīme</Label>
+          <div className="space-y-1.5">
+            <Label>Piezīme</Label>
+            <div className="flex gap-2">
+              <Input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="piem. Svarīgs, Rezervēts, Arhīvs…"
+                className="flex-1"
+              />
               <DropdownMenu>
                 <DropdownMenuTrigger
+                  aria-label="Izvēlēties krāsu"
                   className={cn(
-                    "flex h-9 w-full items-center justify-between rounded-lg border border-graphite-200 bg-white px-3 py-2 text-[13.5px] text-graphite-800 transition-colors",
+                    "flex h-9 w-[72px] items-center justify-center gap-1.5 rounded-lg border border-graphite-200 bg-white transition-colors",
                     "hover:border-graphite-300",
                     "focus:outline-none focus:border-graphite-900 focus:ring-2 focus:ring-graphite-900/5"
                   )}
                 >
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "h-2.5 w-2.5 rounded-full",
-                        colorCfg.dot
-                      )}
-                    />
-                    {noteColorLabels[noteColor]}
-                  </span>
-                  <ChevronDown className="h-4 w-4 opacity-50" />
+                  <span
+                    className={cn(
+                      "h-3 w-3 rounded-full",
+                      colorCfg.dot
+                    )}
+                  />
+                  <ChevronDown className="h-3.5 w-3.5 text-graphite-400" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[10rem]"
-                >
+                <DropdownMenuContent align="end" className="min-w-[10rem]">
                   {(Object.keys(noteColorLabels) as AssetNoteColor[]).map(
                     (c) => (
                       <DropdownMenuItem
@@ -193,6 +210,26 @@ export function AssetModal({
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            {note.trim().length > 0 && (
+              <div className="pt-1">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium border",
+                    colorCfg.bg,
+                    colorCfg.text,
+                    colorCfg.border
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      colorCfg.dot
+                    )}
+                  />
+                  {note.trim()}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
