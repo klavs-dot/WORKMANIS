@@ -4,6 +4,15 @@
 
 export type ClientType = "fiziska" | "juridiska";
 
+export type ClientStatus = "aktivs" | "neaktivs";
+
+export interface ClientNote {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Client {
   id: string;
   type: ClientType;
@@ -20,7 +29,19 @@ export interface Client {
   countryCode: string;
   /** Brīvs atslēgvārdu saraksts (search aliases) */
   keywords: string[];
+  status: ClientStatus;
+  notes: ClientNote[];
   createdAt: string;
+}
+
+/** Aggregated invoice metrics per client (derived, not stored) */
+export interface ClientInvoiceSummary {
+  totalInvoices: number;
+  unpaidCount: number;
+  unpaidTotal: number;
+  totalRevenue: number; // paid only
+  lastInvoiceDate?: string;
+  averagePaymentDays: number; // mock
 }
 
 // -----------------------------

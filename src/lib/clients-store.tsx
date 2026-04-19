@@ -19,6 +19,42 @@ import type {
 
 const seedClients: Client[] = [
   {
+    id: "cl-drift",
+    type: "juridiska",
+    name: "SIA Drift Arena",
+    regNumber: "40203098712",
+    vatNumber: "LV40203098712",
+    legalAddress: "Liepājas iela 48, Liepāja, LV-3401",
+    bankAccount: "LV12HABA0551000123456",
+    country: "Latvija",
+    countryCode: "LV",
+    keywords: ["drift", "noma", "kartodroms", "liepāja"],
+    status: "aktivs",
+    notes: [
+      {
+        id: "n-drift-1",
+        body: "Sezonas noma aprīlī — jāsaskaņo ar Jāni par grafiku.",
+        createdAt: "2026-04-08T09:30:00Z",
+      },
+    ],
+    createdAt: "2026-02-10T10:00:00Z",
+  },
+  {
+    id: "cl-mosphera",
+    type: "juridiska",
+    name: "SIA Mosphera",
+    regNumber: "40203145789",
+    vatNumber: "LV40203145789",
+    legalAddress: "Rūpnīcas iela 12, Liepāja, LV-3405",
+    bankAccount: "LV45UNLA0050012345678",
+    country: "Latvija",
+    countryCode: "LV",
+    keywords: ["mosphera", "elektromobilitāte", "nato"],
+    status: "aktivs",
+    notes: [],
+    createdAt: "2026-02-15T10:00:00Z",
+  },
+  {
     id: "cl-nordic",
     type: "juridiska",
     name: "SIA Nordic Drift",
@@ -29,6 +65,8 @@ const seedClients: Client[] = [
     country: "Latvija",
     countryCode: "LV",
     keywords: ["drift", "noma", "kartodroms"],
+    status: "aktivs",
+    notes: [],
     createdAt: "2026-03-10T10:00:00Z",
   },
   {
@@ -42,6 +80,14 @@ const seedClients: Client[] = [
     country: "Latvija",
     countryCode: "LV",
     keywords: ["mehānika", "detaļas", "wolftrike"],
+    status: "aktivs",
+    notes: [
+      {
+        id: "n-balt-1",
+        body: "Ilggadējs partneris, maksā laicīgi. Apspriesta 5% atlaide lieliem pasūtījumiem.",
+        createdAt: "2026-03-20T14:00:00Z",
+      },
+    ],
     createdAt: "2026-03-11T10:00:00Z",
   },
   {
@@ -52,6 +98,8 @@ const seedClients: Client[] = [
     country: "Lielbritānija",
     countryCode: "GB",
     keywords: ["konsultācija", "uk"],
+    status: "neaktivs",
+    notes: [],
     createdAt: "2026-03-12T10:00:00Z",
   },
   {
@@ -65,6 +113,8 @@ const seedClients: Client[] = [
     country: "Lietuva",
     countryCode: "LT",
     keywords: ["detaļas", "mosphera", "eksports"],
+    status: "aktivs",
+    notes: [],
     createdAt: "2026-03-13T10:00:00Z",
   },
 ];
@@ -73,7 +123,7 @@ const seedTemplates: InvoiceTemplate[] = [
   {
     id: "tpl-1",
     keyword: "noma",
-    clientId: "cl-nordic",
+    clientId: "cl-drift",
     language: "lv",
     reference: "Līgums Nr. DA-2026/04",
     content: {
@@ -83,6 +133,19 @@ const seedTemplates: InvoiceTemplate[] = [
       vatPercent: 21,
     },
     createdAt: "2026-03-15T10:00:00Z",
+  },
+  {
+    id: "tpl-nordic",
+    keyword: "sezonas noma",
+    clientId: "cl-nordic",
+    language: "lv",
+    content: {
+      kind: "pakalpojums",
+      description: "Sezonas abonements · mēneša kartodroma noma",
+      amount: 1200.0,
+      vatPercent: 21,
+    },
+    createdAt: "2026-03-15T11:00:00Z",
   },
   {
     id: "tpl-2",
@@ -152,12 +215,18 @@ const seedTemplates: InvoiceTemplate[] = [
 interface ClientTemplatesStore {
   clients: Client[];
   templates: InvoiceTemplate[];
-  addClient: (data: Omit<Client, "id" | "createdAt">) => Client;
+  addClient: (data: Omit<Client, "id" | "createdAt" | "notes">) => Client;
   updateClient: (id: string, patch: Partial<Client>) => void;
+  deleteClient: (id: string) => void;
   searchClients: (query: string) => Client[];
   getClient: (id: string) => Client | undefined;
 
+  addNote: (clientId: string, body: string) => void;
+  updateNote: (clientId: string, noteId: string, body: string) => void;
+  deleteNote: (clientId: string, noteId: string) => void;
+
   addTemplate: (data: Omit<InvoiceTemplate, "id" | "createdAt">) => InvoiceTemplate;
+  updateTemplate: (id: string, patch: Partial<InvoiceTemplate>) => void;
   deleteTemplate: (id: string) => void;
   templatesForClient: (clientId: string) => InvoiceTemplate[];
 }
@@ -173,6 +242,33 @@ function readArray<T>(key: string, fallback: T[]): T[] {
     return JSON.parse(raw);
   } catch {
     return fallback;
+  }
+}
+
+/** Migrate clients that may be missing status / notes from older versions */
+function readClients(): Client[] {
+  if (typeof window === "undefined") return seedClients;
+  try {
+    const raw = localStorage.getItem(CLIENTS_KEY);
+    if (!raw) return seedClients;
+    const parsed = JSON.parse(raw) as Partial<Client>[];
+    return parsed.map((c) => ({
+      id: c.id ?? Math.random().toString(36).slice(2, 10),
+      type: (c.type ?? "juridiska") as Client["type"],
+      name: c.name ?? "",
+      regNumber: c.regNumber,
+      vatNumber: c.vatNumber,
+      legalAddress: c.legalAddress,
+      bankAccount: c.bankAccount,
+      country: c.country ?? "Latvija",
+      countryCode: c.countryCode ?? "LV",
+      keywords: c.keywords ?? [],
+      status: (c.status ?? "aktivs") as Client["status"],
+      notes: c.notes ?? [],
+      createdAt: c.createdAt ?? new Date().toISOString(),
+    }));
+  } catch {
+    return seedClients;
   }
 }
 
@@ -197,7 +293,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setClients(readArray(CLIENTS_KEY, seedClients));
+    setClients(readClients());
     setTemplates(readArray(TEMPLATES_KEY, seedTemplates));
     setHydrated(true);
   }, []);
@@ -221,6 +317,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         ...data,
         id: uid(),
         createdAt: new Date().toISOString(),
+        notes: [],
       };
       setClients((prev) => [newClient, ...prev]);
       return newClient;
@@ -230,6 +327,10 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       setClients((prev) =>
         prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
       );
+    },
+
+    deleteClient: (id) => {
+      setClients((prev) => prev.filter((c) => c.id !== id));
     },
 
     searchClients: (query) => {
@@ -246,6 +347,53 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
 
     getClient: (id) => clients.find((c) => c.id === id),
 
+    addNote: (clientId, body) => {
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId
+            ? {
+                ...c,
+                notes: [
+                  {
+                    id: uid(),
+                    body,
+                    createdAt: new Date().toISOString(),
+                  },
+                  ...c.notes,
+                ],
+              }
+            : c
+        )
+      );
+    },
+
+    updateNote: (clientId, noteId, body) => {
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId
+            ? {
+                ...c,
+                notes: c.notes.map((n) =>
+                  n.id === noteId
+                    ? { ...n, body, updatedAt: new Date().toISOString() }
+                    : n
+                ),
+              }
+            : c
+        )
+      );
+    },
+
+    deleteNote: (clientId, noteId) => {
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId
+            ? { ...c, notes: c.notes.filter((n) => n.id !== noteId) }
+            : c
+        )
+      );
+    },
+
     addTemplate: (data) => {
       const newTpl: InvoiceTemplate = {
         ...data,
@@ -254,6 +402,12 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       };
       setTemplates((prev) => [newTpl, ...prev]);
       return newTpl;
+    },
+
+    updateTemplate: (id, patch) => {
+      setTemplates((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+      );
     },
 
     deleteTemplate: (id) => {

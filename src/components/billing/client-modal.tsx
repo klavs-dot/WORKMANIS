@@ -23,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useClients } from "@/lib/clients-store";
 import { COUNTRIES } from "@/lib/countries";
-import type { Client, ClientType } from "@/lib/billing-types";
+import type { Client, ClientStatus, ClientType } from "@/lib/billing-types";
 
 interface ClientModalProps {
   open: boolean;
@@ -49,6 +49,7 @@ export function ClientModal({
   const [legalAddress, setLegalAddress] = useState("");
   const [bankAccount, setBankAccount] = useState("");
   const [countryCode, setCountryCode] = useState("LV");
+  const [status, setStatus] = useState<ClientStatus>("aktivs");
   const [keywordInput, setKeywordInput] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
 
@@ -62,6 +63,7 @@ export function ClientModal({
       setLegalAddress(editing.legalAddress ?? "");
       setBankAccount(editing.bankAccount ?? "");
       setCountryCode(editing.countryCode);
+      setStatus(editing.status);
       setKeywords(editing.keywords);
       setKeywordInput("");
     } else {
@@ -72,6 +74,7 @@ export function ClientModal({
       setLegalAddress("");
       setBankAccount("");
       setCountryCode("LV");
+      setStatus("aktivs");
       setKeywords([]);
       setKeywordInput("");
     }
@@ -116,6 +119,7 @@ export function ClientModal({
       country,
       countryCode,
       keywords,
+      status,
     };
 
     if (editing) {
@@ -225,14 +229,30 @@ export function ClientModal({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Bankas konts (IBAN)</Label>
-              <Input
-                value={bankAccount}
-                onChange={(e) => setBankAccount(e.target.value)}
-                placeholder="LV00BANK0000000000000"
-                className="font-mono text-[12px]"
-              />
+              <Label>Statuss</Label>
+              <Select
+                value={status}
+                onValueChange={(v) => setStatus(v as ClientStatus)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aktivs">Aktīvs</SelectItem>
+                  <SelectItem value="neaktivs">Neaktīvs</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Bankas konts (IBAN)</Label>
+            <Input
+              value={bankAccount}
+              onChange={(e) => setBankAccount(e.target.value)}
+              placeholder="LV00BANK0000000000000"
+              className="font-mono text-[12px]"
+            />
           </div>
 
           {/* Keywords */}
