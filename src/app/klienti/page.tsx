@@ -52,7 +52,10 @@ import {
 import { ClientModal } from "@/components/billing/client-modal";
 import { useClients } from "@/lib/clients-store";
 import { useBilling } from "@/lib/billing-store";
-import { summaryForClient } from "@/lib/client-summary";
+import {
+  summaryForClient,
+  mostRecentInvoice,
+} from "@/lib/client-summary";
 import { COUNTRIES } from "@/lib/countries";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { Client, ClientStatus, ClientType } from "@/lib/billing-types";
@@ -60,7 +63,7 @@ import type { Client, ClientStatus, ClientType } from "@/lib/billing-types";
 export default function KlientiPage() {
   const router = useRouter();
   const { clients, deleteClient } = useClients();
-  const { incoming } = useBilling();
+  const { incoming, outgoing } = useBilling();
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | ClientType>("all");
@@ -77,7 +80,7 @@ export default function KlientiPage() {
   }, [clients]);
 
   const filtered = useMemo(() => {
-    return clients.filter((c) => {
+    const list = clients.filter((c) => {
       if (typeFilter !== "all" && c.type !== typeFilter) return false;
       if (countryFilter !== "all" && c.countryCode !== countryFilter) return false;
       if (statusFilter !== "all" && c.status !== statusFilter) return false;
@@ -92,7 +95,19 @@ export default function KlientiPage() {
       }
       return true;
     });
-  }, [clients, search, typeFilter, countryFilter, statusFilter]);
+
+    // Sort by most recent invoice date (across both directions) desc
+    return list.slice().sort((a, b) => {
+      const ra = mostRecentInvoice(a, incoming, outgoing);
+      const rb = mostRecentInvoice(b, incoming, outgoing);
+      const da = ra?.date ?? "";
+      const db = rb?.date ?? "";
+      if (da && db) return db.localeCompare(da);
+      if (da) return -1;
+      if (db) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [clients, search, typeFilter, countryFilter, statusFilter, incoming, outgoing]);
 
   const openNew = () => {
     setEditing(null);
@@ -115,8 +130,8 @@ export default function KlientiPage() {
     <AppShell>
       <div className="space-y-6">
         <PageHeader
-          title="Klienti"
-          description={`${clients.length} klientu bāzē · ${clients.filter((c) => c.status === "aktivs").length} aktīvi`}
+          title="Klienti & Partneri"
+          description={`${clients.length} ieraksti · ienākošie rēķini zaļi, izejošie sarkani`}
           actions={
             <Button size="sm" onClick={openNew}>
               <Plus className="h-3.5 w-3.5" />
@@ -224,7 +239,7 @@ export default function KlientiPage() {
                     <TableHead>PVN nr.</TableHead>
                     <TableHead>Valsts</TableHead>
                     <TableHead>Pēdējais rēķins</TableHead>
-                    <TableHead className="text-right">Apgrozījums</TableHead>
+                    <TableHead className="text-right">Pēdējā summa</TableHead>
                     <TableHead>Statuss</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
@@ -232,6 +247,7 @@ export default function KlientiPage() {
                 <TableBody>
                   {filtered.map((c) => {
                     const summary = summaryForClient(c, incoming);
+                    const recent = mostRecentInvoice(c, incoming, outgoing);
                     return (
                       <TableRow
                         key={c.id}
@@ -291,16 +307,34 @@ export default function KlientiPage() {
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-graphite-600 tabular text-[12.5px]">
-                          {summary.lastInvoiceDate ? (
-                            formatDate(summary.lastInvoiceDate)
+                        <TableCell className="tabular text-[12.5px]">
+                          {recent ? (
+                            <span
+                              className={cn(
+                                "font-medium",
+                                recent.direction === "incoming"
+                                  ? "text-emerald-600"
+                                  : "text-red-600"
+                              )}
+                            >
+                              {formatDate(recent.date)}
+                            </span>
                           ) : (
                             <span className="text-graphite-300">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right font-semibold text-graphite-900 tabular">
-                          {summary.totalRevenue > 0 ? (
-                            formatCurrency(summary.totalRevenue)
+                        <TableCell className="text-right font-semibold tabular">
+                          {recent ? (
+                            <span
+                              className={cn(
+                                recent.direction === "incoming"
+                                  ? "text-emerald-600"
+                                  : "text-red-600"
+                              )}
+                            >
+                              {recent.direction === "outgoing" && "−"}
+                              {formatCurrency(recent.amount)}
+                            </span>
                           ) : (
                             <span className="text-graphite-300">—</span>
                           )}

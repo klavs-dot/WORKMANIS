@@ -27,7 +27,7 @@ const mainNav: NavItem[] = [
   { href: "/uznemumi", label: "Uzņēmumi / Struktūrvienības", icon: Building2 },
   { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
   { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
-  { href: "/klienti", label: "Klienti", icon: Users },
+  { href: "/klienti", label: "Klienti & Partneri", icon: Users },
   { href: "/distributori", label: "Distributori & Aģenti", icon: Handshake },
   { href: "/demo", label: "Demo produkcija", icon: Boxes },
   { href: "/partneri", label: "Partneri / Piegādātāji / Servisi", icon: Briefcase },

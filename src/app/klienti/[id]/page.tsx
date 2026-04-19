@@ -19,6 +19,7 @@ import {
   Check,
   Calendar,
   TrendingUp,
+  TrendingDown,
   MoreHorizontal,
   Trash2,
   Package,
@@ -62,6 +63,7 @@ import {
   invoicesForClient,
   summaryForClient,
   outgoingForClient,
+  bidirectionalInvoices,
 } from "@/lib/client-summary";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { InvoiceTemplate } from "@/lib/billing-types";
@@ -124,6 +126,11 @@ export default function ClientDetailPage({
   const clientInvoices = invoicesForClient(client, incoming);
   const clientOutgoing = outgoingForClient(client, outgoing);
   const clientTemplates = templatesForClient(client.id);
+  const allInvoicesBidirectional = bidirectionalInvoices(
+    client,
+    incoming,
+    outgoing
+  );
 
   return (
     <AppShell>
@@ -290,7 +297,7 @@ export default function ClientDetailPage({
               const Icon = t.icon;
               const isActive = tab === t.key;
               let count = 0;
-              if (t.key === "rekini") count = clientInvoices.length;
+              if (t.key === "rekini") count = allInvoicesBidirectional.length;
               if (t.key === "maksajumi")
                 count = clientInvoices.filter((i) => i.status === "apmaksats").length + clientOutgoing.length;
               if (t.key === "paraugi") count = clientTemplates.length;
@@ -349,7 +356,7 @@ export default function ClientDetailPage({
           >
             {tab === "rekini" && (
               <InvoicesTab
-                invoices={clientInvoices}
+                rows={allInvoicesBidirectional}
                 onIssueInvoice={() => openInvoiceModal()}
               />
             )}
@@ -422,13 +429,13 @@ function DetailRow({
   );
 }
 
-// ---------- Invoices tab ----------
+// ---------- Invoices tab (bidirectional) ----------
 
 function InvoicesTab({
-  invoices,
+  rows,
   onIssueInvoice,
 }: {
-  invoices: ReturnType<typeof invoicesForClient>;
+  rows: ReturnType<typeof bidirectionalInvoices>;
   onIssueInvoice: () => void;
 }) {
   return (
@@ -439,7 +446,8 @@ function InvoicesTab({
             Rēķini
           </h3>
           <p className="mt-0.5 text-[12.5px] text-graphite-500">
-            Visi rēķini, kas izrakstīti šim klientam
+            Ienākošie (no mums izrakstīti) · zaļi. Izejošie (saņemti no
+            šī partnera) · sarkani.
           </p>
         </div>
         <Button size="sm" onClick={onIssueInvoice}>
@@ -447,39 +455,75 @@ function InvoicesTab({
           Izrakstīt rēķinu šim klientam
         </Button>
       </div>
-      {invoices.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
           icon={FileText}
           title="Vēl nav rēķinu"
-          description="Izraksti pirmo rēķinu šim klientam."
+          description="Izraksti pirmo rēķinu šim klientam vai reģistrē no viņa saņemtu rēķinu sadaļā Rēķini & Maksājumi → Izejošie."
         />
       ) : (
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
+              <TableHead className="w-10"></TableHead>
               <TableHead>Rēķina numurs</TableHead>
               <TableHead>Datums</TableHead>
               <TableHead className="text-right">Summa</TableHead>
-              <TableHead>Statuss</TableHead>
+              <TableHead>Virziens</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {invoices.map((inv) => (
-              <TableRow key={inv.id}>
-                <TableCell className="font-mono text-[12px] text-graphite-700">
-                  Rēķins Nr. {inv.number}
-                </TableCell>
-                <TableCell className="text-graphite-600 tabular">
-                  {formatDate(inv.date)}
-                </TableCell>
-                <TableCell className="text-right font-semibold text-graphite-900 tabular">
-                  {formatCurrency(inv.amount + inv.vat)}
-                </TableCell>
-                <TableCell>
-                  <IncomingStatusBadge status={inv.status} />
-                </TableCell>
-              </TableRow>
-            ))}
+            {rows.map((r) => {
+              const isIncoming = r.direction === "incoming";
+              return (
+                <TableRow key={r.id}>
+                  <TableCell>
+                    <div
+                      className={cn(
+                        "flex h-6 w-6 items-center justify-center rounded-md",
+                        isIncoming
+                          ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                          : "bg-red-50 text-red-600 border border-red-100"
+                      )}
+                    >
+                      {isIncoming ? (
+                        <TrendingUp className="h-3 w-3" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3" />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-mono text-[12px] text-graphite-700">
+                    {isIncoming ? `Rēķins Nr. ${r.number}` : r.number}
+                  </TableCell>
+                  <TableCell className="text-graphite-600 tabular">
+                    {formatDate(r.date)}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "text-right font-semibold tabular",
+                      isIncoming ? "text-emerald-600" : "text-red-600"
+                    )}
+                  >
+                    {!isIncoming && "−"}
+                    {formatCurrency(r.amount)}
+                  </TableCell>
+                  <TableCell>
+                    {isIncoming ? (
+                      <Badge variant="success" className="gap-1.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Ienākošais
+                      </Badge>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-red-50 text-red-700 px-2 py-0.5 text-[10.5px] font-semibold border border-red-100">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                        Izejošais
+                      </span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}

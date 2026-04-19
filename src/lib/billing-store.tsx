@@ -59,7 +59,11 @@ export interface IncomingInvoice {
   createdAt: string;
 }
 
-export type SalaryType = "darba_alga" | "atvalinajums";
+export type SalaryType =
+  | "darba_alga"
+  | "atvalinajums"
+  | "avansa_norekini"
+  | "piemaksa";
 export type SalaryStatus = "sagatavots" | "izmaksats";
 
 export interface Salary {

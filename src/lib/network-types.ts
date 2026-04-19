@@ -15,12 +15,18 @@ export interface DistributorAgent {
 export interface DemoProduct {
   id: string;
   name: string;
+  /** Kas testē demo — piem. Policija, NMPD, armija, … */
+  tester: string;
   location: string;
   comment: string;
   createdAt: string;
 }
 
-export type BusinessContactCategory = "partneri" | "piegadataji" | "servisi";
+export type BusinessContactCategory =
+  | "razotaji"
+  | "piegadataji"
+  | "pakalpojumi"
+  | "logistika";
 
 export interface BusinessContact {
   id: string;
@@ -31,6 +37,15 @@ export interface BusinessContact {
   contactPerson: string;
   email: string;
   phone: string;
+  comment: string;
+  createdAt: string;
+}
+
+/** Separate entity for the 'Online linki' tab — simpler shape */
+export interface OnlineLink {
+  id: string;
+  productName: string;
+  url: string;
   comment: string;
   createdAt: string;
 }

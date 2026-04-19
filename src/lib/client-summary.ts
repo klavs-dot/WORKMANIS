@@ -14,6 +14,120 @@ export function invoicesForClient(
   return all.filter((i) => i.client.toLowerCase().includes(q));
 }
 
+/** Simple match on supplier name for outgoing payments */
+export function outgoingForClient(
+  client: Client,
+  all: OutgoingPayment[]
+): OutgoingPayment[] {
+  const q = client.name.toLowerCase();
+  return all.filter((p) => p.supplier.toLowerCase().includes(q));
+}
+
+// ============================================================
+// Bidirectional "last invoice" helpers
+// ============================================================
+
+export type InvoiceDirection = "incoming" | "outgoing";
+
+export interface RecentInvoice {
+  direction: InvoiceDirection;
+  date: string;
+  amount: number;
+  number: string;
+}
+
+/** Most recent invoice across both directions for this client */
+export function mostRecentInvoice(
+  client: Client,
+  incoming: IncomingInvoice[],
+  outgoing: OutgoingPayment[]
+): RecentInvoice | null {
+  const latestIn = invoicesForClient(client, incoming)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  const latestOut = outgoingForClient(client, outgoing)
+    .slice()
+    .sort((a, b) => b.dueDate.localeCompare(a.dueDate))[0];
+
+  if (!latestIn && !latestOut) return null;
+
+  if (latestIn && !latestOut) {
+    return {
+      direction: "incoming",
+      date: latestIn.date,
+      amount: latestIn.amount + latestIn.vat,
+      number: latestIn.number,
+    };
+  }
+  if (latestOut && !latestIn) {
+    return {
+      direction: "outgoing",
+      date: latestOut.dueDate,
+      amount: latestOut.amount,
+      number: latestOut.invoiceNumber,
+    };
+  }
+  // Both exist — compare dates
+  const inDate = latestIn!.date;
+  const outDate = latestOut!.dueDate;
+  if (inDate.localeCompare(outDate) >= 0) {
+    return {
+      direction: "incoming",
+      date: latestIn!.date,
+      amount: latestIn!.amount + latestIn!.vat,
+      number: latestIn!.number,
+    };
+  }
+  return {
+    direction: "outgoing",
+    date: latestOut!.dueDate,
+    amount: latestOut!.amount,
+    number: latestOut!.invoiceNumber,
+  };
+}
+
+/** Unified row representing one invoice (in or out) for the detail timeline */
+export interface BidirectionalInvoiceRow {
+  id: string;
+  direction: InvoiceDirection;
+  number: string;
+  date: string;
+  amount: number;
+  status: string;
+}
+
+export function bidirectionalInvoices(
+  client: Client,
+  incoming: IncomingInvoice[],
+  outgoing: OutgoingPayment[]
+): BidirectionalInvoiceRow[] {
+  const ins = invoicesForClient(client, incoming).map<BidirectionalInvoiceRow>(
+    (i) => ({
+      id: `in-${i.id}`,
+      direction: "incoming",
+      number: i.number,
+      date: i.date,
+      amount: i.amount + i.vat,
+      status: i.status,
+    })
+  );
+  const outs = outgoingForClient(client, outgoing).map<BidirectionalInvoiceRow>(
+    (o) => ({
+      id: `out-${o.id}`,
+      direction: "outgoing",
+      number: o.invoiceNumber,
+      date: o.dueDate,
+      amount: o.amount,
+      status: o.status,
+    })
+  );
+  return [...ins, ...outs].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+// ============================================================
+// Summary metrics
+// ============================================================
+
 /** Compute summary metrics for a client */
 export function summaryForClient(
   client: Client,
@@ -45,13 +159,4 @@ export function summaryForClient(
     lastInvoiceDate,
     averagePaymentDays,
   };
-}
-
-/** Simple match on supplier name for outgoing payments */
-export function outgoingForClient(
-  client: Client,
-  all: OutgoingPayment[]
-): OutgoingPayment[] {
-  const q = client.name.toLowerCase();
-  return all.filter((p) => p.supplier.toLowerCase().includes(q));
 }

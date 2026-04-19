@@ -102,6 +102,7 @@ export default function DemoPage() {
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Produkta nosaukums</TableHead>
+                    <TableHead>Demo testē</TableHead>
                     <TableHead>Atrašanās vieta</TableHead>
                     <TableHead>Komentārs</TableHead>
                     <TableHead className="w-10"></TableHead>
@@ -133,13 +134,22 @@ export default function DemoPage() {
                             </span>
                           </div>
                         </TableCell>
+                        <TableCell className="text-graphite-700 text-[12.5px]">
+                          {d.tester ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-50 border border-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                              {d.tester}
+                            </span>
+                          ) : (
+                            <span className="text-graphite-300">—</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-graphite-600">
                           <div className="flex items-center gap-1.5 text-[12.5px]">
                             <MapPin className="h-3 w-3 text-graphite-400" />
                             <span className="line-clamp-1">{d.location}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-graphite-600 max-w-[400px]">
+                        <TableCell className="text-graphite-600 max-w-[320px]">
                           <span className="line-clamp-1 text-[12.5px]">
                             {d.comment || (
                               <span className="text-graphite-300">—</span>
@@ -212,6 +222,18 @@ export default function DemoPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 pt-2">
+                {detail.tester && (
+                  <div>
+                    <Label className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-medium">
+                      Demo testē
+                    </Label>
+                    <p className="mt-1.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-50 border border-violet-100 px-2 py-0.5 text-[12px] font-medium text-violet-700">
+                        {detail.tester}
+                      </span>
+                    </p>
+                  </div>
+                )}
                 <div>
                   <Label className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-medium">
                     Komentārs
@@ -298,6 +320,7 @@ function DemoModal({
   onSubmit: (data: Omit<DemoProduct, "id" | "createdAt">) => void;
 }) {
   const [name, setName] = useState("");
+  const [tester, setTester] = useState("");
   const [location, setLocation] = useState("");
   const [comment, setComment] = useState("");
 
@@ -305,10 +328,12 @@ function DemoModal({
     if (!open) return;
     if (editing) {
       setName(editing.name);
+      setTester(editing.tester);
       setLocation(editing.location);
       setComment(editing.comment);
     } else {
       setName("");
+      setTester("");
       setLocation("");
       setComment("");
     }
@@ -318,6 +343,7 @@ function DemoModal({
     if (!name.trim()) return;
     onSubmit({
       name: name.trim(),
+      tester: tester.trim(),
       location: location.trim(),
       comment: comment.trim(),
     });
@@ -345,6 +371,14 @@ function DemoModal({
               onChange={(e) => setName(e.target.value)}
               placeholder="piem. Mosphera Demo #1"
               autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Demo testē</Label>
+            <Input
+              value={tester}
+              onChange={(e) => setTester(e.target.value)}
+              placeholder="piem. Policija, NMPD, Armija, klients…"
             />
           </div>
           <div className="space-y-1.5">

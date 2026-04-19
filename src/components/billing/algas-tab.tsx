@@ -140,6 +140,10 @@ export function AlgasTab() {
                       <SelectContent>
                         <SelectItem value="darba_alga">Darba alga</SelectItem>
                         <SelectItem value="atvalinajums">Atvaļinājums</SelectItem>
+                        <SelectItem value="avansa_norekini">
+                          Avansa norēķini
+                        </SelectItem>
+                        <SelectItem value="piemaksa">Piemaksa</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
