@@ -397,7 +397,7 @@ export function IzejosieTab() {
                           title="Skaidrojums grāmatvedībai"
                         >
                           <Sparkles className="h-3 w-3" />
-                          {hasMeta ? "Labot" : "Skaidrojums"}
+                          {hasMeta ? "Labot skaidrojumu" : "Skaidrojums"}
                         </Button>
                         <Button
                           variant="ghost"
