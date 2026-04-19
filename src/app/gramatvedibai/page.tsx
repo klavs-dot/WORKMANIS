@@ -320,37 +320,43 @@ function EksportiTab() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <ExportCard
             title="Izejošie rēķini"
-            description={`${filtered.out.length} izejošie rēķini periodā · PDF faili + Excel kopsavilkums`}
+            description="Mūsu izrakstītie rēķini klientiem · PDF faili + Excel kopsavilkums"
+            count={filtered.out.length}
             icon={ArrowUpFromLine}
             tone="emerald"
           />
           <ExportCard
             title="Ienākošie rēķini"
-            description={`${filtered.inc.length} ienākošie rēķini periodā · PDF faili + Excel kopsavilkums`}
+            description="Saņemtie rēķini no piegādātājiem · PDF faili + Excel kopsavilkums"
+            count={filtered.inc.length}
             icon={ArrowDownToLine}
             tone="red"
           />
           <ExportCard
             title="Rēķinu skaidrojumi"
-            description="Grāmatvedības skaidrojumi un kategorijas — ar saites uz attiecīgajiem rēķiniem."
+            description="Grāmatvedības skaidrojumi un kategorijas — ar saitēm uz attiecīgajiem rēķiniem"
+            count={filtered.out.filter((p) => !!p.accountingMeta).length}
             icon={FileSpreadsheet}
             tone="violet"
           />
           <ExportCard
             title="Ceļa zīmes"
-            description="Visas ceļa zīmes periodā ar maršrutiem un atskaitēm."
+            description="Ceļa zīmes ar maršrutiem un atskaitēm"
+            count={0}
             icon={Route}
             tone="sky"
           />
           <ExportCard
             title="Komandējumi un rīkojumi"
-            description="Komandējumu rīkojumi, citi rīkojumi un to pielikumi."
+            description="Komandējumu rīkojumi, citi rīkojumi un to pielikumi"
+            count={0}
             icon={ClipboardList}
             tone="amber"
           />
           <ExportCard
             title="Līgumi"
-            description="Visi periodā parakstītie vai aktuālie līgumi — klientu, piegādātāju, darbinieku."
+            description="Aktuālie un periodā parakstītie līgumi — klientu, piegādātāju, darbinieku"
+            count={0}
             icon={FileSignature}
             tone="graphite"
           />
@@ -394,18 +400,18 @@ function PrimaryExportCard({
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-[15px] font-semibold tracking-tight">
-            Lejupielādēt visus rēķinus
+            Lejupielādēt visus dokumentus atlasītajā periodā
           </h3>
           <p className="mt-0.5 text-[12.5px] text-white/70">
             {count > 0 ? (
               <>
-                {count} rēķin{count === 1 ? "s" : "i"} periodā ·{" "}
-                {periodLabel.toLowerCase()}. ZIP arhīvs ar PDF failiem, Excel
-                kopsavilkumu un attīstības komentāriem.
+                {count} dokument{count === 1 ? "s" : "i"} periodā ·{" "}
+                {periodLabel.toLowerCase()}. ZIP arhīvs ar visiem PDF
+                failiem, Excel kopsavilkumu un grāmatvedības skaidrojumiem.
               </>
             ) : (
               <>
-                Nav rēķinu atlasītajā periodā ({periodLabel.toLowerCase()}).
+                Nav dokumentu atlasītajā periodā ({periodLabel.toLowerCase()}).
                 Izvēlies citu laika diapazonu.
               </>
             )}
@@ -475,18 +481,20 @@ function StatPill({
 function ExportCard({
   title,
   description,
+  count,
   icon: Icon,
   tone,
 }: {
   title: string;
   description: string;
+  count: number;
   icon: LucideIcon;
   tone: "violet" | "graphite" | "emerald" | "sky" | "amber" | "red";
 }) {
   const [state, setState] = useState<"idle" | "running" | "done">("idle");
 
   const run = () => {
-    if (state !== "idle") return;
+    if (state !== "idle" || count === 0) return;
     setState("running");
     setTimeout(() => {
       setState("done");
@@ -503,9 +511,16 @@ function ExportCard({
     red: "bg-red-50 text-red-600 border-red-100",
   };
 
+  const isEmpty = count === 0;
+
   return (
     <Card
-      className="p-4 cursor-pointer transition-all hover:shadow-soft-sm hover:border-graphite-300"
+      className={cn(
+        "p-4 transition-all",
+        isEmpty
+          ? "opacity-60 cursor-not-allowed"
+          : "cursor-pointer hover:shadow-soft-sm hover:border-graphite-300"
+      )}
       onClick={run}
     >
       <div className="flex items-start gap-3">
@@ -524,6 +539,19 @@ function ExportCard({
           <p className="mt-0.5 text-[11.5px] text-graphite-500 leading-relaxed">
             {description}
           </p>
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium tabular">
+            <span className="text-graphite-400 uppercase tracking-wider text-[9.5px] font-semibold">
+              Failu daudzums:
+            </span>
+            <span
+              className={cn(
+                "tabular",
+                isEmpty ? "text-graphite-400" : "text-graphite-900"
+              )}
+            >
+              {count}
+            </span>
+          </div>
         </div>
         <div className="shrink-0">
           {state === "running" && (
@@ -533,7 +561,12 @@ function ExportCard({
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
           )}
           {state === "idle" && (
-            <Download className="h-3.5 w-3.5 text-graphite-400" />
+            <Download
+              className={cn(
+                "h-3.5 w-3.5",
+                isEmpty ? "text-graphite-300" : "text-graphite-400"
+              )}
+            />
           )}
         </div>
       </div>
