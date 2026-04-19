@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Download,
@@ -18,6 +18,11 @@ import {
   Calculator,
   ArrowUpFromLine,
   ArrowDownToLine,
+  Plus,
+  Sun,
+  UserPlus,
+  UserMinus,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
@@ -26,6 +31,7 @@ import { EmptyState } from "@/components/business/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/primitives";
 import {
   Select,
@@ -34,13 +40,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useBilling } from "@/lib/billing-store";
-import { formatCurrency, cn } from "@/lib/utils";
+import {
+  useOrders,
+  orderTypeLabel,
+  shortOrderTypeLabel,
+  type Order,
+  type OrderType,
+} from "@/lib/orders-store";
+import { useEmployees } from "@/lib/employees-store";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
 type TabKey =
   | "eksporti"
   | "celazīmes"
-  | "komandejumi"
   | "rikojumi"
   | "zinojumi"
   | "ligumi"
@@ -53,7 +81,6 @@ const tabs: {
 }[] = [
   { key: "eksporti", label: "Eksporti", icon: Download },
   { key: "celazīmes", label: "Ceļa zīmes", icon: Route },
-  { key: "komandejumi", label: "Komandējumi", icon: Plane },
   { key: "rikojumi", label: "Rīkojumi", icon: ClipboardList },
   { key: "zinojumi", label: "Ziņojumi", icon: MessageSquareText },
   { key: "ligumi", label: "Līgumi", icon: FileSignature },
@@ -131,20 +158,7 @@ export default function GramatvedibaiPage() {
                 icon={Route}
               />
             )}
-            {tab === "komandejumi" && (
-              <PlaceholderTab
-                title="Komandējumi"
-                description="Komandējumu rīkojumi, atskaites un avansa norēķini"
-                icon={Plane}
-              />
-            )}
-            {tab === "rikojumi" && (
-              <PlaceholderTab
-                title="Rīkojumi"
-                description="Rīkojumu reģistrs — personāla, finanšu, saimnieciskie"
-                icon={ClipboardList}
-              />
-            )}
+            {tab === "rikojumi" && <RikojumiTab />}
             {tab === "zinojumi" && (
               <PlaceholderTab
                 title="Ziņojumi"
@@ -657,4 +671,590 @@ function computeRange(
   }
 
   return null;
+}
+
+// ============================================================
+// RIKOJUMI TAB — full CRUD with type-specific modal
+// ============================================================
+
+function RikojumiTab() {
+  const { orders, addOrder, updateOrder, deleteOrder } = useOrders();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Order | null>(null);
+  const [toDelete, setToDelete] = useState<Order | null>(null);
+
+  const openNew = () => {
+    setEditing(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (o: Order) => {
+    setEditing(o);
+    setModalOpen(true);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
+            Rīkojumi
+          </h3>
+          <p className="mt-0.5 text-[12.5px] text-graphite-500">
+            {orders.length === 0
+              ? "Vēl nav neviena rīkojuma"
+              : `${orders.length} rīkojum${orders.length === 1 ? "s" : "i"} reģistrā`}
+          </p>
+        </div>
+        <Button size="sm" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" />
+          Jauns rīkojums
+        </Button>
+      </div>
+
+      {orders.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={ClipboardList}
+            title="Vēl nav neviena rīkojuma"
+            description="Pievieno rīkojumu par komandējumu, atvaļinājumu vai jebkuru citu lietvedības rīkojumu."
+            action={
+              <Button size="sm" onClick={openNew}>
+                <Plus className="h-3.5 w-3.5" />
+                Pievienot rīkojumu
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Nosaukums</TableHead>
+                <TableHead>Tips</TableHead>
+                <TableHead>Datums</TableHead>
+                <TableHead>Detaļas</TableHead>
+                <TableHead className="w-10"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <AnimatePresence initial={false}>
+                {orders.map((o) => (
+                  <motion.tr
+                    key={o.id}
+                    layout
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="border-b border-graphite-100 hover:bg-graphite-50/60 cursor-pointer"
+                    onClick={() => openEdit(o)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-graphite-50 text-graphite-700 border border-graphite-100">
+                          <OrderTypeIcon type={o.type} />
+                        </div>
+                        <span className="font-medium text-graphite-900">
+                          {o.title}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <OrderTypeBadge type={o.type} />
+                    </TableCell>
+                    <TableCell className="text-graphite-600 tabular text-[12.5px]">
+                      {o.issueDate ? formatDate(o.issueDate) : (
+                        <span className="text-graphite-300">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-graphite-600 max-w-[320px]">
+                      <OrderDetailsSummary order={o} />
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setToDelete(o)}
+                        title="Dzēst rīkojumu"
+                      >
+                        <X className="h-3.5 w-3.5 text-graphite-400" />
+                      </Button>
+                    </TableCell>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      <OrderModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        editing={editing}
+        onSubmit={(data) => {
+          if (editing) updateOrder(editing.id, data);
+          else addOrder(data);
+          setModalOpen(false);
+        }}
+      />
+
+      <Dialog
+        open={!!toDelete}
+        onOpenChange={(o) => !o && setToDelete(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Dzēst rīkojumu?</DialogTitle>
+            <DialogDescription>
+              Vai tiešām vēlies dzēst rīkojumu{" "}
+              <span className="font-medium text-graphite-900">
+                {toDelete?.title}
+              </span>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setToDelete(null)}
+            >
+              Atcelt
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (toDelete) deleteOrder(toDelete.id);
+                setToDelete(null);
+              }}
+            >
+              Dzēst
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------- Order type icon + badge ----------
+
+function OrderTypeIcon({ type }: { type: OrderType }) {
+  const Icon =
+    type === "komandejums"
+      ? Plane
+      : type === "atvalinajums"
+        ? Sun
+        : type === "darba_piesakums"
+          ? UserPlus
+          : type === "atlaisana"
+            ? UserMinus
+            : ClipboardList;
+  return <Icon className="h-3 w-3" />;
+}
+
+function OrderTypeBadge({ type }: { type: OrderType }) {
+  const tones: Record<OrderType, string> = {
+    komandejums: "bg-sky-50 text-sky-700 border-sky-100",
+    atvalinajums: "bg-amber-50 text-amber-700 border-amber-100",
+    darba_piesakums: "bg-emerald-50 text-emerald-700 border-emerald-100",
+    atlaisana: "bg-red-50 text-red-700 border-red-100",
+    cits: "bg-graphite-50 text-graphite-700 border-graphite-200",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold",
+        tones[type]
+      )}
+    >
+      {shortOrderTypeLabel(type)}
+    </span>
+  );
+}
+
+function OrderDetailsSummary({ order }: { order: Order }) {
+  if (order.type === "komandejums") {
+    if (!order.tripStartDate || !order.tripEndDate) {
+      return <span className="text-graphite-300 text-[12px]">Nav datu</span>;
+    }
+    return (
+      <span className="text-[12px] tabular">
+        {order.employeeName && (
+          <span className="text-graphite-700">{order.employeeName} · </span>
+        )}
+        <span className="text-graphite-600">
+          {order.destinationFrom || "—"} → {order.destinationTo || "—"}
+        </span>
+        <span className="text-graphite-400">
+          {" "}
+          ({formatDate(order.tripStartDate)} – {formatDate(order.tripEndDate)})
+        </span>
+      </span>
+    );
+  }
+  if (order.type === "atvalinajums") {
+    if (!order.vacationStartDate || !order.vacationEndDate) {
+      return <span className="text-graphite-300 text-[12px]">Nav datu</span>;
+    }
+    return (
+      <span className="text-[12px] tabular">
+        {order.employeeName && (
+          <span className="text-graphite-700">{order.employeeName} · </span>
+        )}
+        <span className="text-graphite-600">
+          {formatDate(order.vacationStartDate)} – {formatDate(order.vacationEndDate)}
+        </span>
+        {order.vacationPayTiming && (
+          <span className="text-graphite-400">
+            {" · "}izmaksāt {order.vacationPayTiming === "before" ? "pirms" : "pēc"}
+          </span>
+        )}
+      </span>
+    );
+  }
+  return (
+    <span className="line-clamp-1 text-[12px] text-graphite-500">
+      {order.notes || <span className="text-graphite-300">—</span>}
+    </span>
+  );
+}
+
+// ============================================================
+// Order modal — type-specific fields
+// ============================================================
+
+function OrderModal({
+  open,
+  onOpenChange,
+  editing,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  editing: Order | null;
+  onSubmit: (data: Omit<Order, "id" | "createdAt">) => void;
+}) {
+  const { employees } = useEmployees();
+
+  const [type, setType] = useState<OrderType>("komandejums");
+  const [title, setTitle] = useState("");
+  const [issueDate, setIssueDate] = useState("");
+  const [employeeId, setEmployeeId] = useState<string>("");
+
+  // Trip
+  const [destinationFrom, setDestinationFrom] = useState("");
+  const [destinationTo, setDestinationTo] = useState("");
+  const [tripStartDate, setTripStartDate] = useState("");
+  const [tripEndDate, setTripEndDate] = useState("");
+
+  // Vacation
+  const [vacationStartDate, setVacationStartDate] = useState("");
+  const [vacationEndDate, setVacationEndDate] = useState("");
+  const [vacationPayTiming, setVacationPayTiming] = useState<"before" | "after">(
+    "before"
+  );
+
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      setType(editing.type);
+      setTitle(editing.title);
+      setIssueDate(editing.issueDate);
+      setEmployeeId(editing.employeeId ?? "");
+      setDestinationFrom(editing.destinationFrom ?? "");
+      setDestinationTo(editing.destinationTo ?? "");
+      setTripStartDate(editing.tripStartDate ?? "");
+      setTripEndDate(editing.tripEndDate ?? "");
+      setVacationStartDate(editing.vacationStartDate ?? "");
+      setVacationEndDate(editing.vacationEndDate ?? "");
+      setVacationPayTiming(editing.vacationPayTiming ?? "before");
+      setNotes(editing.notes ?? "");
+    } else {
+      const today = new Date().toISOString().slice(0, 10);
+      setType("komandejums");
+      setTitle("");
+      setIssueDate(today);
+      setEmployeeId("");
+      setDestinationFrom("");
+      setDestinationTo("");
+      setTripStartDate("");
+      setTripEndDate("");
+      setVacationStartDate("");
+      setVacationEndDate("");
+      setVacationPayTiming("before");
+      setNotes("");
+    }
+  }, [open, editing]);
+
+  const submit = () => {
+    if (!title.trim() || !issueDate) return;
+    const employee = employees.find((e) => e.id === employeeId);
+    const base = {
+      type,
+      title: title.trim(),
+      issueDate,
+      employeeId: employee?.id,
+      employeeName: employee
+        ? `${employee.firstName} ${employee.lastName}`
+        : undefined,
+      notes: notes.trim() || undefined,
+    } as Omit<Order, "id" | "createdAt">;
+
+    if (type === "komandejums") {
+      onSubmit({
+        ...base,
+        destinationFrom: destinationFrom.trim() || undefined,
+        destinationTo: destinationTo.trim() || undefined,
+        tripStartDate: tripStartDate || undefined,
+        tripEndDate: tripEndDate || undefined,
+      });
+    } else if (type === "atvalinajums") {
+      onSubmit({
+        ...base,
+        vacationStartDate: vacationStartDate || undefined,
+        vacationEndDate: vacationEndDate || undefined,
+        vacationPayTiming,
+      });
+    } else {
+      onSubmit(base);
+    }
+  };
+
+  const valid = title.trim().length > 0 && issueDate.length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {editing ? "Labot rīkojumu" : "Jauns rīkojums"}
+          </DialogTitle>
+          <DialogDescription>
+            Izvēlies rīkojuma tipu un aizpildi atbilstošos datus
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-2">
+          {/* Type */}
+          <div className="space-y-1.5">
+            <Label>
+              Rīkojuma tips <span className="text-red-500">*</span>
+            </Label>
+            <Select value={type} onValueChange={(v) => setType(v as OrderType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="komandejums">
+                  {orderTypeLabel("komandejums")}
+                </SelectItem>
+                <SelectItem value="atvalinajums">
+                  {orderTypeLabel("atvalinajums")}
+                </SelectItem>
+                <SelectItem value="darba_piesakums">
+                  {orderTypeLabel("darba_piesakums")}
+                </SelectItem>
+                <SelectItem value="atlaisana">
+                  {orderTypeLabel("atlaisana")}
+                </SelectItem>
+                <SelectItem value="cits">{orderTypeLabel("cits")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Common fields */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>
+                Nosaukums <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="piem. Komandējums uz Berlīni — IDEX 2026"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                Rīkojuma datums <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                type="date"
+                value={issueDate}
+                onChange={(e) => setIssueDate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Employee picker for trip / vacation */}
+          {(type === "komandejums" || type === "atvalinajums" ||
+            type === "darba_piesakums" || type === "atlaisana") && (
+            <div className="space-y-1.5">
+              <Label>Darbinieks</Label>
+              {employees.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-graphite-200 px-3 py-2.5 text-[12px] text-graphite-500">
+                  Vēl nav pievienots neviens darbinieks. Pievieno tos sadaļā{" "}
+                  <span className="font-medium text-graphite-700">
+                    Darbinieki
+                  </span>
+                  .
+                </div>
+              ) : (
+                <Select value={employeeId} onValueChange={setEmployeeId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Izvēlies darbinieku…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.firstName} {e.lastName}
+                        {e.position && (
+                          <span className="text-graphite-400 text-[11px]">
+                            {" · "}
+                            {e.position}
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
+          {/* Type-specific section: KOMANDEJUMS */}
+          {type === "komandejums" && (
+            <div className="rounded-lg border border-sky-100 bg-sky-50/40 p-3 space-y-3">
+              <div className="text-[10.5px] uppercase tracking-wider text-sky-700 font-semibold flex items-center gap-1.5">
+                <Plane className="h-3 w-3" />
+                Komandējuma detaļas
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>No vietas</Label>
+                  <Input
+                    value={destinationFrom}
+                    onChange={(e) => setDestinationFrom(e.target.value)}
+                    placeholder="piem. Liepāja"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Uz vietu</Label>
+                  <Input
+                    value={destinationTo}
+                    onChange={(e) => setDestinationTo(e.target.value)}
+                    placeholder="piem. Berlīne"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Sākuma datums (ieskaitot)</Label>
+                  <Input
+                    type="date"
+                    value={tripStartDate}
+                    onChange={(e) => setTripStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Beigu datums (ieskaitot)</Label>
+                  <Input
+                    type="date"
+                    value={tripEndDate}
+                    onChange={(e) => setTripEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Type-specific section: ATVALINAJUMS */}
+          {type === "atvalinajums" && (
+            <div className="rounded-lg border border-amber-100 bg-amber-50/40 p-3 space-y-3">
+              <div className="text-[10.5px] uppercase tracking-wider text-amber-700 font-semibold flex items-center gap-1.5">
+                <Sun className="h-3 w-3" />
+                Atvaļinājuma detaļas
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Sākuma datums (ieskaitot)</Label>
+                  <Input
+                    type="date"
+                    value={vacationStartDate}
+                    onChange={(e) => setVacationStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Beigu datums (ieskaitot)</Label>
+                  <Input
+                    type="date"
+                    value={vacationEndDate}
+                    onChange={(e) => setVacationEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Atvaļinājuma maksas izmaksas laiks</Label>
+                <div className="inline-flex rounded-lg bg-white border border-amber-200 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setVacationPayTiming("before")}
+                    className={cn(
+                      "px-3 py-1 text-[12px] font-medium rounded-md transition-colors",
+                      vacationPayTiming === "before"
+                        ? "bg-amber-600 text-white"
+                        : "text-amber-700 hover:bg-amber-50"
+                    )}
+                  >
+                    Pirms atvaļinājuma
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVacationPayTiming("after")}
+                    className={cn(
+                      "px-3 py-1 text-[12px] font-medium rounded-md transition-colors",
+                      vacationPayTiming === "after"
+                        ? "bg-amber-600 text-white"
+                        : "text-amber-700 hover:bg-amber-50"
+                    )}
+                  >
+                    Pēc atvaļinājuma
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <Label>Piezīmes</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Papildinformācija, mērķis, paskaidrojumi…"
+              rows={2}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t border-graphite-100 mt-4">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            <X className="h-3.5 w-3.5" />
+            Atcelt
+          </Button>
+          <Button size="sm" onClick={submit} disabled={!valid}>
+            Saglabāt
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
