@@ -90,6 +90,13 @@ export default function ClientDetailPage({
   const [tab, setTab] = useState<TabKey>("rekini");
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [templateToApply, setTemplateToApply] =
+    useState<InvoiceTemplate | null>(null);
+
+  const openInvoiceModal = (tpl?: InvoiceTemplate) => {
+    setTemplateToApply(tpl ?? null);
+    setInvoiceModalOpen(true);
+  };
 
   const summary = useMemo(
     () => (client ? summaryForClient(client, incoming) : null),
@@ -212,7 +219,7 @@ export default function ClientDetailPage({
                     <Pencil className="h-3.5 w-3.5" />
                     Rediģēt
                   </Button>
-                  <Button size="sm" onClick={() => setInvoiceModalOpen(true)}>
+                  <Button size="sm" onClick={() => openInvoiceModal()}>
                     <Plus className="h-3.5 w-3.5" />
                     Izrakstīt rēķinu
                   </Button>
@@ -343,7 +350,7 @@ export default function ClientDetailPage({
             {tab === "rekini" && (
               <InvoicesTab
                 invoices={clientInvoices}
-                onIssueInvoice={() => setInvoiceModalOpen(true)}
+                onIssueInvoice={() => openInvoiceModal()}
               />
             )}
             {tab === "maksajumi" && (
@@ -355,9 +362,9 @@ export default function ClientDetailPage({
             {tab === "paraugi" && (
               <TemplatesTab
                 templates={clientTemplates}
-                onUse={() => setInvoiceModalOpen(true)}
+                onUse={(tpl) => openInvoiceModal(tpl)}
                 onDelete={deleteTemplate}
-                onCreate={() => setInvoiceModalOpen(true)}
+                onCreate={() => openInvoiceModal()}
               />
             )}
             {tab === "piezimes" && (
@@ -372,7 +379,12 @@ export default function ClientDetailPage({
         onOpenChange={setEditModalOpen}
         editing={client}
       />
-      <InvoiceModal open={invoiceModalOpen} onOpenChange={setInvoiceModalOpen} />
+      <InvoiceModal
+        open={invoiceModalOpen}
+        onOpenChange={setInvoiceModalOpen}
+        initialClient={client}
+        initialTemplate={templateToApply}
+      />
     </AppShell>
   );
 }
@@ -597,7 +609,7 @@ function TemplatesTab({
   onCreate,
 }: {
   templates: InvoiceTemplate[];
-  onUse: () => void;
+  onUse: (tpl: InvoiceTemplate) => void;
   onDelete: (id: string) => void;
   onCreate: () => void;
 }) {
@@ -671,7 +683,7 @@ function TemplatesTab({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={onUse}>
+                    <DropdownMenuItem onSelect={() => onUse(tpl)}>
                       <Check className="h-3.5 w-3.5" />
                       Lietot
                     </DropdownMenuItem>
@@ -704,7 +716,7 @@ function TemplatesTab({
                   variant="success-outline"
                   size="sm"
                   className="w-full"
-                  onClick={onUse}
+                  onClick={() => onUse(tpl)}
                 >
                   Lietot paraugu
                 </Button>

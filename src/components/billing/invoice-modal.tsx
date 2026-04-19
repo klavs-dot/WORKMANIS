@@ -49,6 +49,10 @@ interface InvoiceModalProps {
   onOpenChange: (open: boolean) => void;
   /** When editing, pass invoice id; number is preserved */
   editingNumber?: string;
+  /** Pre-select client when opening (e.g. from client detail page) */
+  initialClient?: Client | null;
+  /** Pre-apply a template when opening (e.g. from templates tab) */
+  initialTemplate?: InvoiceTemplate | null;
 }
 
 function addDays(date: string, days: number): string {
@@ -65,6 +69,8 @@ export function InvoiceModal({
   open,
   onOpenChange,
   editingNumber,
+  initialClient,
+  initialTemplate,
 }: InvoiceModalProps) {
   const { addIncoming } = useBilling();
   const { templatesForClient, addTemplate } = useClients();
@@ -103,20 +109,41 @@ export function InvoiceModal({
   useEffect(() => {
     if (!open) return;
     if (!isEditing) {
-      setClient(null);
-      setLanguage("lv");
-      setKind("pakalpojums");
-      setSvcDescription("");
-      setSvcAmount(0);
-      setSvcVatPercent(21);
-      setLines([createEmptyLine()]);
-      setReference("");
+      setClient(initialClient ?? null);
+      setLanguage(initialTemplate?.language ?? "lv");
+      if (initialTemplate) {
+        setKind(initialTemplate.content.kind);
+        if (initialTemplate.content.kind === "pakalpojums") {
+          setSvcDescription(initialTemplate.content.description);
+          setSvcAmount(initialTemplate.content.amount);
+          setSvcVatPercent(initialTemplate.content.vatPercent);
+          setLines([createEmptyLine()]);
+        } else {
+          setLines(
+            initialTemplate.content.lines.map((l) => ({
+              ...l,
+              id: Math.random().toString(36).slice(2, 10),
+            }))
+          );
+          setSvcDescription("");
+          setSvcAmount(0);
+          setSvcVatPercent(21);
+        }
+        setReference(initialTemplate.reference ?? "");
+      } else {
+        setKind("pakalpojums");
+        setSvcDescription("");
+        setSvcAmount(0);
+        setSvcVatPercent(21);
+        setLines([createEmptyLine()]);
+        setReference("");
+      }
       setDate(todayISO());
       setDueDate(addDays(todayISO(), 5));
       setTemplateKeyword("");
     }
     setTplSavedToast(false);
-  }, [open, isEditing]);
+  }, [open, isEditing, initialClient, initialTemplate]);
 
   // Auto-update dueDate when date changes (+5 days from date)
   useEffect(() => {
