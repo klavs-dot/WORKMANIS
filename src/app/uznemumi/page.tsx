@@ -143,14 +143,15 @@ function CompanyRow({
     >
       <Card
         className={cn(
-          "px-3.5 flex items-center justify-between gap-4 transition-all h-[68px]",
+          "px-3.5 grid items-center gap-4 transition-all h-[68px]",
+          "grid-cols-[1fr_auto_1fr]",
           isActive
             ? "active-company-pulse shadow-soft-sm"
             : "hover:border-graphite-300"
         )}
       >
-        {/* ============ LEFT GROUP: logo + name ============ */}
-        <div className="flex items-center gap-3.5 min-w-0 flex-shrink">
+        {/* ============ LEFT COLUMN: logo + name ============ */}
+        <div className="flex items-center gap-3.5 min-w-0">
           {company.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -168,7 +169,7 @@ function CompanyRow({
               {initials}
             </div>
           )}
-          <div className="min-w-0 max-w-[260px] min-h-[40px] flex flex-col justify-center">
+          <div className="min-w-0 min-h-[40px] flex flex-col justify-center">
             <p className="text-[14.5px] font-semibold text-graphite-900 truncate leading-tight">
               {company.name}
             </p>
@@ -182,28 +183,31 @@ function CompanyRow({
           </div>
         </div>
 
-        {/* ============ CENTER: primary action — fixed dimensions
-              so the center button sits identical across all rows ============ */}
-        {isActive ? (
-          <div
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white text-[13.5px] font-semibold shadow-soft-sm shrink-0 h-10 w-[140px]"
-            aria-label="Šis uzņēmums ir izvēlēts kā aktīvs"
-          >
-            <Check className="h-4 w-4" strokeWidth={2.75} />
-            Izvēlēts
-          </div>
-        ) : (
-          <button
-            onClick={onSelectActive}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-graphite-900 text-white text-[13.5px] font-semibold shadow-soft-xs hover:bg-graphite-800 active:scale-[0.98] transition-all shrink-0 h-10 w-[140px]"
-          >
-            <Check className="h-4 w-4" strokeWidth={2.5} />
-            Izvēlēties
-          </button>
-        )}
+        {/* ============ CENTER COLUMN: primary action — fixed dimensions
+              + grid 'auto' column means it lives in the dead-center of
+              the row, regardless of left/right column widths ============ */}
+        <div className="justify-self-center">
+          {isActive ? (
+            <div
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white text-[13.5px] font-semibold shadow-soft-sm h-10 w-[140px]"
+              aria-label="Šis uzņēmums ir izvēlēts kā aktīvs"
+            >
+              <Check className="h-4 w-4" strokeWidth={2.75} />
+              Izvēlēts
+            </div>
+          ) : (
+            <button
+              onClick={onSelectActive}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-graphite-900 text-white text-[13.5px] font-semibold shadow-soft-xs hover:bg-graphite-800 active:scale-[0.98] transition-all h-10 w-[140px]"
+            >
+              <Check className="h-4 w-4" strokeWidth={2.5} />
+              Izvēlēties
+            </button>
+          )}
+        </div>
 
-        {/* ============ RIGHT GROUP: secondary actions ============ */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* ============ RIGHT COLUMN: secondary actions ============ */}
+        <div className="flex items-center gap-1 justify-self-end">
           {!filled && (
             <span
               className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium border border-amber-100 mr-1"
