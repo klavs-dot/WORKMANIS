@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Download,
   FileSpreadsheet,
+  FileText,
   Calendar,
   Sparkles,
   CheckCircle2,
@@ -22,6 +23,7 @@ import {
   Sun,
   UserPlus,
   UserMinus,
+  AlertCircle,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -64,6 +66,13 @@ import {
   type OrderType,
 } from "@/lib/orders-store";
 import { useEmployees } from "@/lib/employees-store";
+import {
+  useDocuments,
+  documentTypeLabel,
+  type BusinessDocument,
+  type DocumentType,
+} from "@/lib/documents-store";
+import { DocumentModal } from "@/components/business/document-modal";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
 type TabKey =
@@ -159,13 +168,7 @@ export default function GramatvedibaiPage() {
               />
             )}
             {tab === "rikojumi" && <RikojumiTab />}
-            {tab === "zinojumi" && (
-              <PlaceholderTab
-                title="Ziņojumi"
-                description="Paskaidrojumi, iesniegumi, ziņojumi"
-                icon={MessageSquareText}
-              />
-            )}
+            {tab === "zinojumi" && <ZinojumiTab />}
             {tab === "ligumi" && (
               <PlaceholderTab
                 title="Līgumi"
@@ -585,6 +588,225 @@ function ExportCard({
         </div>
       </div>
     </Card>
+  );
+}
+
+// ============================================================
+// ZINOJUMI TAB — applications, statements, notices with PDF generation
+// ============================================================
+
+function ZinojumiTab() {
+  const { documents, addDocument, updateDocument, deleteDocument } =
+    useDocuments();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<BusinessDocument | null>(null);
+  const [toDelete, setToDelete] = useState<BusinessDocument | null>(null);
+
+  const openNew = () => {
+    setEditing(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (d: BusinessDocument) => {
+    setEditing(d);
+    setModalOpen(true);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
+            Ziņojumi
+          </h3>
+          <p className="mt-0.5 text-[12.5px] text-graphite-500">
+            {documents.length === 0
+              ? "Iesniegumi, paskaidrojumi un ziņojumi"
+              : `${documents.length} dokument${documents.length === 1 ? "s" : "i"} reģistrā`}
+          </p>
+        </div>
+        <Button size="sm" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" />
+          Jauns ziņojums
+        </Button>
+      </div>
+
+      {documents.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={MessageSquareText}
+            title="Vēl nav neviena dokumenta"
+            description="Izveido iesniegumu, paskaidrojumu vai ziņojumu ar automātisku PDF ģenerēšanu un izvēli starp LAT/ENG valodām."
+            action={
+              <Button size="sm" onClick={openNew}>
+                <Plus className="h-3.5 w-3.5" />
+                Jauns ziņojums
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Nosaukums</TableHead>
+                <TableHead>Tips</TableHead>
+                <TableHead>Datums</TableHead>
+                <TableHead>No → Adresēts</TableHead>
+                <TableHead className="w-10"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <AnimatePresence initial={false}>
+                {documents.map((d) => (
+                  <motion.tr
+                    key={d.id}
+                    layout
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="border-b border-graphite-100 hover:bg-graphite-50/60 cursor-pointer"
+                    onClick={() => openEdit(d)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-graphite-50 text-graphite-700 border border-graphite-100">
+                          <DocumentTypeIcon type={d.type} />
+                        </div>
+                        <div className="flex flex-col leading-tight min-w-0">
+                          <span className="font-medium text-graphite-900 truncate">
+                            {d.title}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wider text-graphite-400 font-semibold mt-0.5">
+                            {d.language === "lv" ? "LAT" : "ENG"}
+                            {!d.hasPhysicalSignature && (
+                              <span className="ml-1.5 text-violet-500">
+                                · e-paraksts
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <DocumentTypeBadge type={d.type} />
+                    </TableCell>
+                    <TableCell className="text-graphite-600 tabular text-[12.5px]">
+                      {d.documentDate ? (
+                        formatDate(d.documentDate)
+                      ) : (
+                        <span className="text-graphite-300">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-graphite-600 max-w-[320px]">
+                      <span className="text-[12px] truncate block">
+                        <span className="text-graphite-700">
+                          {d.sender.displayName}
+                        </span>
+                        <span className="text-graphite-400 mx-1">→</span>
+                        <span className="text-graphite-700">
+                          {d.recipient.displayName}
+                        </span>
+                      </span>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setToDelete(d)}
+                        title="Dzēst dokumentu"
+                      >
+                        <X className="h-3.5 w-3.5 text-graphite-400" />
+                      </Button>
+                    </TableCell>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
+      <DocumentModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        editing={editing}
+        onSubmit={(data) => {
+          if (editing) updateDocument(editing.id, data);
+          else addDocument(data);
+          setModalOpen(false);
+        }}
+      />
+
+      <Dialog
+        open={!!toDelete}
+        onOpenChange={(o) => !o && setToDelete(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Dzēst dokumentu?</DialogTitle>
+            <DialogDescription>
+              Vai tiešām vēlies dzēst dokumentu{" "}
+              <span className="font-medium text-graphite-900">
+                {toDelete?.title}
+              </span>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setToDelete(null)}
+            >
+              Atcelt
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (toDelete) deleteDocument(toDelete.id);
+                setToDelete(null);
+              }}
+            >
+              Dzēst
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ---------- Document type icon + badge ----------
+
+function DocumentTypeIcon({ type }: { type: DocumentType }) {
+  const Icon =
+    type === "iesniegums"
+      ? FileText
+      : type === "paskaidrojums"
+        ? AlertCircle
+        : MessageSquareText;
+  return <Icon className="h-3 w-3" />;
+}
+
+function DocumentTypeBadge({ type }: { type: DocumentType }) {
+  const tones: Record<DocumentType, string> = {
+    iesniegums: "bg-emerald-50 text-emerald-700 border-emerald-100",
+    paskaidrojums: "bg-amber-50 text-amber-700 border-amber-100",
+    zinojums: "bg-sky-50 text-sky-700 border-sky-100",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold",
+        tones[type]
+      )}
+    >
+      {documentTypeLabel(type, "lv")}
+    </span>
   );
 }
 

@@ -6,6 +6,7 @@ import { ClientsProvider } from "@/lib/clients-store";
 import { NetworkProvider } from "@/lib/network-store";
 import { EmployeesProvider } from "@/lib/employees-store";
 import { OrdersProvider } from "@/lib/orders-store";
+import { DocumentsProvider } from "@/lib/documents-store";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,7 +29,9 @@ export default function RootLayout({
               <ClientsProvider>
                 <NetworkProvider>
                   <EmployeesProvider>
-                    <OrdersProvider>{children}</OrdersProvider>
+                    <OrdersProvider>
+                      <DocumentsProvider>{children}</DocumentsProvider>
+                    </OrdersProvider>
                   </EmployeesProvider>
                 </NetworkProvider>
               </ClientsProvider>
