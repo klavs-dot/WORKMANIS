@@ -169,7 +169,7 @@ function CompanyRow({
         )}
 
         {/* Name + legal name */}
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 max-w-[280px]">
           <p className="text-[14.5px] font-semibold text-graphite-900 truncate">
             {company.name}
           </p>
@@ -182,6 +182,33 @@ function CompanyRow({
           </p>
         </div>
 
+        {/* Left spacer — pushes primary action to horizontal centre */}
+        <div className="flex-1" />
+
+        {/* PRIMARY ACTION — centered */}
+        {isActive ? (
+          <div
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white px-5 py-2 text-[13.5px] font-semibold shadow-soft-sm shrink-0"
+            aria-label="Šis uzņēmums ir izvēlēts kā aktīvs"
+          >
+            <Check className="h-4 w-4" strokeWidth={2.75} />
+            Izvēlēts
+          </div>
+        ) : (
+          <Button
+            variant="default"
+            size="default"
+            onClick={onSelectActive}
+            className="shrink-0"
+          >
+            <Check className="h-3.5 w-3.5" />
+            Izvēlēties
+          </Button>
+        )}
+
+        {/* Right spacer — balances the layout so the primary action sits in the card's horizontal centre */}
+        <div className="flex-1" />
+
         {/* Missing requisites warning (subtle) */}
         {!filled && (
           <span
@@ -193,7 +220,7 @@ function CompanyRow({
           </span>
         )}
 
-        {/* Actions */}
+        {/* Secondary actions (right side) */}
         <div className="flex items-center gap-1 shrink-0">
           {filled && (
             <>
@@ -234,22 +261,6 @@ function CompanyRow({
               </>
             )}
           </Button>
-
-          {/* Active slot: Izvēlēts (success, larger) vs Izvēlēties (black) */}
-          {isActive ? (
-            <div
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white px-4 py-2 text-[13px] font-semibold shadow-soft-xs"
-              aria-label="Šis uzņēmums ir izvēlēts kā aktīvs"
-            >
-              <Check className="h-4 w-4" strokeWidth={2.75} />
-              Izvēlēts
-            </div>
-          ) : (
-            <Button size="sm" onClick={onSelectActive}>
-              <Check className="h-3.5 w-3.5" />
-              Izvēlēties
-            </Button>
-          )}
         </div>
       </Card>
     </motion.div>
