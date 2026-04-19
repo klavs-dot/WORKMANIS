@@ -17,12 +17,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNotifications } from "@/lib/notifications";
 
 interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  badge?: string;
 }
 
 interface NavGroup {
@@ -43,7 +43,7 @@ const navGroups: NavGroup[] = [
   },
   {
     items: [
-      { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText, badge: "3" },
+      { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText },
       { href: "/gramatvedibai", label: "Grāmatvedībai & Lietvedībai", icon: Calculator },
       { href: "/aktivi", label: "Aktīvi", icon: Package },
       { href: "/darbinieki", label: "Darbinieki", icon: IdCard },
@@ -65,6 +65,15 @@ const bottomNav: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const notifications = useNotifications();
+
+  // Map href → notification count. Only non-zero values produce a badge.
+  const badgeFor = (href: string): number => {
+    if (href === "/rekini") return notifications.rekini;
+    if (href === "/darbinieki") return notifications.darbinieki;
+    if (href === "/aktivi") return notifications.aktivi;
+    return 0;
+  };
 
   return (
     <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-graphite-100 bg-surface-subtle">
@@ -127,6 +136,7 @@ export function Sidebar() {
                   ? pathname === "/"
                   : pathname.startsWith(item.href);
               const Icon = item.icon;
+              const badgeCount = badgeFor(item.href);
               return (
                 <li key={item.href}>
                   <Link
@@ -148,16 +158,16 @@ export function Sidebar() {
                       strokeWidth={2}
                     />
                     <span className="flex-1">{item.label}</span>
-                    {item.badge && (
+                    {badgeCount > 0 && (
                       <span
                         className={cn(
                           "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular",
                           isActive
-                            ? "bg-graphite-900 text-white"
+                            ? "bg-red-600 text-white"
                             : "bg-red-50 text-red-600 border border-red-100"
                         )}
                       >
-                        {item.badge}
+                        {badgeCount}
                       </span>
                     )}
                   </Link>

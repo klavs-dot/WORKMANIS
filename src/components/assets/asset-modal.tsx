@@ -64,6 +64,7 @@ export function AssetModal({
   const [status, setStatus] = useState<AssetStatus>("aktivs");
   const [note, setNote] = useState("");
   const [noteColor, setNoteColor] = useState<AssetNoteColor>("zala");
+  const [reminderDate, setReminderDate] = useState<string>("");
 
   useEffect(() => {
     if (open) {
@@ -73,12 +74,14 @@ export function AssetModal({
         setStatus(editing.status);
         setNote(editing.note);
         setNoteColor(editing.noteColor);
+        setReminderDate(editing.reminderDate ?? "");
       } else {
         setName("");
         setComment("");
         setStatus("aktivs");
         setNote("");
         setNoteColor("zala");
+        setReminderDate("");
       }
     }
   }, [open, editing]);
@@ -92,6 +95,7 @@ export function AssetModal({
         status,
         note: note.trim(),
         noteColor,
+        reminderDate: reminderDate || undefined,
       });
     } else {
       addAsset({
@@ -101,6 +105,7 @@ export function AssetModal({
         status,
         note: note.trim(),
         noteColor,
+        reminderDate: reminderDate || undefined,
       });
     }
     onOpenChange(false);

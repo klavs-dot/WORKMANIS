@@ -18,6 +18,7 @@ import { AutomatiskieTab } from "@/components/billing/automatiskie-tab";
 import { VeikalaTab } from "@/components/billing/veikala-tab";
 import { AlgasTab } from "@/components/billing/algas-tab";
 import { NodokliTab } from "@/components/billing/nodokli-tab";
+import { useNotifications } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
 type TabKey =
@@ -43,6 +44,25 @@ const tabs: {
 
 export default function RekiniMaksajumiPage() {
   const [tab, setTab] = useState<TabKey>("izejosie");
+  const notifications = useNotifications();
+
+  // Map tab key → red dot count (exclude ienakosie per spec)
+  const tabBadge = (key: TabKey): number => {
+    switch (key) {
+      case "izejosie":
+        return notifications.rekiniBreakdown.izejosie;
+      case "automatiskie":
+        return notifications.rekiniBreakdown.automatiskie;
+      case "veikala":
+        return notifications.rekiniBreakdown.veikala;
+      case "algas":
+        return notifications.rekiniBreakdown.algas;
+      case "nodokli":
+        return notifications.rekiniBreakdown.nodokli;
+      default:
+        return 0;
+    }
+  };
 
   return (
     <AppShell>
@@ -61,6 +81,7 @@ export default function RekiniMaksajumiPage() {
             {tabs.map((t) => {
               const Icon = t.icon;
               const isActive = tab === t.key;
+              const count = tabBadge(t.key);
               return (
                 <button
                   key={t.key}
@@ -88,6 +109,18 @@ export default function RekiniMaksajumiPage() {
                   <span className="relative flex items-center gap-1.5">
                     <Icon className="h-3.5 w-3.5" strokeWidth={2} />
                     {t.label}
+                    {count > 0 && (
+                      <span
+                        className={cn(
+                          "flex h-[16px] min-w-[16px] items-center justify-center rounded-full px-1 text-[9.5px] font-semibold tabular",
+                          isActive
+                            ? "bg-red-600 text-white"
+                            : "bg-red-50 text-red-600 border border-red-100"
+                        )}
+                      >
+                        {count}
+                      </span>
+                    )}
                   </span>
                 </button>
               );

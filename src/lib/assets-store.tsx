@@ -22,6 +22,8 @@ export interface Asset {
   status: AssetStatus;
   note: string;
   noteColor: AssetNoteColor;
+  /** ISO YYYY-MM-DD — if set and ≤ today, asset gets an attention flag */
+  reminderDate?: string;
   createdAt: string;
 }
 
