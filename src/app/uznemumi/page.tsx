@@ -14,6 +14,10 @@ import { PageHeader } from "@/components/business/headers";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { RequisitesModal } from "@/components/business/requisites-modal";
+import {
+  AddCompanyModal,
+  type CreatedCompany,
+} from "@/components/business/add-company-modal";
 import { useCompany } from "@/lib/company-context";
 import {
   formatRequisites,
@@ -23,9 +27,15 @@ import { cn } from "@/lib/utils";
 import type { Company, CopyFormat } from "@/lib/types";
 
 export default function UznemumiPage() {
-  const { companies, activeCompany, setActiveCompany, updateCompany } =
-    useCompany();
+  const {
+    companies,
+    activeCompany,
+    setActiveCompany,
+    updateCompany,
+    upsertCompany,
+  } = useCompany();
   const [editing, setEditing] = useState<Company | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -60,7 +70,7 @@ export default function UznemumiPage() {
           title="Uzņēmumi / Struktūrvienības"
           description="Ātri pārslēdzies starp uzņēmumiem un nokopē rekvizītus rēķiniem vai sarakstei"
           actions={
-            <Button size="sm">
+            <Button size="sm" onClick={() => setAddOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
               Pievienot struktūrvienību
             </Button>
@@ -88,6 +98,28 @@ export default function UznemumiPage() {
         onOpenChange={(o) => !o && setEditing(null)}
         company={editing}
         onSave={handleSave}
+      />
+
+      {/* Add new company modal */}
+      <AddCompanyModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onCreated={(created: CreatedCompany) => {
+          // Add to local state immediately so sidebar + list update
+          upsertCompany({
+            id: created.id,
+            name: created.name,
+            legalName: created.legalName,
+            regNumber: created.regNumber,
+            vatNumber: created.vatNumber ?? undefined,
+            folderDriveId: created.folderId,
+            sheetId: created.sheetId,
+            slug: created.slug,
+          });
+          // Auto-activate the newly created company
+          setActiveCompany(created.id);
+          showToast(`Izveidots: ${created.name}`);
+        }}
       />
 
       {/* Toast */}

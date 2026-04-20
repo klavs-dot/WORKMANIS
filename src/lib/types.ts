@@ -34,15 +34,15 @@ export type CopyFormat = "lv" | "en";
 export interface Company extends CompanyRequisites {
   id: string;
   name: string;
-  color: string; // tailwind class suffix for subtle identification
+  color?: string; // tailwind class suffix for subtle identification
   logoUrl?: string;
-  activeInvoices: number;
-  subscriptions: number;
-  monthlySpend: number;
-  /** Original kept for backward compatibility; also present in CompanyRequisites */
-  legalName: string;
-  regNumber: string;
-  vatNumber: string;
+  activeInvoices?: number;
+  subscriptions?: number;
+  monthlySpend?: number;
+  /** Backend fields (only present when hydrated from Sheets backend) */
+  folderDriveId?: string;
+  sheetId?: string;
+  slug?: string;
 }
 
 export interface Supplier {
