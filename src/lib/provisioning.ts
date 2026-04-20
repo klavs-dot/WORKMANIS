@@ -199,19 +199,39 @@ export async function provisionCompany(
     );
 
     // Step 3: account-master.gsheet
+    // Renamed to WORKMANIS_ACCOUNT_MASTER (DO NOT DELETE) so users
+    // immediately see in Drive that this file is WORKMANIS-critical
+    // and shouldn't be moved or deleted (it's the registry for all
+    // their companies).
     const accountMasterSheetId = await findOrCreateSheet(
       drive,
       sheets,
-      "account-master",
+      "WORKMANIS_ACCOUNT_MASTER (DO NOT DELETE)",
       accountInternalId,
       ACCOUNT_MASTER_TABS
     );
 
     // Step 4: Company folder + subfolders
-    const slug = `WORKMANIS_${slugify(requisites.name)}`;
+    //
+    // Two name-like values here with different purposes:
+    //
+    //   slug — internal identifier used in account-master.gsheet
+    //     /01_companies as the stable unique key. Combines legal name
+    //     + brand name so e.g. 'SIA Global Wolf Motors' + 'Mosphera'
+    //     and 'SIA Global Wolf Motors' + 'Wolftrike' produce distinct
+    //     slugs even though they share the legal entity.
+    //
+    //   folderName — human-readable Drive folder name, format:
+    //     '{brand} — WORKMANIS'. The em-dash + WORKMANIS suffix makes
+    //     it obvious in Drive UI that this is a WORKMANIS folder
+    //     without being ugly or prefix-heavy.
+    const slug = slugify(
+      `${requisites.legal_name} ${requisites.name}`
+    );
+    const folderName = `${requisites.name} — WORKMANIS`;
     const companyFolderId = await findOrCreateFolder(
       drive,
-      slug,
+      folderName,
       companiesRootId
     );
     for (const subPath of COMPANY_SUBFOLDERS) {
@@ -219,10 +239,14 @@ export async function provisionCompany(
     }
 
     // Step 5: company.gsheet with 25 tabs
+    // Named WORKMANIS_{SLUG} (DO NOT DELETE) so it's unambiguous in
+    // search and the user understands from the name alone it's
+    // critical infrastructure.
+    const companySheetName = `WORKMANIS_${slug} (DO NOT DELETE)`;
     const companySheetId = await findOrCreateSheet(
       drive,
       sheets,
-      "company",
+      companySheetName,
       companyFolderId,
       COMPANY_TABS.map((t) => ({ name: t.name, cols: [...t.cols] }))
     );

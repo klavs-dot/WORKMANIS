@@ -65,7 +65,7 @@ export async function GET() {
 
     const accountMasterId = await findSheetByName(
       drive,
-      "account-master",
+      "WORKMANIS_ACCOUNT_MASTER (DO NOT DELETE)",
       accountInternalId
     );
     if (!accountMasterId) return NextResponse.json({ companies: [] });
