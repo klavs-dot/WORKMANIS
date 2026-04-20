@@ -19,6 +19,12 @@ import {
   type CompanyRequisites,
 } from "@/lib/provisioning";
 
+// Provisioning a full company (25 Sheets tabs + 18 Drive folders +
+// header styling + seeding) takes 10-20 seconds. Default Vercel
+// serverless timeout is 10s on Hobby, 15s on Pro. Raise to 60s
+// (max allowed on Hobby and Pro) to give it headroom.
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.email || !session.accessToken) {
