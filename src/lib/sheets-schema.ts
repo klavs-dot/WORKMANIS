@@ -194,6 +194,26 @@ export const COMPANY_TABS = [
       "notes",
     ],
   },
+  {
+    name: "25_orders",
+    idPrefix: "ord",
+    cols: [
+      "type",
+      "title",
+      "issue_date",
+      "employee_id",
+      "employee_name",
+      "destination_from",
+      "destination_to",
+      "trip_start_date",
+      "trip_end_date",
+      "vacation_start_date",
+      "vacation_end_date",
+      "vacation_pay_timing",
+      "notes",
+      "file_name",
+    ],
+  },
 
   // 30 — invoices and payments
   {
