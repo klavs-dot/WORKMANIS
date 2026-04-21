@@ -327,6 +327,37 @@ function DataManagementSettings() {
     | { kind: "error"; message: string }
   >({ kind: "idle" });
 
+  interface HealthTabReport {
+    tab: string;
+    prefix: string;
+    rowCount?: number;
+    deletedCount?: number;
+    error?: string;
+  }
+
+  interface HealthReport {
+    ok: boolean;
+    company: {
+      id: string;
+      name: string;
+      sheetId: string;
+      sheetTitle?: string;
+    };
+    summary: {
+      tabsChecked: number;
+      totalActiveRows: number;
+      tabsWithErrors: number;
+    };
+    tabs: HealthTabReport[];
+  }
+
+  const [healthState, setHealthState] = useState<
+    | { kind: "idle" }
+    | { kind: "running" }
+    | { kind: "success"; report: HealthReport }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+
   // Pull active company from the Company context so we can call
   // the repair API with the right company_id
   const { activeCompany } = useCompany();
@@ -357,6 +388,33 @@ function DataManagementSettings() {
       setTimeout(() => setRepairState({ kind: "idle" }), 4000);
     } catch (err) {
       setRepairState({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Neparedzēta kļūda",
+      });
+    }
+  };
+
+  const runHealthCheck = async () => {
+    if (!activeCompany?.id) {
+      setHealthState({
+        kind: "error",
+        message: "Nav aktīva uzņēmuma.",
+      });
+      return;
+    }
+    setHealthState({ kind: "running" });
+    try {
+      const res = await fetch(
+        `/api/health?company_id=${encodeURIComponent(activeCompany.id)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Neparedzēta kļūda");
+      }
+      setHealthState({ kind: "success", report: data as HealthReport });
+    } catch (err) {
+      setHealthState({
         kind: "error",
         message: err instanceof Error ? err.message : "Neparedzēta kļūda",
       });
@@ -525,6 +583,122 @@ function DataManagementSettings() {
             {repairState.kind === "running"
               ? "Pārbauda…"
               : "Pārbaudīt un atjaunot"}
+          </Button>
+        </div>
+      </SettingsCard>
+
+      {/* Health check — row counts per tab */}
+      <SettingsCard
+        title="Pārbaudīt datu saskaņotību"
+        description="Parāda, cik rindu ir katrā Google Sheets tabulā. Izmantojams, lai pārliecinātos, ka dati patiešām saglabājas pēc migrācijas."
+      >
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-graphite-50 border border-graphite-200">
+          <Database className="h-4 w-4 shrink-0 mt-0.5 text-graphite-500" />
+          <div className="flex-1 text-[12.5px] text-graphite-600 leading-relaxed">
+            {activeCompany ? (
+              <>
+                Pārbaude tiks veikta uzņēmumam{" "}
+                <span className="font-medium">{activeCompany.name}</span>.
+                Drošs, tikai lasīšanas režīms — nevienu datu neizmaina.
+              </>
+            ) : (
+              <>Nav izvēlēta aktīva uzņēmuma.</>
+            )}
+          </div>
+        </div>
+
+        {healthState.kind === "error" && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-100">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+            <div className="flex-1 text-[12px] text-red-800 leading-relaxed">
+              {healthState.message}
+            </div>
+          </div>
+        )}
+
+        {healthState.kind === "success" && (
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+              <div className="flex-1 text-[12px] text-emerald-800 leading-relaxed">
+                ✓ {healthState.report.summary.tabsChecked} tabulas pārbaudītas,
+                kopā <strong>{healthState.report.summary.totalActiveRows}</strong>{" "}
+                aktīvu rindu
+                {healthState.report.summary.tabsWithErrors > 0 && (
+                  <>
+                    {" "}
+                    · <span className="text-amber-700">
+                      {healthState.report.summary.tabsWithErrors} tabulas ar
+                      kļūdām
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-graphite-200">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="bg-graphite-50 text-graphite-600 text-left">
+                    <th className="px-3 py-2 font-medium">Tabula</th>
+                    <th className="px-3 py-2 font-medium text-right">
+                      Aktīvās
+                    </th>
+                    <th className="px-3 py-2 font-medium text-right">
+                      Dzēstās
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {healthState.report.tabs.map((t) => (
+                    <tr
+                      key={t.tab}
+                      className="border-t border-graphite-100"
+                    >
+                      <td className="px-3 py-1.5 font-mono text-graphite-700">
+                        {t.tab}
+                      </td>
+                      {t.error ? (
+                        <td
+                          colSpan={2}
+                          className="px-3 py-1.5 text-red-600 text-right"
+                        >
+                          {t.error}
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-3 py-1.5 text-right tabular-nums">
+                            {t.rowCount === 0 ? (
+                              <span className="text-graphite-400">0</span>
+                            ) : (
+                              <span className="font-medium text-graphite-900">
+                                {t.rowCount}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-graphite-400">
+                            {t.deletedCount || ""}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={runHealthCheck}
+            disabled={!activeCompany || healthState.kind === "running"}
+          >
+            <Database className="h-3.5 w-3.5" />
+            {healthState.kind === "running"
+              ? "Pārbauda…"
+              : "Skenēt tabulu rindu skaitu"}
           </Button>
         </div>
       </SettingsCard>
