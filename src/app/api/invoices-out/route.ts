@@ -2,9 +2,7 @@
  * Invoices-out — CRUD on 30_invoices_out tab.
  *
  * These are invoices YOU issue to YOUR clients (money coming in).
- * Maps to billing-store's `incoming` entity. Despite the
- * counter-intuitive naming in the store (incoming = money
- * incoming), the schema follows standard accounting convention
+ * Maps to billing-store's 'issued' entity (IssuedInvoice).
  * (invoices_out = issued, invoices_in = received).
  *
  * Amount stored in cents (integer) for precision.

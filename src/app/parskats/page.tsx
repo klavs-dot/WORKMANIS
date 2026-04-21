@@ -23,7 +23,7 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils";
 export default function DashboardPage() {
   const router = useRouter();
   const { activeCompany, hydrated } = useCompany();
-  const { incoming, outgoing } = useBilling();
+  const { issued, received } = useBilling();
   const { clients } = useClients();
   const { employees } = useEmployees();
 
@@ -36,7 +36,7 @@ export default function DashboardPage() {
   // ─── Derived data ───
   const data = useMemo(() => {
     // Saņemtie maksājumi: ienākošie rēķini, ko klients samaksāja mums
-    const receivedPayments = [...incoming]
+    const receivedPayments = [...issued]
       .filter((i) => i.status === "apmaksats")
       .sort(
         (a, b) =>
@@ -45,7 +45,7 @@ export default function DashboardPage() {
       .slice(0, 10);
 
     // Samaksātie maksājumi: izejošie rēķini, ko mēs samaksājām piegādātājiem
-    const paidPayments = [...outgoing]
+    const paidPayments = [...received]
       .filter((p) => p.status === "apmaksats")
       .sort(
         (a, b) =>
@@ -53,8 +53,8 @@ export default function DashboardPage() {
       )
       .slice(0, 10);
 
-    // Jāapstiprina bankā: outgoing kas vēl nav apmaksāti
-    const pendingBankConfirm = outgoing.filter(
+    // Jāapstiprina bankā: received kas vēl nav apmaksāti
+    const pendingBankConfirm = received.filter(
       (p) => p.status === "apstiprinat_banka"
     );
     const pendingBankConfirmTotal = pendingBankConfirm.reduce(
@@ -62,8 +62,8 @@ export default function DashboardPage() {
       0
     );
 
-    // Gaidāmie maksājumi: incoming kas vēl nav samaksāti
-    const expectedPayments = incoming.filter(
+    // Gaidāmie maksājumi: issued kas vēl nav samaksāti
+    const expectedPayments = issued.filter(
       (i) => i.status === "gaidam_apmaksu" || i.status === "kave_maksajumu"
     );
     const expectedPaymentsTotal = expectedPayments.reduce(
@@ -87,7 +87,7 @@ export default function DashboardPage() {
       activeEmployeesCount: activeEmployees.length,
       activeClientsCount: activeClients.length,
     };
-  }, [incoming, outgoing, employees, clients]);
+  }, [issued, received, employees, clients]);
 
   if (!hydrated || !activeCompany) {
     return (

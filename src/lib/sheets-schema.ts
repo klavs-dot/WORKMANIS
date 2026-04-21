@@ -218,8 +218,7 @@ export const COMPANY_TABS = [
   // 30 — invoices and payments
   //
   // 30_invoices_out: invoices YOU issue to YOUR clients (money
-  // coming in).  Maps to billing-store's `incoming` entity (named
-  // for money flow direction, not invoice direction).
+  // coming in).  Maps to billing-store's 'issued' entity (IssuedInvoice).
   {
     name: "30_invoices_out",
     idPrefix: "inv",
@@ -239,7 +238,7 @@ export const COMPANY_TABS = [
     ],
   },
   // 31_invoices_in: invoices you RECEIVE from suppliers (money
-  // going out). Maps to billing-store's `outgoing` entity.
+  // going out). Maps to billing-store's 'received' entity (ReceivedInvoice).
   {
     name: "31_invoices_in",
     idPrefix: "out",

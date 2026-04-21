@@ -16,7 +16,7 @@ import { useEmployees, isOVPOverdue, isSafetyOverdue } from "./employees-store";
 export interface NotificationCounts {
   rekini: number; // total across sub-sections except 'ienakosie'
   rekiniBreakdown: {
-    izejosie: number; // unpaid outgoing bills (to suppliers)
+    izejosie: number; // unpaid received bills (to suppliers)
     automatiskie: number; // unpaid online/subscription payments
     veikala: number; // unpaid store card transactions
     algas: number; // prepared unpaid salaries
@@ -27,13 +27,13 @@ export interface NotificationCounts {
 }
 
 export function useNotifications(): NotificationCounts {
-  const { outgoing, salaries, taxes } = useBilling();
+  const { received, salaries, taxes } = useBilling();
   const { assets } = useAssets();
   const { employees } = useEmployees();
 
   return useMemo(() => {
     // Izejošie: rēķini, ko mums jāmaksā piegādātājiem — unpaid only
-    const izejosie = outgoing.filter((p) => p.status !== "apmaksats").length;
+    const izejosie = received.filter((p) => p.status !== "apmaksats").length;
 
     // Automātiskie & Internetā — these are mock read-only demo data
     // right now, so no meaningful unpaid state. Keeping the slot
@@ -74,5 +74,5 @@ export function useNotifications(): NotificationCounts {
       darbinieki: darbiniekiCount,
       aktivi: aktiviCount,
     };
-  }, [outgoing, salaries, taxes, assets, employees]);
+  }, [received, salaries, taxes, assets, employees]);
 }

@@ -72,7 +72,7 @@ export function InvoiceModal({
   initialClient,
   initialTemplate,
 }: InvoiceModalProps) {
-  const { addIncoming } = useBilling();
+  const { addIssued } = useBilling();
   const { templatesForClient, addTemplate } = useClients();
 
   // Client
@@ -232,9 +232,9 @@ export function InvoiceModal({
     if (!client) return;
     const number = isEditing ? editingNumber! : generateNumber("invoice");
 
-    // Convert to legacy IncomingInvoice format for billing-store compatibility
+    // Convert to legacy IssuedInvoice format for billing-store compatibility
     // Future: replace with PersistedInvoiceV2 when store is migrated
-    addIncoming({
+    addIssued({
       number,
       client: client.name,
       description:
@@ -254,7 +254,7 @@ export function InvoiceModal({
     // Placeholder: save with status = melnraksts
     if (!client) return;
     const number = isEditing ? editingNumber! : generateNumber("invoice");
-    addIncoming({
+    addIssued({
       number,
       client: client.name,
       description:

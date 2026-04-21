@@ -2,7 +2,7 @@
  * Invoices-in — CRUD on 31_invoices_in tab.
  *
  * These are invoices you RECEIVE from suppliers (money going out).
- * Maps to billing-store's `outgoing` entity.
+ * Maps to billing-store's 'received' entity (ReceivedInvoice).
  *
  * Optional accounting metadata (category, depreciation period,
  * explanation) is flattened onto the row rather than a separate

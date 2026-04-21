@@ -49,7 +49,7 @@ const actions: ExportAction[] = [
     tone: "violet",
   },
   {
-    key: "outgoing",
+    key: "received",
     title: "Lejuplādēt izejošos rēķinus",
     description:
       "Rēķini no piegādātājiem un partneriem, ar IBAN, summām un apmaksas termiņiem.",
@@ -57,7 +57,7 @@ const actions: ExportAction[] = [
     tone: "graphite",
   },
   {
-    key: "incoming",
+    key: "issued",
     title: "Lejuplādēt ienākošos rēķinus",
     description:
       "Mūsu izrakstītie rēķini klientiem — PVN, pavadzīmes, apmaksas statusi.",

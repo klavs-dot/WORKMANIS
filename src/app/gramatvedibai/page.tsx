@@ -212,7 +212,7 @@ const periodLabels: Record<Period, string> = {
 };
 
 function EksportiTab() {
-  const { outgoing, incoming } = useBilling();
+  const { received, issued } = useBilling();
 
   const [period, setPeriod] = useState<Period>("month");
   const [customFrom, setCustomFrom] = useState("");
@@ -231,10 +231,10 @@ function EksportiTab() {
       const d = dateStr.slice(0, 10);
       return d >= range.from && d <= range.to;
     };
-    const out = outgoing.filter((p) => inRange(p.dueDate));
-    const inc = incoming.filter((i) => inRange(i.date));
+    const out = received.filter((p) => inRange(p.dueDate));
+    const inc = issued.filter((i) => inRange(i.date));
     return { out, inc };
-  }, [outgoing, incoming, range]);
+  }, [received, issued, range]);
 
   const totalIncoming = filtered.inc.reduce(
     (s, i) => s + i.amount + i.vat,

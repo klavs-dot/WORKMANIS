@@ -27,13 +27,13 @@ import {
 } from "@/lib/bank-exchange";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
-export type BankExchangeMode = "outgoing" | "salaries" | "taxes";
+export type BankExchangeMode = "received" | "salaries" | "taxes";
 
 const modeCopy: Record<
   BankExchangeMode,
   { heading: string; exportLabel: string; itemNoun: string }
 > = {
-  outgoing: {
+  received: {
     heading: "Sagatavot maksājumu uzdevumu",
     exportLabel: "neapmaksāti rēķini",
     itemNoun: "rēķini",
@@ -53,13 +53,13 @@ const modeCopy: Record<
 export function BankExchangePanel({
   open,
   onOpenChange,
-  mode = "outgoing",
+  mode = "received",
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   mode?: BankExchangeMode;
 }) {
-  const { outgoing, salaries, taxes, markOutgoingPaid, updateSalary, updateTax } =
+  const { received, salaries, taxes, markReceivedPaid, updateSalary, updateTax } =
     useBilling();
   const { activeCompany } = useCompany();
   const { employees } = useEmployees();
@@ -79,8 +79,8 @@ export function BankExchangePanel({
   };
 
   const items = useMemo<BatchListItem[]>(() => {
-    if (mode === "outgoing") {
-      return outgoing
+    if (mode === "received") {
+      return received
         .filter((p) => p.status !== "apmaksats")
         .map((p) => ({
           id: p.id,
@@ -120,10 +120,10 @@ export function BankExchangePanel({
         reference: t.name,
         dueDate: t.dueDate,
       }));
-  }, [mode, outgoing, salaries, taxes, employees]);
+  }, [mode, received, salaries, taxes, employees]);
 
   const markAsPaidInStore = (id: string) => {
-    if (mode === "outgoing") markOutgoingPaid(id);
+    if (mode === "received") markReceivedPaid(id);
     else if (mode === "salaries") updateSalary(id, { status: "izmaksats" });
     else if (mode === "taxes") updateTax(id, { status: "apmaksats" });
   };
@@ -173,7 +173,7 @@ export function BankExchangePanel({
     const a = document.createElement("a");
     const stamp = new Date().toISOString().slice(0, 10);
     const prefix =
-      mode === "outgoing"
+      mode === "received"
         ? "payment-batch"
         : mode === "salaries"
           ? "salary-batch"
@@ -189,7 +189,7 @@ export function BankExchangePanel({
     setTimeout(() => setExportState("idle"), 2400);
   };
 
-  // ─── Import: parse uploaded CSV and match (outgoing mode only) ───
+  // ─── Import: parse uploaded CSV and match (received mode only) ───
   const [parsedTxs, setParsedTxs] = useState<ParsedTransaction[]>([]);
   const [matches, setMatches] = useState<InvoiceMatch[]>([]);
   const [importStage, setImportStage] = useState<"idle" | "review">("idle");
@@ -199,7 +199,7 @@ export function BankExchangePanel({
     const txs = parseBankStatementCSV(text);
     const m = matchTransactionsToInvoices(
       txs,
-      outgoing.filter((p) => p.status !== "apmaksats")
+      received.filter((p) => p.status !== "apmaksats")
     );
     setParsedTxs(txs);
     setMatches(m);
@@ -210,7 +210,7 @@ export function BankExchangePanel({
     let applied = 0;
     matches.forEach((m) => {
       if (m.invoiceId && m.confidence === "exact") {
-        markOutgoingPaid(m.invoiceId);
+        markReceivedPaid(m.invoiceId);
         applied++;
       }
     });
@@ -373,8 +373,8 @@ export function BankExchangePanel({
                 </div>
               </section>
 
-              {/* ─── Section 2: Import (outgoing mode only — matching happens against unpaid supplier invoices) ─── */}
-              {mode === "outgoing" && (
+              {/* ─── Section 2: Import (received mode only — matching happens against unpaid supplier invoices) ─── */}
+              {mode === "received" && (
               <section className="px-6 py-5">
                 <div className="flex items-center gap-2 mb-3">
                   <ArrowDownToLine className="h-3.5 w-3.5 text-sky-600" />

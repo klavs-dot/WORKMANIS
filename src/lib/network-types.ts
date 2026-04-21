@@ -51,7 +51,7 @@ export interface OnlineLink {
 }
 
 // ============================================================
-// Accounting metadata for outgoing invoices
+// Accounting metadata for received invoices (from suppliers)
 // ============================================================
 
 export type AccountingCategory =

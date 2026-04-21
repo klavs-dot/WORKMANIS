@@ -5,12 +5,12 @@
  *   - parseBankStatementCSV — flexible parser for SEB / Swedbank /
  *     Citadele / Luminor CSV exports; auto-detects column layout
  *   - matchTransactionsToInvoices — fuzzy match CSV rows against
- *     outgoing invoices (amount + reference number)
+ *     received invoices (amount + reference number)
  *
  * All functions are pure — no store/network side effects.
  */
 
-import type { OutgoingPayment } from "./billing-store";
+import type { ReceivedInvoice } from "./billing-store";
 
 // ============================================================
 // pain.001 generation
@@ -42,7 +42,7 @@ export interface BatchItemCreditor {
 
 /**
  * Generate an ISO 20022 pain.001.001.03 XML payment initiation
- * file from a list of outgoing payments. The file can be uploaded
+ * file from a list of received payments. The file can be uploaded
  * to the business internet bank as a batch payment.
  */
 export function generatePain001XML(
@@ -132,11 +132,11 @@ export interface ParsedTransaction {
   rawDate: string;
   /** ISO date YYYY-MM-DD if parsable */
   date?: string;
-  /** Counterparty name (sender for incoming, recipient for outgoing) */
+  /** Counterparty name (sender for issued, recipient for received) */
   counterparty: string;
   /** IBAN of the counterparty if present */
   counterpartyIban?: string;
-  /** Signed amount — positive = incoming, negative = outgoing */
+  /** Signed amount — positive = issued, negative = received */
   amount: number;
   /** Reference/details free-text from the statement line */
   reference: string;
@@ -212,7 +212,7 @@ export function parseBankStatementCSV(csvText: string): ParsedTransaction[] {
     if (creditIdx >= 0 && debitIdx >= 0) {
       const cr = parseNum(row[creditIdx] ?? "");
       const db = parseNum(row[debitIdx] ?? "");
-      amount = cr - db; // incoming positive, outgoing negative
+      amount = cr - db; // issued positive, received negative
     } else if (amountIdx >= 0) {
       amount = parseNum(row[amountIdx] ?? "");
     }
@@ -244,21 +244,21 @@ export interface InvoiceMatch {
 }
 
 /**
- * Match parsed bank transactions to outgoing (unpaid) payments.
+ * Match parsed bank transactions to received (unpaid) payments.
  *   - exact   — amount matches AND reference contains invoice number
  *   - likely  — amount matches but reference is fuzzy
  *   - none    — no matching invoice found; user must classify
  *
- * Only outgoing payments we still owe (status !== 'apmaksats') are
+ * Only received payments we still owe (status !== 'apmaksats') are
  * considered — everything else is already done.
  */
 export function matchTransactionsToInvoices(
   transactions: ParsedTransaction[],
-  unpaidOutgoing: OutgoingPayment[]
+  unpaidReceived: ReceivedInvoice[]
 ): InvoiceMatch[] {
   return transactions.map((tx, txIndex): InvoiceMatch => {
     // We're matching OUTGOING payments → transaction should be negative
-    // (money leaving our account). Skip incoming transactions here.
+    // (money leaving our account). Skip issued transactions here.
     if (tx.amount >= 0) {
       return {
         txIndex,
@@ -272,7 +272,7 @@ export function matchTransactionsToInvoices(
     const counterpartyLower = tx.counterparty.toLowerCase();
 
     // Find candidates by amount (exact tolerance of 1 cent)
-    const amountMatches = unpaidOutgoing.filter(
+    const amountMatches = unpaidReceived.filter(
       (p) => Math.abs(p.amount - absAmount) < 0.015
     );
 

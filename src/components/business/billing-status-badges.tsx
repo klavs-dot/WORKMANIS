@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import type {
-  OutgoingStatus,
-  IncomingStatus,
+  ReceivedInvoiceStatus,
+  IssuedInvoiceStatus,
   SalaryStatus,
   TaxStatus,
 } from "@/lib/billing-store";
@@ -12,7 +12,7 @@ interface DotConfig {
   dot: string;
 }
 
-const outgoingMap: Record<OutgoingStatus, DotConfig> = {
+const receivedMap: Record<ReceivedInvoiceStatus, DotConfig> = {
   apstiprinat_banka: {
     label: "Apstiprināt bankā",
     variant: "warning",
@@ -25,7 +25,7 @@ const outgoingMap: Record<OutgoingStatus, DotConfig> = {
   },
 };
 
-const incomingMap: Record<IncomingStatus, DotConfig> = {
+const issuedMap: Record<IssuedInvoiceStatus, DotConfig> = {
   gaidam_apmaksu: {
     label: "Gaidām apmaksu",
     variant: "warning",
@@ -78,12 +78,12 @@ function renderBadge({ label, variant, dot }: DotConfig) {
   );
 }
 
-export function OutgoingStatusBadge({ status }: { status: OutgoingStatus }) {
-  return renderBadge(outgoingMap[status]);
+export function ReceivedStatusBadge({ status }: { status: ReceivedInvoiceStatus }) {
+  return renderBadge(receivedMap[status]);
 }
 
-export function IncomingStatusBadge({ status }: { status: IncomingStatus }) {
-  return renderBadge(incomingMap[status]);
+export function IssuedStatusBadge({ status }: { status: IssuedInvoiceStatus }) {
+  return renderBadge(issuedMap[status]);
 }
 
 export function SalaryStatusBadge({ status }: { status: SalaryStatus }) {

@@ -1,6 +1,6 @@
 import type {
-  IncomingInvoice,
-  OutgoingPayment,
+  IssuedInvoice,
+  ReceivedInvoice,
 } from "./billing-store";
 import type { Client, ClientInvoiceSummary } from "./billing-types";
 import { daysUntil } from "./utils";
@@ -8,17 +8,17 @@ import { daysUntil } from "./utils";
 /** Filter invoices that match this client by name */
 export function invoicesForClient(
   client: Client,
-  all: IncomingInvoice[]
-): IncomingInvoice[] {
+  all: IssuedInvoice[]
+): IssuedInvoice[] {
   const q = client.name.toLowerCase();
   return all.filter((i) => i.client.toLowerCase().includes(q));
 }
 
-/** Simple match on supplier name for outgoing payments */
-export function outgoingForClient(
+/** Simple match on supplier name for received payments */
+export function receivedForClient(
   client: Client,
-  all: OutgoingPayment[]
-): OutgoingPayment[] {
+  all: ReceivedInvoice[]
+): ReceivedInvoice[] {
   const q = client.name.toLowerCase();
   return all.filter((p) => p.supplier.toLowerCase().includes(q));
 }
@@ -27,7 +27,7 @@ export function outgoingForClient(
 // Bidirectional "last invoice" helpers
 // ============================================================
 
-export type InvoiceDirection = "incoming" | "outgoing";
+export type InvoiceDirection = "issued" | "received";
 
 export interface RecentInvoice {
   direction: InvoiceDirection;
@@ -39,13 +39,13 @@ export interface RecentInvoice {
 /** Most recent invoice across both directions for this client */
 export function mostRecentInvoice(
   client: Client,
-  incoming: IncomingInvoice[],
-  outgoing: OutgoingPayment[]
+  issued: IssuedInvoice[],
+  received: ReceivedInvoice[]
 ): RecentInvoice | null {
-  const latestIn = invoicesForClient(client, incoming)
+  const latestIn = invoicesForClient(client, issued)
     .slice()
     .sort((a, b) => b.date.localeCompare(a.date))[0];
-  const latestOut = outgoingForClient(client, outgoing)
+  const latestOut = receivedForClient(client, received)
     .slice()
     .sort((a, b) => b.dueDate.localeCompare(a.dueDate))[0];
 
@@ -53,7 +53,7 @@ export function mostRecentInvoice(
 
   if (latestIn && !latestOut) {
     return {
-      direction: "incoming",
+      direction: "issued",
       date: latestIn.date,
       amount: latestIn.amount + latestIn.vat,
       number: latestIn.number,
@@ -61,7 +61,7 @@ export function mostRecentInvoice(
   }
   if (latestOut && !latestIn) {
     return {
-      direction: "outgoing",
+      direction: "received",
       date: latestOut.dueDate,
       amount: latestOut.amount,
       number: latestOut.invoiceNumber,
@@ -72,14 +72,14 @@ export function mostRecentInvoice(
   const outDate = latestOut!.dueDate;
   if (inDate.localeCompare(outDate) >= 0) {
     return {
-      direction: "incoming",
+      direction: "issued",
       date: latestIn!.date,
       amount: latestIn!.amount + latestIn!.vat,
       number: latestIn!.number,
     };
   }
   return {
-    direction: "outgoing",
+    direction: "received",
     date: latestOut!.dueDate,
     amount: latestOut!.amount,
     number: latestOut!.invoiceNumber,
@@ -98,23 +98,23 @@ export interface BidirectionalInvoiceRow {
 
 export function bidirectionalInvoices(
   client: Client,
-  incoming: IncomingInvoice[],
-  outgoing: OutgoingPayment[]
+  issued: IssuedInvoice[],
+  received: ReceivedInvoice[]
 ): BidirectionalInvoiceRow[] {
-  const ins = invoicesForClient(client, incoming).map<BidirectionalInvoiceRow>(
+  const ins = invoicesForClient(client, issued).map<BidirectionalInvoiceRow>(
     (i) => ({
       id: `in-${i.id}`,
-      direction: "incoming",
+      direction: "issued",
       number: i.number,
       date: i.date,
       amount: i.amount + i.vat,
       status: i.status,
     })
   );
-  const outs = outgoingForClient(client, outgoing).map<BidirectionalInvoiceRow>(
+  const outs = receivedForClient(client, received).map<BidirectionalInvoiceRow>(
     (o) => ({
       id: `out-${o.id}`,
-      direction: "outgoing",
+      direction: "received",
       number: o.invoiceNumber,
       date: o.dueDate,
       amount: o.amount,
@@ -131,7 +131,7 @@ export function bidirectionalInvoices(
 /** Compute summary metrics for a client */
 export function summaryForClient(
   client: Client,
-  invoices: IncomingInvoice[]
+  invoices: IssuedInvoice[]
 ): ClientInvoiceSummary {
   const clientInvoices = invoicesForClient(client, invoices);
 

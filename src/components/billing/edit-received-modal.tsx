@@ -12,24 +12,24 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import type { OutgoingPayment } from "@/lib/billing-store";
+import type { ReceivedInvoice } from "@/lib/billing-store";
 
 /**
- * Edit modal for outgoing payments. Use when the AI parser
+ * Edit modal for received payments. Use when the AI parser
  * misread data from the uploaded PDF — manager can correct
  * supplier, invoice number, amount, IBAN, or due date.
  *
  * Status, accountingMeta, PN akts, and fileName are NOT editable
  * here — they have their own dedicated flows.
  */
-export function EditOutgoingModal({
+export function EditReceivedModal({
   payment,
   onClose,
   onSave,
 }: {
-  payment: OutgoingPayment | null;
+  payment: ReceivedInvoice | null;
   onClose: () => void;
-  onSave: (patch: Partial<OutgoingPayment>) => void;
+  onSave: (patch: Partial<ReceivedInvoice>) => void;
 }) {
   const [supplier, setSupplier] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");

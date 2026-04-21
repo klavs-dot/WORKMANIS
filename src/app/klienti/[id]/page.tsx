@@ -29,7 +29,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { KPICard } from "@/components/business/kpi-card";
 import { EmptyState } from "@/components/business/empty-state";
-import { IncomingStatusBadge } from "@/components/business/billing-status-badges";
+import { IssuedStatusBadge } from "@/components/business/billing-status-badges";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +62,7 @@ import { useBilling } from "@/lib/billing-store";
 import {
   invoicesForClient,
   summaryForClient,
-  outgoingForClient,
+  receivedForClient,
   bidirectionalInvoices,
 } from "@/lib/client-summary";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
@@ -85,7 +85,7 @@ export default function ClientDetailPage({
   const { id } = use(params);
   const router = useRouter();
   const { getClient, templatesForClient, deleteTemplate } = useClients();
-  const { incoming, outgoing } = useBilling();
+  const { issued, received } = useBilling();
 
   const client = getClient(id);
 
@@ -101,8 +101,8 @@ export default function ClientDetailPage({
   };
 
   const summary = useMemo(
-    () => (client ? summaryForClient(client, incoming) : null),
-    [client, incoming]
+    () => (client ? summaryForClient(client, issued) : null),
+    [client, issued]
   );
 
   if (!client) {
@@ -123,13 +123,13 @@ export default function ClientDetailPage({
     );
   }
 
-  const clientInvoices = invoicesForClient(client, incoming);
-  const clientOutgoing = outgoingForClient(client, outgoing);
+  const clientInvoices = invoicesForClient(client, issued);
+  const clientReceived = receivedForClient(client, received);
   const clientTemplates = templatesForClient(client.id);
   const allInvoicesBidirectional = bidirectionalInvoices(
     client,
-    incoming,
-    outgoing
+    issued,
+    received
   );
 
   return (
@@ -299,7 +299,7 @@ export default function ClientDetailPage({
               let count = 0;
               if (t.key === "rekini") count = allInvoicesBidirectional.length;
               if (t.key === "maksajumi")
-                count = clientInvoices.filter((i) => i.status === "apmaksats").length + clientOutgoing.length;
+                count = clientInvoices.filter((i) => i.status === "apmaksats").length + clientReceived.length;
               if (t.key === "paraugi") count = clientTemplates.length;
               if (t.key === "piezimes") count = client.notes.length;
 
@@ -363,7 +363,7 @@ export default function ClientDetailPage({
             {tab === "maksajumi" && (
               <PaymentsTab
                 invoices={clientInvoices}
-                outgoing={clientOutgoing}
+                received={clientReceived}
               />
             )}
             {tab === "paraugi" && (
@@ -474,7 +474,7 @@ function InvoicesTab({
           </TableHeader>
           <TableBody>
             {rows.map((r) => {
-              const isIncoming = r.direction === "incoming";
+              const isIncoming = r.direction === "issued";
               return (
                 <TableRow key={r.id}>
                   <TableCell>
@@ -535,12 +535,12 @@ function InvoicesTab({
 
 function PaymentsTab({
   invoices,
-  outgoing,
+  received,
 }: {
   invoices: ReturnType<typeof invoicesForClient>;
-  outgoing: ReturnType<typeof outgoingForClient>;
+  received: ReturnType<typeof receivedForClient>;
 }) {
-  // Combine: paid invoices (ienākošie) + all outgoing (izejošie)
+  // Combine: paid invoices (ienākošie) + all received (izejošie)
   const rows = useMemo(() => {
     const paidInvoices = invoices
       .filter((i) => i.status === "apmaksats")
@@ -553,7 +553,7 @@ function PaymentsTab({
         reference: `Rēķins Nr. ${i.number}`,
       }));
 
-    const out = outgoing.map((p) => ({
+    const out = received.map((p) => ({
       id: `out-${p.id}`,
       date: p.dueDate,
       amount: p.amount,
@@ -565,7 +565,7 @@ function PaymentsTab({
     return [...paidInvoices, ...out].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
-  }, [invoices, outgoing]);
+  }, [invoices, received]);
 
   if (rows.length === 0) {
     return (

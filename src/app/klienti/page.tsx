@@ -63,7 +63,7 @@ import type { Client, ClientStatus, ClientType } from "@/lib/billing-types";
 export default function KlientiPage() {
   const router = useRouter();
   const { clients, deleteClient } = useClients();
-  const { incoming, outgoing } = useBilling();
+  const { issued, received } = useBilling();
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | ClientType>("all");
@@ -98,8 +98,8 @@ export default function KlientiPage() {
 
     // Sort by most recent invoice date (across both directions) desc
     return list.slice().sort((a, b) => {
-      const ra = mostRecentInvoice(a, incoming, outgoing);
-      const rb = mostRecentInvoice(b, incoming, outgoing);
+      const ra = mostRecentInvoice(a, issued, received);
+      const rb = mostRecentInvoice(b, issued, received);
       const da = ra?.date ?? "";
       const db = rb?.date ?? "";
       if (da && db) return db.localeCompare(da);
@@ -107,7 +107,7 @@ export default function KlientiPage() {
       if (db) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [clients, search, typeFilter, countryFilter, statusFilter, incoming, outgoing]);
+  }, [clients, search, typeFilter, countryFilter, statusFilter, issued, received]);
 
   const openNew = () => {
     setEditing(null);
@@ -246,8 +246,8 @@ export default function KlientiPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((c) => {
-                    const summary = summaryForClient(c, incoming);
-                    const recent = mostRecentInvoice(c, incoming, outgoing);
+                    const summary = summaryForClient(c, issued);
+                    const recent = mostRecentInvoice(c, issued, received);
                     return (
                       <TableRow
                         key={c.id}
@@ -312,7 +312,7 @@ export default function KlientiPage() {
                             <span
                               className={cn(
                                 "font-medium",
-                                recent.direction === "incoming"
+                                recent.direction === "issued"
                                   ? "text-emerald-600"
                                   : "text-red-600"
                               )}
@@ -327,12 +327,12 @@ export default function KlientiPage() {
                           {recent ? (
                             <span
                               className={cn(
-                                recent.direction === "incoming"
+                                recent.direction === "issued"
                                   ? "text-emerald-600"
                                   : "text-red-600"
                               )}
                             >
-                              {recent.direction === "outgoing" && "−"}
+                              {recent.direction === "received" && "−"}
                               {formatCurrency(recent.amount)}
                             </span>
                           ) : (

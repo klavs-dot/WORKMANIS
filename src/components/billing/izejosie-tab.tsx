@@ -44,11 +44,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { OutgoingStatusBadge } from "@/components/business/billing-status-badges";
+import { ReceivedStatusBadge } from "@/components/business/billing-status-badges";
 import { useBilling } from "@/lib/billing-store";
 import type {
-  OutgoingAccountingMeta,
-  OutgoingPayment,
+  ReceivedInvoiceAccountingMeta,
+  ReceivedInvoice,
 } from "@/lib/billing-store";
 import {
   accountingCategoryLabels,
@@ -62,7 +62,7 @@ import type {
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
-import { EditOutgoingModal } from "@/components/billing/edit-outgoing-modal";
+import { EditReceivedModal } from "@/components/billing/edit-received-modal";
 
 // Mock parsed invoices — rotates by upload count for demo realism
 const mockParsings = [
@@ -98,18 +98,18 @@ interface ParsedFields {
 }
 
 export function IzejosieTab() {
-  const { outgoing, addOutgoing, updateOutgoing, markOutgoingPaid, setOutgoingMeta, attachOutgoingPN, detachOutgoingPN } =
+  const { received, addReceived, updateReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
     useBilling();
   const [isDragging, setIsDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parsed, setParsed] = useState<
     (ParsedFields & { fileName: string }) | null
   >(null);
-  const [openedInvoice, setOpenedInvoice] = useState<OutgoingPayment | null>(
+  const [openedInvoice, setOpenedInvoice] = useState<ReceivedInvoice | null>(
     null
   );
-  const [metaEditing, setMetaEditing] = useState<OutgoingPayment | null>(null);
-  const [editing, setEditing] = useState<OutgoingPayment | null>(null);
+  const [metaEditing, setMetaEditing] = useState<ReceivedInvoice | null>(null);
+  const [editing, setEditing] = useState<ReceivedInvoice | null>(null);
   const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const uploadCountRef = useRef(0);
@@ -145,7 +145,7 @@ export function IzejosieTab() {
 
   const handlePreparePayment = () => {
     if (!parsed) return;
-    addOutgoing({
+    addReceived({
       supplier: parsed.supplier,
       invoiceNumber: parsed.invoiceNumber,
       amount: parsed.amount,
@@ -328,7 +328,7 @@ export function IzejosieTab() {
             Uz banku
           </Button>
         </div>
-        {outgoing.length === 0 ? (
+        {received.length === 0 ? (
           <div className="p-12 text-center text-[13px] text-graphite-500">
             Vēl nav sagatavots neviens maksājums
           </div>
@@ -346,7 +346,7 @@ export function IzejosieTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {outgoing.map((p) => {
+              {received.map((p) => {
                 const hasMeta = !!p.accountingMeta;
                 return (
                   <TableRow key={p.id}>
@@ -379,16 +379,16 @@ export function IzejosieTab() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <OutgoingStatusBadge status={p.status} />
+                      <ReceivedStatusBadge status={p.status} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end items-center gap-1">
                         <PnAktsButton
                           current={p.pnAkts}
                           onAttach={({ number, source, fileName }) =>
-                            attachOutgoingPN(p.id, number, source, fileName)
+                            attachReceivedPN(p.id, number, source, fileName)
                           }
-                          onRemove={() => detachOutgoingPN(p.id)}
+                          onRemove={() => detachReceivedPN(p.id)}
                         />
                         <Button
                           variant={hasMeta ? "ghost" : "secondary"}
@@ -411,7 +411,7 @@ export function IzejosieTab() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            onClick={() => markOutgoingPaid(p.id)}
+                            onClick={() => markReceivedPaid(p.id)}
                             title="Atzīmēt kā apmaksātu"
                           >
                             <Check className="h-3.5 w-3.5" />
@@ -512,7 +512,7 @@ export function IzejosieTab() {
         onClose={() => setMetaEditing(null)}
         onSave={(meta) => {
           if (metaEditing) {
-            setOutgoingMeta(metaEditing.id, meta);
+            setReceivedMeta(metaEditing.id, meta);
             setMetaEditing(null);
           }
         }}
@@ -524,13 +524,13 @@ export function IzejosieTab() {
         onOpenChange={setBankPanelOpen}
       />
 
-      {/* Edit outgoing payment modal */}
-      <EditOutgoingModal
+      {/* Edit received payment modal */}
+      <EditReceivedModal
         payment={editing}
         onClose={() => setEditing(null)}
         onSave={(patch) => {
           if (editing) {
-            updateOutgoing(editing.id, patch);
+            updateReceived(editing.id, patch);
             setEditing(null);
           }
         }}
@@ -569,7 +569,7 @@ function ParsedField({
 // Accounting meta tag shown in invoice row
 // ============================================================
 
-function AccountingMetaTag({ meta }: { meta: OutgoingAccountingMeta }) {
+function AccountingMetaTag({ meta }: { meta: ReceivedInvoiceAccountingMeta }) {
   const label =
     meta.category === "amortizacija" && meta.depreciationPeriod
       ? `Amortizācija · ${depreciationLabel(meta.depreciationPeriod)}`
@@ -600,9 +600,9 @@ function AccountingMetaModal({
   onClose,
   onSave,
 }: {
-  invoice: OutgoingPayment | null;
+  invoice: ReceivedInvoice | null;
   onClose: () => void;
-  onSave: (meta: OutgoingAccountingMeta) => void;
+  onSave: (meta: ReceivedInvoiceAccountingMeta) => void;
 }) {
   const [category, setCategory] = useState<AccountingCategory>("izejvielas");
   const [period, setPeriod] = useState<DepreciationPeriod>(5);
@@ -622,7 +622,7 @@ function AccountingMetaModal({
   }, [invoice]);
 
   const submit = () => {
-    const meta: OutgoingAccountingMeta = {
+    const meta: ReceivedInvoiceAccountingMeta = {
       category,
       depreciationPeriod:
         category === "amortizacija" ? period : undefined,

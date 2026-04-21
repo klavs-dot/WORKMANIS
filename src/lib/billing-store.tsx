@@ -4,27 +4,35 @@
  * BillingProvider — Sheets-backed, managing 4 distinct entities
  * across 4 sheets tabs:
  *
- *   incoming (issued invoices)  → 30_invoices_out
- *   outgoing (received invoices) → 31_invoices_in
- *   salaries                     → 36_salaries
- *   taxes                        → 37_taxes
+ *   issued   — invoices YOU issue to clients → 30_invoices_out
+ *   received — invoices you receive from suppliers → 31_invoices_in
+ *   salaries                                → 36_salaries
+ *   taxes                                   → 37_taxes
  *
- * The naming inside the store (incoming/outgoing) reflects money
- * flow direction (money coming in = your issued invoice; money
- * going out = received invoice). The schema tab names reflect
- * invoice-document direction (invoices_out = invoices you send
- * out; invoices_in = invoices you receive). These don't align
- * semantically, so the mapping is done explicitly here.
+ * The 'issued' / 'received' naming is unambiguous:
+ *   - 'issued' invoice = document you wrote and sent out to a
+ *     client. Money flows IN when the client pays you.
+ *   - 'received' invoice = document a supplier sent to you.
+ *     Money flows OUT when you pay it.
  *
- * Public API UNCHANGED from pre-Phase-4.
+ * The schema tab names follow the document-direction convention
+ * (invoices_out = documents going out = issued; invoices_in =
+ * documents coming in = received), which is backwards from the
+ * money-flow direction. The mapping lives in this file:
  *
- * Not yet migrated (left as localStorage + in-memory for V1):
- *   - onlinePayments, storePayments — module-level arrays, read-only
- *     for now, no Sheets schema yet
- *   - Invoice templates — still in clients-store as localStorage
- *   - PN akti — embedded in incoming/outgoing rows rather than
+ *   fetchAll():  /api/invoices-out → issued;
+ *                /api/invoices-in  → received
+ *   addIssued:   POST /api/invoices-out
+ *   addReceived: POST /api/invoices-in
+ *
+ * Public API UNCHANGED in shape (same method count + signatures)
+ * but renamed throughout: addIncoming → addIssued, addOutgoing
+ * → addReceived, markOutgoingPaid → markReceivedPaid, etc.
+ *
+ * Not yet migrated (left as embedded-in-row for V1):
+ *   - PN akti — embedded in issued/received rows rather than
  *     living in their own 32_pn_akti table. V2 will normalize.
- *   - Delivery notes — embedded in incoming rows. Same as above.
+ *   - Delivery notes — embedded in issued rows. Same as above.
  *   - Payments ledger (35_payments) — no UI uses it currently
  */
 
@@ -47,25 +55,25 @@ import type {
 // Types (unchanged)
 // ============================================================
 
-export type OutgoingStatus = "apstiprinat_banka" | "apmaksats";
+export type ReceivedInvoiceStatus = "apstiprinat_banka" | "apmaksats";
 
-export interface OutgoingAccountingMeta {
+export interface ReceivedInvoiceAccountingMeta {
   category: AccountingCategory;
   depreciationPeriod?: DepreciationPeriod;
   explanation: string;
   updatedAt: string;
 }
 
-export interface OutgoingPayment {
+export interface ReceivedInvoice {
   id: string;
   supplier: string;
   invoiceNumber: string;
   amount: number;
   iban: string;
   dueDate: string;
-  status: OutgoingStatus;
+  status: ReceivedInvoiceStatus;
   fileName?: string;
-  accountingMeta?: OutgoingAccountingMeta;
+  accountingMeta?: ReceivedInvoiceAccountingMeta;
   pnAkts?: string;
   pnAktsSource?: "generated" | "uploaded";
   pnAktsFileName?: string;
@@ -74,9 +82,9 @@ export interface OutgoingPayment {
   updatedAt?: string;
 }
 
-export type IncomingStatus = "gaidam_apmaksu" | "apmaksats" | "kave_maksajumu";
+export type IssuedInvoiceStatus = "gaidam_apmaksu" | "apmaksats" | "kave_maksajumu";
 
-export interface IncomingInvoice {
+export interface IssuedInvoice {
   id: string;
   number: string;
   client: string;
@@ -85,7 +93,7 @@ export interface IncomingInvoice {
   vat: number;
   date: string;
   dueDate: string;
-  status: IncomingStatus;
+  status: IssuedInvoiceStatus;
   deliveryNote?: string;
   pnAkts?: string;
   pnAktsSource?: "generated" | "uploaded";
@@ -127,34 +135,34 @@ export interface Tax {
 }
 
 interface BillingStore {
-  outgoing: OutgoingPayment[];
-  incoming: IncomingInvoice[];
+  received: ReceivedInvoice[];
+  issued: IssuedInvoice[];
   salaries: Salary[];
   taxes: Tax[];
 
-  addOutgoing: (p: Omit<OutgoingPayment, "id" | "createdAt" | "status">) => void;
-  updateOutgoing: (id: string, patch: Partial<OutgoingPayment>) => void;
-  markOutgoingPaid: (id: string) => void;
-  setOutgoingMeta: (id: string, meta: OutgoingAccountingMeta) => void;
-  clearOutgoingMeta: (id: string) => void;
-  attachOutgoingPN: (
+  addReceived: (p: Omit<ReceivedInvoice, "id" | "createdAt" | "status">) => void;
+  updateReceived: (id: string, patch: Partial<ReceivedInvoice>) => void;
+  markReceivedPaid: (id: string) => void;
+  setReceivedMeta: (id: string, meta: ReceivedInvoiceAccountingMeta) => void;
+  clearReceivedMeta: (id: string) => void;
+  attachReceivedPN: (
     id: string,
     pn: string,
     source?: "generated" | "uploaded",
     fileName?: string
   ) => void;
-  detachOutgoingPN: (id: string) => void;
+  detachReceivedPN: (id: string) => void;
 
-  addIncoming: (i: Omit<IncomingInvoice, "id" | "createdAt">) => void;
-  updateIncoming: (id: string, patch: Partial<IncomingInvoice>) => void;
+  addIssued: (i: Omit<IssuedInvoice, "id" | "createdAt">) => void;
+  updateIssued: (id: string, patch: Partial<IssuedInvoice>) => void;
   attachDeliveryNote: (id: string, note: string) => void;
-  attachIncomingPN: (
+  attachIssuedPN: (
     id: string,
     pn: string,
     source?: "generated" | "uploaded",
     fileName?: string
   ) => void;
-  detachIncomingPN: (id: string) => void;
+  detachIssuedPN: (id: string) => void;
 
   addSalary: (s: Omit<Salary, "id">) => void;
   updateSalary: (id: string, patch: Partial<Salary>) => void;
@@ -169,8 +177,8 @@ interface BillingStore {
 // Cache
 // ============================================================
 
-const CACHE_OUTGOING = "workmanis:outgoing-cache:";
-const CACHE_INCOMING = "workmanis:incoming-cache:";
+const CACHE_RECEIVED = "workmanis:received-cache:";
+const CACHE_ISSUED = "workmanis:issued-cache:";
 const CACHE_SALARIES = "workmanis:salaries-cache:";
 const CACHE_TAXES = "workmanis:taxes-cache:";
 
@@ -264,7 +272,7 @@ interface ApiTax {
   updatedAt: string;
 }
 
-function apiToIncoming(a: ApiInvoiceOut): IncomingInvoice {
+function apiToIssued(a: ApiInvoiceOut): IssuedInvoice {
   return {
     id: a.id,
     number: a.number,
@@ -274,7 +282,7 @@ function apiToIncoming(a: ApiInvoiceOut): IncomingInvoice {
     vat: a.vat,
     date: a.date,
     dueDate: a.dueDate,
-    status: a.status as IncomingStatus,
+    status: a.status as IssuedInvoiceStatus,
     deliveryNote: a.deliveryNote,
     pnAkts: a.pnAkts,
     pnAktsSource:
@@ -287,7 +295,7 @@ function apiToIncoming(a: ApiInvoiceOut): IncomingInvoice {
   };
 }
 
-function apiToOutgoing(a: ApiInvoiceIn): OutgoingPayment {
+function apiToReceived(a: ApiInvoiceIn): ReceivedInvoice {
   return {
     id: a.id,
     supplier: a.supplier,
@@ -295,7 +303,7 @@ function apiToOutgoing(a: ApiInvoiceIn): OutgoingPayment {
     amount: a.amount,
     iban: a.iban,
     dueDate: a.dueDate,
-    status: a.status as OutgoingStatus,
+    status: a.status as ReceivedInvoiceStatus,
     fileName: a.fileName,
     pnAkts: a.pnAkts,
     pnAktsSource:
@@ -356,8 +364,8 @@ const BillingContext = createContext<BillingStore | undefined>(undefined);
 export function BillingProvider({ children }: { children: ReactNode }) {
   const { activeCompany } = useCompany();
 
-  const [incoming, setIncoming] = useState<IncomingInvoice[]>([]);
-  const [outgoing, setOutgoing] = useState<OutgoingPayment[]>([]);
+  const [issued, setIssued] = useState<IssuedInvoice[]>([]);
+  const [received, setReceived] = useState<ReceivedInvoice[]>([]);
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [loading, setLoading] = useState(false);
@@ -378,22 +386,22 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 
       const newMap = new Map<string, string>();
 
-      // 30_invoices_out → incoming (money coming IN to us)
+      // 30_invoices_out holds documents we ISSUED to clients
       if (outRes.ok) {
         const data = (await outRes.json()) as { invoices: ApiInvoiceOut[] };
         for (const i of data.invoices) newMap.set(i.id, i.updatedAt);
-        const mapped = data.invoices.map(apiToIncoming);
-        setIncoming(mapped);
-        writeCache(CACHE_INCOMING, companyId, mapped);
+        const mapped = data.invoices.map(apiToIssued);
+        setIssued(mapped);
+        writeCache(CACHE_ISSUED, companyId, mapped);
       }
 
-      // 31_invoices_in → outgoing (money going OUT from us)
+      // 31_invoices_in holds documents we RECEIVED from suppliers
       if (inRes.ok) {
         const data = (await inRes.json()) as { invoices: ApiInvoiceIn[] };
         for (const i of data.invoices) newMap.set(i.id, i.updatedAt);
-        const mapped = data.invoices.map(apiToOutgoing);
-        setOutgoing(mapped);
-        writeCache(CACHE_OUTGOING, companyId, mapped);
+        const mapped = data.invoices.map(apiToReceived);
+        setReceived(mapped);
+        writeCache(CACHE_RECEIVED, companyId, mapped);
       }
 
       if (salRes.ok) {
@@ -423,8 +431,8 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const companyId = activeCompany?.id ?? null;
     if (!companyId) {
-      setIncoming([]);
-      setOutgoing([]);
+      setIssued([]);
+      setReceived([]);
       setSalaries([]);
       setTaxes([]);
       lastCompanyIdRef.current = null;
@@ -433,8 +441,8 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     if (companyId === lastCompanyIdRef.current) return;
     lastCompanyIdRef.current = companyId;
 
-    setIncoming(readCache<IncomingInvoice>(CACHE_INCOMING, companyId));
-    setOutgoing(readCache<OutgoingPayment>(CACHE_OUTGOING, companyId));
+    setIssued(readCache<IssuedInvoice>(CACHE_ISSUED, companyId));
+    setReceived(readCache<ReceivedInvoice>(CACHE_RECEIVED, companyId));
     setSalaries(readCache<Salary>(CACHE_SALARIES, companyId));
     setTaxes(readCache<Tax>(CACHE_TAXES, companyId));
 
@@ -575,13 +583,13 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   // OUTGOING (received invoices → 31_invoices_in)
   // ============================================================
 
-  const addOutgoing: BillingStore["addOutgoing"] = (p) => {
+  const addReceived: BillingStore["addReceived"] = (p) => {
     const companyId = activeCompany?.id;
     if (!companyId) return;
 
     const tempId = `tmp-${uid()}`;
     const now = new Date().toISOString();
-    const item: OutgoingPayment = {
+    const item: ReceivedInvoice = {
       ...p,
       id: tempId,
       status: "apstiprinat_banka",
@@ -589,68 +597,68 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       updatedAt: now,
     };
 
-    optimisticCreate<OutgoingPayment, ApiInvoiceIn>({
+    optimisticCreate<ReceivedInvoice, ApiInvoiceIn>({
       item,
       apiPath: "/api/invoices-in",
-      body: outgoingToBody(p),
-      cachePrefix: CACHE_OUTGOING,
+      body: receivedToBody(p),
+      cachePrefix: CACHE_RECEIVED,
       companyId,
-      setState: setOutgoing,
-      apiToLocal: apiToOutgoing,
+      setState: setReceived,
+      apiToLocal: apiToReceived,
       responseKey: "invoice",
     });
   };
 
-  const applyOutgoingPatch = (id: string, patch: Partial<OutgoingPayment>) => {
+  const applyReceivedPatch = (id: string, patch: Partial<ReceivedInvoice>) => {
     const companyId = activeCompany?.id;
     if (!companyId) return;
 
-    let previous: OutgoingPayment | undefined;
-    setOutgoing((prev) => {
+    let previous: ReceivedInvoice | undefined;
+    setReceived((prev) => {
       previous = prev.find((p) => p.id === id);
       const next = prev.map((p) => (p.id === id ? { ...p, ...patch } : p));
-      writeCache(CACHE_OUTGOING, companyId, next);
+      writeCache(CACHE_RECEIVED, companyId, next);
       return next;
     });
 
     if (!previous) return;
 
-    optimisticUpdate<OutgoingPayment, ApiInvoiceIn>({
+    optimisticUpdate<ReceivedInvoice, ApiInvoiceIn>({
       id,
       previous,
       patch,
       apiPath: "/api/invoices-in",
-      body: outgoingPatchToBody(patch),
-      cachePrefix: CACHE_OUTGOING,
+      body: receivedPatchToBody(patch),
+      cachePrefix: CACHE_RECEIVED,
       companyId,
-      setState: setOutgoing,
-      apiToLocal: apiToOutgoing,
+      setState: setReceived,
+      apiToLocal: apiToReceived,
       responseKey: "invoice",
     });
   };
 
-  const updateOutgoing: BillingStore["updateOutgoing"] = (id, patch) =>
-    applyOutgoingPatch(id, patch);
+  const updateReceived: BillingStore["updateReceived"] = (id, patch) =>
+    applyReceivedPatch(id, patch);
 
-  const markOutgoingPaid: BillingStore["markOutgoingPaid"] = (id) =>
-    applyOutgoingPatch(id, { status: "apmaksats" });
+  const markReceivedPaid: BillingStore["markReceivedPaid"] = (id) =>
+    applyReceivedPatch(id, { status: "apmaksats" });
 
-  const setOutgoingMeta: BillingStore["setOutgoingMeta"] = (id, meta) =>
-    applyOutgoingPatch(id, { accountingMeta: meta });
+  const setReceivedMeta: BillingStore["setReceivedMeta"] = (id, meta) =>
+    applyReceivedPatch(id, { accountingMeta: meta });
 
-  const clearOutgoingMeta: BillingStore["clearOutgoingMeta"] = (id) => {
+  const clearReceivedMeta: BillingStore["clearReceivedMeta"] = (id) => {
     const companyId = activeCompany?.id;
     if (!companyId) return;
 
-    let previous: OutgoingPayment | undefined;
-    setOutgoing((prev) => {
+    let previous: ReceivedInvoice | undefined;
+    setReceived((prev) => {
       previous = prev.find((p) => p.id === id);
       const next = prev.map((p) => {
         if (p.id !== id) return p;
         const { accountingMeta: _, ...rest } = p;
         return rest;
       });
-      writeCache(CACHE_OUTGOING, companyId, next);
+      writeCache(CACHE_RECEIVED, companyId, next);
       return next;
     });
 
@@ -676,20 +684,20 @@ export function BillingProvider({ children }: { children: ReactNode }) {
         );
         if (!res.ok) throw new Error(`PATCH failed: ${res.status}`);
         const body = (await res.json()) as { invoice: ApiInvoiceIn };
-        const server = apiToOutgoing(body.invoice);
+        const server = apiToReceived(body.invoice);
         updatedAtMapRef.current.set(server.id, body.invoice.updatedAt);
-        setOutgoing((prev) => {
+        setReceived((prev) => {
           const next = prev.map((p) => (p.id === id ? server : p));
-          writeCache(CACHE_OUTGOING, companyId, next);
+          writeCache(CACHE_RECEIVED, companyId, next);
           return next;
         });
       } catch (err) {
-        console.error("clearOutgoingMeta sync failed:", err);
+        console.error("clearReceivedMeta sync failed:", err);
         if (previous) {
           const prev2 = previous;
-          setOutgoing((prev) => {
+          setReceived((prev) => {
             const next = prev.map((p) => (p.id === id ? prev2 : p));
-            writeCache(CACHE_OUTGOING, companyId, next);
+            writeCache(CACHE_RECEIVED, companyId, next);
             return next;
           });
         }
@@ -697,20 +705,20 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     })();
   };
 
-  const attachOutgoingPN: BillingStore["attachOutgoingPN"] = (
+  const attachReceivedPN: BillingStore["attachReceivedPN"] = (
     id,
     pn,
     source = "generated",
     fileName
   ) =>
-    applyOutgoingPatch(id, {
+    applyReceivedPatch(id, {
       pnAkts: pn,
       pnAktsSource: source,
       pnAktsFileName: fileName,
     });
 
-  const detachOutgoingPN: BillingStore["detachOutgoingPN"] = (id) =>
-    applyOutgoingPatch(id, {
+  const detachReceivedPN: BillingStore["detachReceivedPN"] = (id) =>
+    applyReceivedPatch(id, {
       pnAkts: "",
       pnAktsSource: undefined,
       pnAktsFileName: "",
@@ -720,82 +728,82 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   // INCOMING (issued invoices → 30_invoices_out)
   // ============================================================
 
-  const addIncoming: BillingStore["addIncoming"] = (i) => {
+  const addIssued: BillingStore["addIssued"] = (i) => {
     const companyId = activeCompany?.id;
     if (!companyId) return;
 
     const tempId = `tmp-${uid()}`;
     const now = new Date().toISOString();
-    const item: IncomingInvoice = {
+    const item: IssuedInvoice = {
       ...i,
       id: tempId,
       createdAt: now,
       updatedAt: now,
     };
 
-    optimisticCreate<IncomingInvoice, ApiInvoiceOut>({
+    optimisticCreate<IssuedInvoice, ApiInvoiceOut>({
       item,
       apiPath: "/api/invoices-out",
-      body: incomingToBody(i),
-      cachePrefix: CACHE_INCOMING,
+      body: issuedToBody(i),
+      cachePrefix: CACHE_ISSUED,
       companyId,
-      setState: setIncoming,
-      apiToLocal: apiToIncoming,
+      setState: setIssued,
+      apiToLocal: apiToIssued,
       responseKey: "invoice",
     });
   };
 
-  const applyIncomingPatch = (
+  const applyIssuedPatch = (
     id: string,
-    patch: Partial<IncomingInvoice>
+    patch: Partial<IssuedInvoice>
   ) => {
     const companyId = activeCompany?.id;
     if (!companyId) return;
 
-    let previous: IncomingInvoice | undefined;
-    setIncoming((prev) => {
+    let previous: IssuedInvoice | undefined;
+    setIssued((prev) => {
       previous = prev.find((i) => i.id === id);
       const next = prev.map((i) => (i.id === id ? { ...i, ...patch } : i));
-      writeCache(CACHE_INCOMING, companyId, next);
+      writeCache(CACHE_ISSUED, companyId, next);
       return next;
     });
 
     if (!previous) return;
 
-    optimisticUpdate<IncomingInvoice, ApiInvoiceOut>({
+    optimisticUpdate<IssuedInvoice, ApiInvoiceOut>({
       id,
       previous,
       patch,
       apiPath: "/api/invoices-out",
-      body: incomingPatchToBody(patch),
-      cachePrefix: CACHE_INCOMING,
+      body: issuedPatchToBody(patch),
+      cachePrefix: CACHE_ISSUED,
       companyId,
-      setState: setIncoming,
-      apiToLocal: apiToIncoming,
+      setState: setIssued,
+      apiToLocal: apiToIssued,
       responseKey: "invoice",
     });
   };
 
-  const updateIncoming: BillingStore["updateIncoming"] = (id, patch) =>
-    applyIncomingPatch(id, patch);
+  const updateIssued: BillingStore["updateIssued"] = (id, patch) =>
+    applyIssuedPatch(id, patch);
 
   const attachDeliveryNote: BillingStore["attachDeliveryNote"] = (id, note) =>
-    applyIncomingPatch(id, { deliveryNote: note });
+    applyIssuedPatch(id, { deliveryNote: note });
 
-  const attachIncomingPN: BillingStore["attachIncomingPN"] = (
+  const attachIssuedPN: BillingStore["attachIssuedPN"] = (
     id,
     pn,
     source = "generated",
     fileName
   ) =>
-    applyIncomingPatch(id, {
+    applyIssuedPatch(id, {
       pnAkts: pn,
       pnAktsSource: source,
       pnAktsFileName: fileName,
     });
 
-  const detachIncomingPN: BillingStore["detachIncomingPN"] = (id) =>
-    applyIncomingPatch(id, {
+  const detachIssuedPN: BillingStore["detachIssuedPN"] = (id) =>
+    applyIssuedPatch(id, {
       pnAkts: "",
       pnAktsSource: undefined,
       pnAktsFileName: "",
@@ -938,24 +946,24 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const store: BillingStore = {
-    outgoing,
-    incoming,
+    received,
+    issued,
     salaries,
     taxes,
 
-    addOutgoing,
-    updateOutgoing,
-    markOutgoingPaid,
-    setOutgoingMeta,
-    clearOutgoingMeta,
-    attachOutgoingPN,
-    detachOutgoingPN,
+    addReceived,
+    updateReceived,
+    markReceivedPaid,
+    setReceivedMeta,
+    clearReceivedMeta,
+    attachReceivedPN,
+    detachReceivedPN,
 
-    addIncoming,
-    updateIncoming,
+    addIssued,
+    updateIssued,
     attachDeliveryNote,
-    attachIncomingPN,
-    detachIncomingPN,
+    attachIssuedPN,
+    detachIssuedPN,
 
     addSalary,
     updateSalary,
@@ -981,8 +989,8 @@ export function useBilling() {
 // Body builders (client → API)
 // ============================================================
 
-function outgoingToBody(
-  o: Omit<OutgoingPayment, "id" | "createdAt" | "status">
+function receivedToBody(
+  o: Omit<ReceivedInvoice, "id" | "createdAt" | "status">
 ): Record<string, unknown> {
   return {
     supplier: o.supplier,
@@ -1006,8 +1014,8 @@ function outgoingToBody(
   };
 }
 
-function outgoingPatchToBody(
-  patch: Partial<OutgoingPayment>
+function receivedPatchToBody(
+  patch: Partial<ReceivedInvoice>
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   if (patch.supplier !== undefined) body.supplier = patch.supplier;
@@ -1036,8 +1044,8 @@ function outgoingPatchToBody(
   return body;
 }
 
-function incomingToBody(
-  i: Omit<IncomingInvoice, "id" | "createdAt">
+function issuedToBody(
+  i: Omit<IssuedInvoice, "id" | "createdAt">
 ): Record<string, unknown> {
   return {
     number: i.number,
@@ -1055,8 +1063,8 @@ function incomingToBody(
   };
 }
 
-function incomingPatchToBody(
-  patch: Partial<IncomingInvoice>
+function issuedPatchToBody(
+  patch: Partial<IssuedInvoice>
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   if (patch.number !== undefined) body.number = patch.number;

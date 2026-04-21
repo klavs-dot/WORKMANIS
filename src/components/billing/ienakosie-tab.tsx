@@ -38,10 +38,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/primitives";
-import { IncomingStatusBadge } from "@/components/business/billing-status-badges";
+import { IssuedStatusBadge } from "@/components/business/billing-status-badges";
 import { InvoiceModal } from "./invoice-modal";
 import { useBilling } from "@/lib/billing-store";
-import type { IncomingInvoice } from "@/lib/billing-store";
+import type { IssuedInvoice } from "@/lib/billing-store";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import {
   generateNumber,
@@ -54,12 +54,12 @@ import { PnAktsButton } from "@/components/billing/pn-akts-button";
 // ============================================================
 // FUTURE: Google Sheets integration
 // Single spreadsheet with multiple tabs (one per category).
-// On addIncoming / attachDeliveryNote → append row to the
+// On addIssued / attachDeliveryNote → append row to the
 // correct tab. On status change → update the row in place.
 // ============================================================
 
 export function IenakosieTab() {
-  const { incoming, attachDeliveryNote, attachIncomingPN, detachIncomingPN, updateIncoming } =
+  const { issued, attachDeliveryNote, attachIssuedPN, detachIssuedPN, updateIssued } =
     useBilling();
 
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
@@ -67,7 +67,7 @@ export function IenakosieTab() {
 
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryInvoice, setDeliveryInvoice] =
-    useState<IncomingInvoice | null>(null);
+    useState<IssuedInvoice | null>(null);
   const [deliveryForm, setDeliveryForm] = useState({
     description: "",
     date: new Date().toISOString().slice(0, 10),
@@ -78,12 +78,12 @@ export function IenakosieTab() {
     setInvoiceModalOpen(true);
   };
 
-  const openEditInvoice = (inv: IncomingInvoice) => {
+  const openEditInvoice = (inv: IssuedInvoice) => {
     setEditingNumber(inv.number);
     setInvoiceModalOpen(true);
   };
 
-  const openDelivery = (inv: IncomingInvoice) => {
+  const openDelivery = (inv: IssuedInvoice) => {
     setDeliveryInvoice(inv);
     setDeliveryForm({
       description: inv.description,
@@ -128,7 +128,7 @@ export function IenakosieTab() {
         transition={{ duration: 0.4 }}
       >
         <Card className="overflow-hidden">
-          {incoming.length === 0 ? (
+          {issued.length === 0 ? (
             <div className="p-12 text-center text-[13px] text-graphite-500">
               Vēl nav izrakstīts neviens rēķins
             </div>
@@ -147,7 +147,7 @@ export function IenakosieTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {incoming.map((inv) => (
+                {issued.map((inv) => (
                   <TableRow key={inv.id}>
                     <TableCell>
                       <div>
@@ -174,16 +174,16 @@ export function IenakosieTab() {
                       {formatDate(inv.dueDate)}
                     </TableCell>
                     <TableCell>
-                      <IncomingStatusBadge status={inv.status} />
+                      <IssuedStatusBadge status={inv.status} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1.5 items-center">
                         <PnAktsButton
                           current={inv.pnAkts}
                           onAttach={({ number, source, fileName }) =>
-                            attachIncomingPN(inv.id, number, source, fileName)
+                            attachIssuedPN(inv.id, number, source, fileName)
                           }
-                          onRemove={() => detachIncomingPN(inv.id)}
+                          onRemove={() => detachIssuedPN(inv.id)}
                         />
                         {!inv.deliveryNote ? (
                           <Button
@@ -225,7 +225,7 @@ export function IenakosieTab() {
                             {inv.status !== "apmaksats" && (
                               <DropdownMenuItem
                                 onSelect={() =>
-                                  updateIncoming(inv.id, { status: "apmaksats" })
+                                  updateIssued(inv.id, { status: "apmaksats" })
                                 }
                               >
                                 <Check className="h-3.5 w-3.5 text-emerald-600" />
