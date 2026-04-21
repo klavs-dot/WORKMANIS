@@ -41,6 +41,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useCompany } from "@/lib/company-context";
 
 const sections = [
   { id: "general", label: "Vispārīgie", icon: User },
@@ -319,6 +320,49 @@ function DataManagementSettings() {
     string
   > | null>(null);
 
+  const [repairState, setRepairState] = useState<
+    | { kind: "idle" }
+    | { kind: "running" }
+    | { kind: "success"; message: string }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+
+  // Pull active company from the Company context so we can call
+  // the repair API with the right company_id
+  const { activeCompany } = useCompany();
+
+  const runRepair = async () => {
+    if (!activeCompany?.id) {
+      setRepairState({
+        kind: "error",
+        message: "Nav aktīva uzņēmuma. Izvēlieties uzņēmumu vispirms.",
+      });
+      return;
+    }
+    setRepairState({ kind: "running" });
+    try {
+      const res = await fetch(
+        `/api/companies/repair?company_id=${encodeURIComponent(activeCompany.id)}`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Neparedzēta kļūda");
+      }
+      setRepairState({
+        kind: "success",
+        message: data.message ?? "Shēma atjaunināta",
+      });
+      // Auto-clear after a moment
+      setTimeout(() => setRepairState({ kind: "idle" }), 4000);
+    } catch (err) {
+      setRepairState({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Neparedzēta kļūda",
+      });
+    }
+  };
+
   const exportToJSON = () => {
     if (typeof window === "undefined") return;
     const dump: Record<string, string | null> = {};
@@ -424,6 +468,63 @@ function DataManagementSettings() {
           <Button size="sm" onClick={exportToJSON}>
             <Download className="h-3.5 w-3.5" />
             Lejupielādēt JSON dublējumu
+          </Button>
+        </div>
+      </SettingsCard>
+
+      {/* Repair — schema reconciliation */}
+      <SettingsCard
+        title="Pārbaudīt datu struktūru"
+        description="Ja datu tabulas Google Sheets failā ir vecākā versijā, šis pievienos trūkstošās kolonnas. Esošie dati netiek skarti."
+      >
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-graphite-50 border border-graphite-200">
+          <Database className="h-4 w-4 shrink-0 mt-0.5 text-graphite-500" />
+          <div className="flex-1 text-[12.5px] text-graphite-600 leading-relaxed">
+            {activeCompany ? (
+              <>
+                Pārbaude tiks veikta uzņēmumam{" "}
+                <span className="font-medium">{activeCompany.name}</span>.
+                Process ir drošs un idempotents — var palaist atkārtoti bez
+                riska.
+              </>
+            ) : (
+              <>
+                Nav izvēlēta aktīva uzņēmuma. Dodieties uz{" "}
+                <span className="font-medium">Uzņēmumi</span> un izvēlieties
+                uzņēmumu, kuru vēlaties pārbaudīt.
+              </>
+            )}
+          </div>
+        </div>
+
+        {repairState.kind === "success" && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+            <div className="flex-1 text-[12px] text-emerald-800 leading-relaxed">
+              ✓ {repairState.message}
+            </div>
+          </div>
+        )}
+
+        {repairState.kind === "error" && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-100">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+            <div className="flex-1 text-[12px] text-red-800 leading-relaxed">
+              {repairState.message}
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={runRepair}
+            disabled={!activeCompany || repairState.kind === "running"}
+          >
+            <Database className="h-3.5 w-3.5" />
+            {repairState.kind === "running"
+              ? "Pārbauda…"
+              : "Pārbaudīt un atjaunot"}
           </Button>
         </div>
       </SettingsCard>

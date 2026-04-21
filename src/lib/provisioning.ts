@@ -407,7 +407,18 @@ async function findOrCreateSheet(
  * Ensure every tab in `tabs` exists in the spreadsheet with the
  * right headers. Tabs that already exist are left alone (we don't
  * rewrite headers to avoid clobbering manual edits).
+ *
+ * Exported as reconcileSchemaForSheet for use by the repair endpoint
+ * on already-provisioned companies.
  */
+export async function reconcileSchemaForSheet(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  tabs: Array<{ name: string; cols: readonly string[] }>
+): Promise<void> {
+  return ensureTabsAndHeaders(sheets, spreadsheetId, tabs);
+}
+
 async function ensureTabsAndHeaders(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
@@ -462,8 +473,32 @@ async function ensureTabsAndHeaders(
 }
 
 /**
- * Write headers to row 1 of a tab if it's empty. Also styles
- * the header row (bold, frozen, light gray bg).
+ * Reconcile a tab's header row with the expected column list.
+ *
+ * Two paths:
+ *
+ *   A. Empty tab (no header row)
+ *      → Write the full header row + apply styling (bold, frozen,
+ *        gray background). This is the happy path during initial
+ *        provisioning.
+ *
+ *   B. Existing tab with a header row that differs from expected
+ *      → Diff the columns. For each expected column that's missing,
+ *        insertDimension at the correct position and write its name
+ *        into the new header cell. This physically inserts a new
+ *        column into the sheet, which Sheets API automatically
+ *        shifts existing data columns to accommodate — so values in
+ *        existing data rows stay aligned with their intended columns.
+ *      → We NEVER rewrite the whole header row when data exists,
+ *        because rewriting would silently misalign the data. We also
+ *        never DELETE columns automatically — if the schema removes
+ *        a column, the orphan stays (the column just has no reader
+ *        in the code, which is fine).
+ *
+ * This makes the schema forward-migratable: we can add columns in
+ * sheets-schema.ts and calling provisionCompany() on an existing
+ * company will insert the new columns in place, preserving all
+ * existing data.
  */
 async function writeHeadersIfMissing(
   sheets: sheets_v4.Sheets,
@@ -471,7 +506,7 @@ async function writeHeadersIfMissing(
   tabName: string,
   businessCols: readonly string[]
 ): Promise<void> {
-  const allCols = [
+  const expectedCols = [
     "id",
     "created_at",
     "updated_at",
@@ -479,26 +514,24 @@ async function writeHeadersIfMissing(
     ...businessCols,
   ];
 
-  // Check if headers already present
+  // Read existing header row (up to an extra-wide range to catch
+  // any columns beyond our expected count — orphans from an older
+  // schema version where we removed a column)
   const current = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${tabName}!A1:${columnLetter(allCols.length)}1`,
+    range: `${tabName}!A1:ZZ1`,
   });
-  const existing = current.data.values?.[0] ?? [];
-  const matches =
-    existing.length === allCols.length &&
-    allCols.every((col, i) => existing[i] === col);
-  if (matches) return;
+  const existing = (current.data.values?.[0] ?? []) as string[];
 
-  // Write headers
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${tabName}!A1:${columnLetter(allCols.length)}1`,
-    valueInputOption: "RAW",
-    requestBody: { values: [allCols] },
-  });
+  // Fast path: headers match exactly → nothing to do
+  if (
+    existing.length === expectedCols.length &&
+    expectedCols.every((col, i) => existing[i] === col)
+  ) {
+    return;
+  }
 
-  // Style the header row (bold + frozen + gray bg)
+  // Look up the sheetId for this tab (needed for batchUpdate ops)
   const meta = await sheets.spreadsheets.get({
     spreadsheetId,
     fields: "sheets.properties(sheetId,title)",
@@ -507,7 +540,123 @@ async function writeHeadersIfMissing(
     (s) => s.properties?.title === tabName
   )?.properties;
   if (!sheetProps?.sheetId) return;
+  const sheetNumericId = sheetProps.sheetId;
 
+  // Path A: empty header row → write everything fresh + style
+  if (existing.length === 0) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tabName}!A1:${columnLetter(expectedCols.length)}1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [expectedCols] },
+    });
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId: sheetNumericId,
+                startRowIndex: 0,
+                endRowIndex: 1,
+              },
+              cell: {
+                userEnteredFormat: {
+                  textFormat: { bold: true },
+                  backgroundColor: {
+                    red: 0.96,
+                    green: 0.96,
+                    blue: 0.96,
+                  },
+                  horizontalAlignment: "LEFT",
+                },
+              },
+              fields:
+                "userEnteredFormat(textFormat,backgroundColor,horizontalAlignment)",
+            },
+          },
+          {
+            updateSheetProperties: {
+              properties: {
+                sheetId: sheetNumericId,
+                gridProperties: { frozenRowCount: 1 },
+              },
+              fields: "gridProperties.frozenRowCount",
+            },
+          },
+        ],
+      },
+    });
+    return;
+  }
+
+  // Path B: migration — insert missing columns at correct positions
+  //
+  // Build the list of migration steps by walking expectedCols and
+  // checking which ones are missing from existing. For each missing
+  // column, the "insertAt" index is its position in expectedCols —
+  // which is also the final position after prior insertions have
+  // shifted the sheet (we process in order, so accumulating shifts
+  // line up correctly).
+
+  const missing: Array<{ col: string; insertAt: number }> = [];
+  for (let i = 0; i < expectedCols.length; i++) {
+    const col = expectedCols[i];
+    if (!existing.includes(col)) {
+      missing.push({ col, insertAt: i });
+    }
+  }
+
+  if (missing.length === 0) {
+    // Headers exist and no columns are missing — but order might
+    // differ. We don't reorder automatically (risky). Just return.
+    // This is a known limitation: manual header reorders won't be
+    // corrected.
+    return;
+  }
+
+  // Execute insertions in ascending order of insertAt so each
+  // subsequent insertion's index already accounts for prior shifts
+  const requests: sheets_v4.Schema$Request[] = [];
+  for (const { insertAt } of missing) {
+    requests.push({
+      insertDimension: {
+        range: {
+          sheetId: sheetNumericId,
+          dimension: "COLUMNS",
+          startIndex: insertAt,
+          endIndex: insertAt + 1,
+        },
+        inheritFromBefore: insertAt > 0,
+      },
+    });
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests },
+  });
+
+  // Now write the new header cells (all at their final positions)
+  const valueUpdates: sheets_v4.Schema$ValueRange[] = missing.map(
+    ({ col, insertAt }) => ({
+      range: `${tabName}!${columnLetter(insertAt + 1)}1`,
+      values: [[col]],
+    })
+  );
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: "RAW",
+      data: valueUpdates,
+    },
+  });
+
+  // Apply header styling to the whole row so newly inserted cells
+  // match the existing style
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: {
@@ -515,28 +664,23 @@ async function writeHeadersIfMissing(
         {
           repeatCell: {
             range: {
-              sheetId: sheetProps.sheetId,
+              sheetId: sheetNumericId,
               startRowIndex: 0,
               endRowIndex: 1,
             },
             cell: {
               userEnteredFormat: {
                 textFormat: { bold: true },
-                backgroundColor: { red: 0.96, green: 0.96, blue: 0.96 },
+                backgroundColor: {
+                  red: 0.96,
+                  green: 0.96,
+                  blue: 0.96,
+                },
                 horizontalAlignment: "LEFT",
               },
             },
             fields:
               "userEnteredFormat(textFormat,backgroundColor,horizontalAlignment)",
-          },
-        },
-        {
-          updateSheetProperties: {
-            properties: {
-              sheetId: sheetProps.sheetId,
-              gridProperties: { frozenRowCount: 1 },
-            },
-            fields: "gridProperties.frozenRowCount",
           },
         },
       ],
