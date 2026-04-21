@@ -358,6 +358,30 @@ function DataManagementSettings() {
     | { kind: "error"; message: string }
   >({ kind: "idle" });
 
+  interface AuditEntry {
+    id: string;
+    timestamp: string;
+    actor: string;
+    action: string;
+    entityTable: string;
+    entityId: string;
+    changesJson: string;
+  }
+
+  interface AuditReport {
+    ok: boolean;
+    count: number;
+    total: number;
+    entries: AuditEntry[];
+  }
+
+  const [auditState, setAuditState] = useState<
+    | { kind: "idle" }
+    | { kind: "running" }
+    | { kind: "success"; report: AuditReport }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+
   // Pull active company from the Company context so we can call
   // the repair API with the right company_id
   const { activeCompany } = useCompany();
@@ -415,6 +439,33 @@ function DataManagementSettings() {
       setHealthState({ kind: "success", report: data as HealthReport });
     } catch (err) {
       setHealthState({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Neparedzēta kļūda",
+      });
+    }
+  };
+
+  const runAuditLoad = async () => {
+    if (!activeCompany?.id) {
+      setAuditState({
+        kind: "error",
+        message: "Nav aktīva uzņēmuma.",
+      });
+      return;
+    }
+    setAuditState({ kind: "running" });
+    try {
+      const res = await fetch(
+        `/api/audit-log?company_id=${encodeURIComponent(activeCompany.id)}&limit=50`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Neparedzēta kļūda");
+      }
+      setAuditState({ kind: "success", report: data as AuditReport });
+    } catch (err) {
+      setAuditState({
         kind: "error",
         message: err instanceof Error ? err.message : "Neparedzēta kļūda",
       });
@@ -699,6 +750,132 @@ function DataManagementSettings() {
             {healthState.kind === "running"
               ? "Pārbauda…"
               : "Skenēt tabulu rindu skaitu"}
+          </Button>
+        </div>
+      </SettingsCard>
+
+      {/* Audit log viewer */}
+      <SettingsCard
+        title="Darbību vēsture"
+        description="Parāda pēdējās 50 izmaiņas jūsu datos. Katra pievienošana, rediģēšana un dzēšana tiek reģistrēta audit log tabulā."
+      >
+        {auditState.kind === "error" && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-100">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+            <div className="flex-1 text-[12px] text-red-800 leading-relaxed">
+              {auditState.message}
+            </div>
+          </div>
+        )}
+
+        {auditState.kind === "success" && (
+          <div className="space-y-2">
+            <div className="text-[12px] text-graphite-600">
+              Rādītas {auditState.report.count} no{" "}
+              {auditState.report.total} darbībām kopā.
+            </div>
+
+            {auditState.report.entries.length === 0 ? (
+              <div className="p-4 text-center text-[12px] text-graphite-500 bg-graphite-50 rounded-lg">
+                Nav ierakstu. Pievienojiet vai rediģējiet datus, lai tos
+                redzētu.
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-graphite-200">
+                <table className="w-full text-[11.5px]">
+                  <thead>
+                    <tr className="bg-graphite-50 text-graphite-600 text-left">
+                      <th className="px-3 py-2 font-medium">Laiks</th>
+                      <th className="px-3 py-2 font-medium">Darbība</th>
+                      <th className="px-3 py-2 font-medium">Tabula</th>
+                      <th className="px-3 py-2 font-medium">Ieraksts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditState.report.entries.map((e) => {
+                      const ts = e.timestamp;
+                      let tsDisplay = ts;
+                      try {
+                        const d = new Date(ts);
+                        if (!isNaN(d.getTime())) {
+                          tsDisplay = d.toLocaleString("lv", {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          });
+                        }
+                      } catch {
+                        // leave as-is
+                      }
+
+                      const actionLabel =
+                        e.action === "create"
+                          ? "Izveidots"
+                          : e.action === "update"
+                            ? "Rediģēts"
+                            : e.action === "softDelete"
+                              ? "Dzēsts"
+                              : e.action;
+
+                      const actionColor =
+                        e.action === "create"
+                          ? "text-emerald-700 bg-emerald-50"
+                          : e.action === "update"
+                            ? "text-amber-700 bg-amber-50"
+                            : e.action === "softDelete"
+                              ? "text-red-700 bg-red-50"
+                              : "text-graphite-700 bg-graphite-50";
+
+                      return (
+                        <tr
+                          key={e.id}
+                          className="border-t border-graphite-100"
+                        >
+                          <td className="px-3 py-1.5 text-graphite-600 whitespace-nowrap">
+                            {tsDisplay}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <span
+                              className={cn(
+                                "inline-block px-2 py-0.5 rounded-md text-[10.5px] font-medium",
+                                actionColor
+                              )}
+                            >
+                              {actionLabel}
+                            </span>
+                          </td>
+                          <td className="px-3 py-1.5 font-mono text-graphite-700">
+                            {e.entityTable}
+                          </td>
+                          <td className="px-3 py-1.5 font-mono text-graphite-500">
+                            {e.entityId}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={runAuditLoad}
+            disabled={!activeCompany || auditState.kind === "running"}
+          >
+            <Database className="h-3.5 w-3.5" />
+            {auditState.kind === "running"
+              ? "Ielādē…"
+              : auditState.kind === "success"
+                ? "Atjaunot"
+                : "Ielādēt darbību vēsturi"}
           </Button>
         </div>
       </SettingsCard>
