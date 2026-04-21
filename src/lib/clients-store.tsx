@@ -71,7 +71,7 @@ interface ClientTemplatesStore {
 // ============================================================
 
 const CLIENTS_CACHE_PREFIX = "workmanis:clients-cache:";
-const TEMPLATES_KEY = "workmanis:templates-store"; // still localStorage
+const TEMPLATES_CACHE_PREFIX = "workmanis:templates-cache:";
 
 function readClientsCache(companyId: string): Client[] {
   if (typeof window === "undefined") return [];
@@ -96,20 +96,23 @@ function writeClientsCache(companyId: string, clients: Client[]) {
   }
 }
 
-function readTemplates(): InvoiceTemplate[] {
+function readTemplatesCache(companyId: string): InvoiceTemplate[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(TEMPLATES_KEY);
+    const raw = localStorage.getItem(TEMPLATES_CACHE_PREFIX + companyId);
     return raw ? (JSON.parse(raw) as InvoiceTemplate[]) : [];
   } catch {
     return [];
   }
 }
 
-function writeTemplates(templates: InvoiceTemplate[]) {
+function writeTemplatesCache(companyId: string, templates: InvoiceTemplate[]) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
+    localStorage.setItem(
+      TEMPLATES_CACHE_PREFIX + companyId,
+      JSON.stringify(templates)
+    );
   } catch {
     // ignore
   }
@@ -155,6 +158,30 @@ function apiToClient(a: ApiClient): Client {
   };
 }
 
+interface ApiTemplate {
+  id: string;
+  keyword: string;
+  clientId: string;
+  language: string;
+  content: unknown;
+  reference: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function apiToTemplate(a: ApiTemplate): InvoiceTemplate {
+  return {
+    id: a.id,
+    keyword: a.keyword,
+    clientId: a.clientId,
+    language: a.language as InvoiceTemplate["language"],
+    // Cast — server stores as JSON, we trust it's a valid InvoiceContent
+    content: a.content as InvoiceTemplate["content"],
+    reference: a.reference,
+    createdAt: a.createdAt,
+  };
+}
+
 // ============================================================
 // Provider
 // ============================================================
@@ -171,20 +198,12 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplates] = useState<InvoiceTemplate[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Per-client updatedAt tracking for optimistic locking
+  // Per-row updatedAt tracking for optimistic locking.
+  // Shared across clients AND templates — id prefixes are distinct
+  // ('cli-' vs 'tem-' vs 'tmp-') so no collisions.
   const updatedAtByIdRef = useRef<Map<string, string>>(new Map());
 
   const lastCompanyIdRef = useRef<string | null>(null);
-
-  // Load templates from localStorage on mount (not per-company; will
-  // move to per-company when billing-store migrates)
-  useEffect(() => {
-    setTemplates(readTemplates());
-  }, []);
-
-  useEffect(() => {
-    writeTemplates(templates);
-  }, [templates]);
 
   const fetchClients = useCallback(async (companyId: string) => {
     setLoading(true);
@@ -199,12 +218,9 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       const data = (await res.json()) as {
         clients: (ApiClient & { updatedAt: string })[];
       };
-      // Update updatedAt map
-      const newMap = new Map<string, string>();
       for (const c of data.clients) {
-        newMap.set(c.id, c.updatedAt);
+        updatedAtByIdRef.current.set(c.id, c.updatedAt);
       }
-      updatedAtByIdRef.current = newMap;
 
       const fresh = data.clients.map(apiToClient);
       setClients(fresh);
@@ -216,21 +232,44 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const fetchTemplates = useCallback(async (companyId: string) => {
+    try {
+      const res = await fetch(
+        `/api/invoice-templates?company_id=${encodeURIComponent(companyId)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`List templates failed: ${res.status}`);
+      const data = (await res.json()) as { templates: ApiTemplate[] };
+      for (const t of data.templates) {
+        updatedAtByIdRef.current.set(t.id, t.updatedAt);
+      }
+      const fresh = data.templates.map(apiToTemplate);
+      setTemplates(fresh);
+      writeTemplatesCache(companyId, fresh);
+    } catch (err) {
+      console.error("Fetch templates failed:", err);
+    }
+  }, []);
+
   useEffect(() => {
     const companyId = activeCompany?.id ?? null;
     if (!companyId) {
       setClients([]);
+      setTemplates([]);
       lastCompanyIdRef.current = null;
       return;
     }
     if (companyId === lastCompanyIdRef.current) return;
     lastCompanyIdRef.current = companyId;
 
-    const cached = readClientsCache(companyId);
-    setClients(cached);
+    // Instant hydration from per-company cache
+    setClients(readClientsCache(companyId));
+    setTemplates(readTemplatesCache(companyId));
 
+    // Background fetch from Sheets
     void fetchClients(companyId);
-  }, [activeCompany, fetchClients]);
+    void fetchTemplates(companyId);
+  }, [activeCompany, fetchClients, fetchTemplates]);
 
   // ============================================================
   // Client mutations
@@ -500,30 +539,170 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
   };
 
   // ============================================================
-  // Template mutations — STILL localStorage
+  // Template mutations — Sheets-backed via /api/invoice-templates
   // ============================================================
 
   const addTemplate: ClientTemplatesStore["addTemplate"] = (data) => {
-    const newTpl: InvoiceTemplate = {
+    const companyId = activeCompany?.id;
+    const tempId = `tmp-${uid()}`;
+    const now = new Date().toISOString();
+    const optimistic: InvoiceTemplate = {
       ...data,
-      id: uid(),
-      createdAt: new Date().toISOString(),
+      id: tempId,
+      createdAt: now,
     };
-    setTemplates((prev) => [newTpl, ...prev]);
-    return newTpl;
+
+    setTemplates((prev) => {
+      const next = [optimistic, ...prev];
+      if (companyId) writeTemplatesCache(companyId, next);
+      return next;
+    });
+
+    if (!companyId) {
+      // No active company — caller will see optimistic item but
+      // it won't persist. Still return so consumers don't break.
+      return optimistic;
+    }
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/invoice-templates?company_id=${encodeURIComponent(companyId)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              keyword: data.keyword,
+              client_id: data.clientId,
+              language: data.language,
+              content: data.content,
+              reference: data.reference ?? "",
+            }),
+          }
+        );
+        if (!res.ok) throw new Error(`POST failed: ${res.status}`);
+        const body = (await res.json()) as { template: ApiTemplate };
+        const server = apiToTemplate(body.template);
+        updatedAtByIdRef.current.set(server.id, body.template.updatedAt);
+
+        setTemplates((prev) => {
+          const next = prev.map((t) => (t.id === tempId ? server : t));
+          writeTemplatesCache(companyId, next);
+          return next;
+        });
+      } catch (err) {
+        console.error("addTemplate sync failed:", err);
+        setTemplates((prev) => {
+          const next = prev.filter((t) => t.id !== tempId);
+          writeTemplatesCache(companyId, next);
+          return next;
+        });
+      }
+    })();
+
+    return optimistic;
   };
 
   const updateTemplate: ClientTemplatesStore["updateTemplate"] = (
     id,
     patch
   ) => {
-    setTemplates((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
-    );
+    const companyId = activeCompany?.id;
+    if (!companyId) return;
+
+    let previous: InvoiceTemplate | undefined;
+    setTemplates((prev) => {
+      previous = prev.find((t) => t.id === id);
+      const next = prev.map((t) => (t.id === id ? { ...t, ...patch } : t));
+      writeTemplatesCache(companyId, next);
+      return next;
+    });
+
+    if (!previous) return;
+    if (id.startsWith("tmp-")) return;
+
+    const expectedUpdatedAt =
+      updatedAtByIdRef.current.get(id) ?? previous.createdAt;
+
+    const body: Record<string, unknown> = {
+      expected_updated_at: expectedUpdatedAt,
+    };
+    if (patch.keyword !== undefined) body.keyword = patch.keyword;
+    if (patch.clientId !== undefined) body.client_id = patch.clientId;
+    if (patch.language !== undefined) body.language = patch.language;
+    if (patch.reference !== undefined) body.reference = patch.reference ?? "";
+    if (patch.content !== undefined) body.content = patch.content;
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/invoice-templates/${encodeURIComponent(id)}?company_id=${encodeURIComponent(companyId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        );
+        if (!res.ok) throw new Error(`PATCH failed: ${res.status}`);
+        const json = (await res.json()) as { template: ApiTemplate };
+        const server = apiToTemplate(json.template);
+        updatedAtByIdRef.current.set(server.id, json.template.updatedAt);
+        setTemplates((prev) => {
+          const next = prev.map((t) => (t.id === id ? server : t));
+          writeTemplatesCache(companyId, next);
+          return next;
+        });
+      } catch (err) {
+        console.error("updateTemplate sync failed:", err);
+        if (previous) {
+          const prev2 = previous;
+          setTemplates((prev) => {
+            const next = prev.map((t) => (t.id === id ? prev2 : t));
+            writeTemplatesCache(companyId, next);
+            return next;
+          });
+        }
+      }
+    })();
   };
 
   const deleteTemplate: ClientTemplatesStore["deleteTemplate"] = (id) => {
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    const companyId = activeCompany?.id;
+    if (!companyId) return;
+
+    let removed: InvoiceTemplate | undefined;
+    setTemplates((prev) => {
+      removed = prev.find((t) => t.id === id);
+      const next = prev.filter((t) => t.id !== id);
+      writeTemplatesCache(companyId, next);
+      return next;
+    });
+
+    if (!removed) return;
+    if (id.startsWith("tmp-")) return;
+
+    const expectedUpdatedAt =
+      updatedAtByIdRef.current.get(id) ?? removed.createdAt;
+
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/invoice-templates/${encodeURIComponent(id)}?company_id=${encodeURIComponent(companyId)}&expected_updated_at=${encodeURIComponent(expectedUpdatedAt)}`,
+          { method: "DELETE" }
+        );
+        if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+      } catch (err) {
+        console.error("deleteTemplate sync failed:", err);
+        if (removed) {
+          const restored = removed;
+          setTemplates((prev) => {
+            const next = [restored, ...prev];
+            writeTemplatesCache(companyId, next);
+            return next;
+          });
+        }
+      }
+    })();
   };
 
   const templatesForClient: ClientTemplatesStore["templatesForClient"] = (

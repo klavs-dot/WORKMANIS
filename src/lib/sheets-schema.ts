@@ -293,14 +293,11 @@ export const COMPANY_TABS = [
     name: "34_invoice_templates",
     idPrefix: "tem",
     cols: [
-      "name",
+      "keyword",
       "client_id",
-      "description",
-      "subtotal_cents",
-      "vat_rate",
-      "recurrence",
-      "next_invoice_date",
-      "active",
+      "language",
+      "content_json",
+      "reference",
     ],
   },
   {
