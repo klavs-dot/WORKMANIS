@@ -19,10 +19,16 @@ export function formatCurrency(
 }
 
 export function formatDate(
-  date: string | Date,
+  date: string | Date | null | undefined,
   locale: string = "lv-LV"
 ): string {
+  // Defensive — empty string, null, undefined all return em-dash
+  // instead of throwing RangeError. Real data should pass valid
+  // ISO strings, but optional fields and bad backend responses
+  // shouldn't crash the entire page.
+  if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "—";
   return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     month: "short",
@@ -31,10 +37,12 @@ export function formatDate(
 }
 
 export function formatDateShort(
-  date: string | Date,
+  date: string | Date | null | undefined,
   locale: string = "lv-LV"
 ): string {
+  if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "—";
   return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     month: "2-digit",
@@ -42,8 +50,10 @@ export function formatDateShort(
   }).format(d);
 }
 
-export function daysUntil(date: string | Date): number {
+export function daysUntil(date: string | Date | null | undefined): number {
+  if (!date) return 0;
   const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return 0;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   d.setHours(0, 0, 0, 0);
