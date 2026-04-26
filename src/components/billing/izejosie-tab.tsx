@@ -510,25 +510,7 @@ export function IzejosieTab() {
           {queue.length > 0 &&
             readyItems.length === 0 &&
             errorItems.length === 0 && (
-              <motion.div
-                key="parsing"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="rounded-2xl border border-graphite-200 bg-white py-14 px-6 text-center"
-              >
-                <div className="flex items-center justify-center gap-3">
-                  <div className="h-5 w-5 rounded-full border-2 border-graphite-200 border-t-graphite-900 animate-spin" />
-                  <span className="text-[14px] text-graphite-700 font-medium">
-                    {parsingItems.length === 1
-                      ? "Apstrādājam rēķinu…"
-                      : `Apstrādājam ${parsingItems.length} rēķinus…`}
-                  </span>
-                </div>
-                <p className="mt-2 text-[12px] text-graphite-500">
-                  Izgūstam datus no PDF
-                </p>
-              </motion.div>
+              <FunnyParsingState count={parsingItems.length} />
             )}
 
           {readyItems.length === 0 && errorItems.length > 0 && (
@@ -1569,5 +1551,273 @@ function AccountingMetaModal({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============================================================
+// Funny parsing state — keeps the user entertained while AI
+// crunches through PDFs. Rotates messages every ~2.8s, shows
+// an animated robot doing... robot things, plus a progress
+// bar that estimates based on file count.
+// ============================================================
+
+const FUNNY_MESSAGES = [
+  "Ouu, iegūstu datus!",
+  "Šis nu gan rēķins...",
+  "Atkal skaitām projām",
+  "Šim SIA dīvains nosaukums, bet par gaumi nestrīdās",
+  "Šim SIA man patīk nosaukums",
+  "Un tā katru reizi man viss jādara pašam...",
+  "Man liekas, ka par šo arī jāsāk prasīt nauda. Tā kā robotu, man var nemaksāt?",
+  "Hmm, kas šeit ir... ahā!",
+  "Burtu pēc burta, kā veciem labiem laikiem",
+  "Cik gan grūti pieliek tikai pareizo rēķina numuru?",
+  "Vai tiešām šis ir 21% PVN? Kā vienmēr...",
+  "IBAN... IBAN... atrasts!",
+  "Ā, šī ir tā gudrā SIA, ko visi pazīst",
+  "Pirmā kafija šodien, otrais rēķins",
+  "Kāpēc PDF-i nav vienkārši Excel?",
+  "Skaitļi labi, bet kur palika datums?",
+  "Lasu sīko druku ar sīko aci",
+  "Tas pats fonts kā citur. Atkārtošanās!",
+  "Pareizi, summa Eiro, nevis dolāros",
+  "Šis kungs grib tikt apmaksāts ātri",
+  "Skanē, skanē, līdz skanē...",
+  "Ahā, šeit ir slēptais rēķina numurs!",
+  "Vai tas ir LV vai LT IBAN? Pārbaudu...",
+  "Reģ. nr. — vienpadsmit cipari, kā nopirkti",
+  "Pacietība, tūlīt būs gatavs",
+  "Šis rēķins man liekas pazīstams",
+  "Kā labi, ka esmu robots un nav dzīves",
+  "Vēl pāris sekundes... vai tomēr minūtes?",
+  "Klusi, lasu...",
+  "Tā tā, papīrs ir labāk par cilvēkiem",
+];
+
+function FunnyParsingState({ count }: { count: number }) {
+  const [messageIndex, setMessageIndex] = useState(() =>
+    Math.floor(Math.random() * FUNNY_MESSAGES.length)
+  );
+  const [progress, setProgress] = useState(0);
+
+  // Rotate the funny message every 2.8s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessageIndex(
+        (prev) => (prev + 1 + Math.floor(Math.random() * 3)) % FUNNY_MESSAGES.length
+      );
+    }, 2800);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fake progress bar — eases toward 95% based on file count.
+  // Real completion (jump to 100% + UI swap) happens externally
+  // when parseOneFile returns. The bar is just for vibes.
+  useEffect(() => {
+    setProgress(0);
+    // Estimated time per invoice ~6s for Sonnet 4.6 vision; cap at 95%
+    const estimatedTotalMs = count * 6000;
+    const tickMs = 100;
+    const ticks = estimatedTotalMs / tickMs;
+    let currentTick = 0;
+    const interval = setInterval(() => {
+      currentTick += 1;
+      // Asymptotic approach to 95%, slows down as it goes
+      const linear = Math.min(currentTick / ticks, 1);
+      const eased = 1 - Math.pow(1 - linear, 2.5);
+      setProgress(Math.min(eased * 95, 95));
+    }, tickMs);
+    return () => clearInterval(interval);
+  }, [count]);
+
+  return (
+    <motion.div
+      key="parsing"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="rounded-2xl border border-graphite-200 bg-gradient-to-b from-white to-graphite-50 py-12 px-6 text-center overflow-hidden"
+    >
+      {/* The robot */}
+      <div className="flex justify-center mb-6">
+        <RobotAnimation />
+      </div>
+
+      {/* Header — count of files */}
+      <div className="text-[14px] text-graphite-700 font-semibold mb-1">
+        {count === 1
+          ? "Apstrādāju rēķinu…"
+          : `Apstrādāju ${count} rēķinus paralēli…`}
+      </div>
+
+      {/* Rotating funny message */}
+      <div className="h-6 mb-5 flex items-center justify-center">
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={messageIndex}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.35 }}
+            className="text-[12.5px] text-graphite-500 italic max-w-md mx-auto"
+          >
+            {FUNNY_MESSAGES[messageIndex]}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+
+      {/* Progress bar */}
+      <div className="max-w-sm mx-auto">
+        <div className="h-1.5 w-full rounded-full bg-graphite-100 overflow-hidden">
+          <motion.div
+            className="h-full bg-gradient-to-r from-violet-500 to-graphite-900 rounded-full"
+            initial={{ width: "0%" }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          />
+        </div>
+        <div className="mt-1.5 text-[10.5px] text-graphite-400 font-mono">
+          {Math.round(progress)}%
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// Animated robot. Pure SVG + framer-motion — no external assets.
+// The robot bobs up and down, antenna pulses, eyes blink, arms
+// wave. Designed to feel friendly and a bit silly.
+function RobotAnimation() {
+  return (
+    <motion.div
+      animate={{
+        y: [0, -6, 0],
+      }}
+      transition={{
+        duration: 1.6,
+        repeat: Infinity,
+        ease: "easeInOut",
+      }}
+      className="relative"
+    >
+      <svg width="80" height="90" viewBox="0 0 80 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Antenna line */}
+        <line x1="40" y1="14" x2="40" y2="22" stroke="#475569" strokeWidth="2" strokeLinecap="round" />
+
+        {/* Antenna ball — pulses */}
+        <motion.circle
+          cx="40"
+          cy="11"
+          r="3.5"
+          fill="#8b5cf6"
+          animate={{
+            scale: [1, 1.3, 1],
+            opacity: [0.7, 1, 0.7],
+          }}
+          transition={{
+            duration: 1.2,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+
+        {/* Head */}
+        <rect
+          x="22"
+          y="22"
+          width="36"
+          height="30"
+          rx="6"
+          fill="#1e293b"
+        />
+
+        {/* Eyes — blink occasionally */}
+        <motion.g
+          animate={{
+            scaleY: [1, 1, 0.1, 1, 1],
+          }}
+          transition={{
+            duration: 4,
+            repeat: Infinity,
+            times: [0, 0.85, 0.9, 0.95, 1],
+            ease: "easeInOut",
+          }}
+          style={{ transformOrigin: "40px 35px" }}
+        >
+          <circle cx="32" cy="35" r="3.5" fill="#34d399" />
+          <circle cx="48" cy="35" r="3.5" fill="#34d399" />
+        </motion.g>
+
+        {/* Mouth — small smile */}
+        <path
+          d="M 32 44 Q 40 48 48 44"
+          stroke="#475569"
+          strokeWidth="1.8"
+          fill="none"
+          strokeLinecap="round"
+        />
+
+        {/* Body */}
+        <rect
+          x="26"
+          y="55"
+          width="28"
+          height="22"
+          rx="3"
+          fill="#334155"
+        />
+
+        {/* Body decoration — chest light */}
+        <motion.circle
+          cx="40"
+          cy="64"
+          r="2.5"
+          fill="#f59e0b"
+          animate={{
+            opacity: [0.4, 1, 0.4],
+          }}
+          transition={{
+            duration: 1,
+            repeat: Infinity,
+          }}
+        />
+
+        {/* Left arm — waves */}
+        <motion.g
+          style={{ transformOrigin: "26px 60px" }}
+          animate={{
+            rotate: [-15, 15, -15],
+          }}
+          transition={{
+            duration: 1.4,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        >
+          <line x1="26" y1="60" x2="14" y2="68" stroke="#475569" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="13" cy="69" r="3" fill="#1e293b" />
+        </motion.g>
+
+        {/* Right arm — waves opposite */}
+        <motion.g
+          style={{ transformOrigin: "54px 60px" }}
+          animate={{
+            rotate: [15, -15, 15],
+          }}
+          transition={{
+            duration: 1.4,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        >
+          <line x1="54" y1="60" x2="66" y2="68" stroke="#475569" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="67" cy="69" r="3" fill="#1e293b" />
+        </motion.g>
+
+        {/* Legs */}
+        <rect x="30" y="77" width="6" height="10" rx="1.5" fill="#1e293b" />
+        <rect x="44" y="77" width="6" height="10" rx="1.5" fill="#1e293b" />
+      </svg>
+    </motion.div>
   );
 }
