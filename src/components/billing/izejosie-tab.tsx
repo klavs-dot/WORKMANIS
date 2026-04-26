@@ -78,6 +78,8 @@ interface ParsedFields {
   dueDate: string;
   issueDate: string;
   description: string;
+  suggestedCategory?: AccountingCategory;
+  suggestedDepreciationYears?: DepreciationPeriod;
   isPaid: boolean;
   paidEvidence?: string;
   sources: {
@@ -98,15 +100,25 @@ interface ParsedFields {
   notes?: string;
 }
 
+// One queued file with status: parsing → ready (parsed ok) or error
+interface QueueItem {
+  id: string;
+  fileName: string;
+  status: "parsing" | "ready" | "error";
+  parsed?: ParsedFields;
+  error?: string;
+}
+
 export function IzejosieTab() {
   const { received, addReceived, updateReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
     useBilling();
   const [isDragging, setIsDragging] = useState(false);
-  const [parsing, setParsing] = useState(false);
-  const [parsed, setParsed] = useState<
-    (ParsedFields & { fileName: string }) | null
-  >(null);
-  const [parseError, setParseError] = useState<string | null>(null);
+  // Queue of all files dropped together. We parse all in parallel,
+  // then user reviews/approves each one in turn.
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  // Index of the currently-shown queue item in the review form.
+  // Only items with status === 'ready' are shown.
+  const [reviewIndex, setReviewIndex] = useState(0);
   const [openedInvoice, setOpenedInvoice] = useState<ReceivedInvoice | null>(
     null
   );
@@ -115,25 +127,27 @@ export function IzejosieTab() {
   const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const parseInvoiceWithAI = async (file: File) => {
-    setParsing(true);
-    setParsed(null);
-    setParseError(null);
+  // For category editing in the review form
+  const [reviewCategory, setReviewCategory] = useState<AccountingCategory>(
+    "sanemts_pakalpojums"
+  );
+  const [reviewDepreciation, setReviewDepreciation] = useState<DepreciationPeriod>(5);
+  const [reviewExplanation, setReviewExplanation] = useState("");
 
+  // Parses ONE file and updates the queue item with the result.
+  // Called once per dropped file; runs in parallel.
+  const parseOneFile = async (item: QueueItem, file: File) => {
     try {
       const formData = new FormData();
       formData.append("file", file);
-
       const res = await fetch("/api/invoices-in/parse", {
         method: "POST",
         body: formData,
       });
       const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.error ?? "Neparedzēta kļūda");
-      }
+      if (!res.ok) throw new Error(json.error ?? "Neparedzēta kļūda");
       const d = json.data;
-      setParsed({
+      const parsed: ParsedFields = {
         supplier: d.supplier ?? "",
         supplier_reg_number: d.supplier_reg_number,
         invoiceNumber: d.invoice_number ?? "",
@@ -145,6 +159,10 @@ export function IzejosieTab() {
         dueDate: d.due_date ?? "",
         issueDate: d.issue_date ?? "",
         description: d.description ?? "",
+        suggestedCategory: d.suggested_category as AccountingCategory | undefined,
+        suggestedDepreciationYears: d.suggested_depreciation_years as
+          | DepreciationPeriod
+          | undefined,
         isPaid: d.is_paid === true,
         paidEvidence: d.paid_evidence,
         sources: d.sources ?? {
@@ -163,24 +181,48 @@ export function IzejosieTab() {
           due_date: 1,
         },
         notes: d.notes,
-        fileName: file.name,
-      });
-    } catch (err) {
-      console.error("Parse failed:", err);
-      setParseError(
-        err instanceof Error
-          ? err.message
-          : "Neizdevās apstrādāt failu. Mēģini vēlreiz vai ievadi datus manuāli."
+      };
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === item.id ? { ...q, status: "ready", parsed } : q
+        )
       );
-    } finally {
-      setParsing(false);
+    } catch (err) {
+      setQueue((prev) =>
+        prev.map((q) =>
+          q.id === item.id
+            ? {
+                ...q,
+                status: "error",
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : "Neizdevās apstrādāt failu",
+              }
+            : q
+        )
+      );
     }
   };
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const file = files[0];
-    void parseInvoiceWithAI(file);
+    // Convert FileList → array (avoids reusing the same File index
+    // across async callbacks)
+    const fileArray = Array.from(files);
+    const newItems: QueueItem[] = fileArray.map((f) => ({
+      id: `q-${Math.random().toString(36).slice(2, 10)}`,
+      fileName: f.name,
+      status: "parsing" as const,
+    }));
+    setQueue((prev) => [...prev, ...newItems]);
+    // Reset review index when starting fresh
+    if (queue.length === 0) setReviewIndex(0);
+    // Kick off parallel parses (each updates its own queue item
+    // when done; user can start reviewing the first one to finish)
+    fileArray.forEach((file, i) => {
+      void parseOneFile(newItems[i], file);
+    });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -195,24 +237,92 @@ export function IzejosieTab() {
   };
 
   const handlePreparePayment = () => {
-    if (!parsed) return;
+    if (!currentItem?.parsed) return;
+    const p = currentItem.parsed;
     addReceived({
-      supplier: parsed.supplier,
-      invoiceNumber: parsed.invoiceNumber,
-      amount: parsed.amount,
-      iban: parsed.iban,
-      dueDate: parsed.dueDate,
-      fileName: parsed.fileName,
+      supplier: p.supplier,
+      invoiceNumber: p.invoiceNumber,
+      amount: p.amount,
+      iban: p.iban,
+      dueDate: p.dueDate,
+      fileName: currentItem.fileName,
     });
-    setParsed(null);
-    setParseError(null);
+    // The accounting metadata (category + explanation) gets
+    // attached separately via setReceivedMeta. addReceived
+    // generates a temp id; we listen for the real id by hooking
+    // into the next render cycle. For V1 simplicity, we use the
+    // explanation+category we have right now, applied to the
+    // most recent invoice (which will be this one once the queue
+    // settles). If race conditions matter later, billing-store
+    // could expose addReceivedWithMeta() to do both in one go.
+    if (reviewExplanation.trim() || reviewCategory) {
+      // Defer one tick so the optimistic invoice is in `received`
+      // before we try to set its meta
+      setTimeout(() => {
+        // Find the just-added invoice — it's the most recently
+        // added one matching this fileName
+        const justAdded = [...received]
+          .reverse()
+          .find((inv) => inv.fileName === currentItem.fileName);
+        if (justAdded) {
+          setReceivedMeta(justAdded.id, {
+            category: reviewCategory,
+            depreciationPeriod:
+              reviewCategory === "amortizacija"
+                ? reviewDepreciation
+                : undefined,
+            explanation: reviewExplanation,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }, 0);
+    }
+    // Remove this item from the queue and advance to next ready
+    // item, or empty out if it was the last one.
+    removeFromQueue(currentItem.id);
   };
 
-  const clearParsed = () => {
-    setParsed(null);
-    setParseError(null);
+  const skipCurrent = () => {
+    if (!currentItem) return;
+    removeFromQueue(currentItem.id);
+  };
+
+  const removeFromQueue = (id: string) => {
+    setQueue((prev) => prev.filter((q) => q.id !== id));
+    // Reset reviewIndex — after removal the index might point
+    // past the end, so just go back to 0 and let the next item
+    // become "current".
+    setReviewIndex(0);
+  };
+
+  const clearAll = () => {
+    setQueue([]);
+    setReviewIndex(0);
     if (inputRef.current) inputRef.current.value = "";
   };
+
+  // Queue stats — drives the bottom progress bar and the
+  // "Rēķins X no Y" badge in the review header.
+  const readyItems = queue.filter((q) => q.status === "ready");
+  const parsingItems = queue.filter((q) => q.status === "parsing");
+  const errorItems = queue.filter((q) => q.status === "error");
+  const currentItem = readyItems[reviewIndex] ?? readyItems[0];
+  const currentReadyIndex = currentItem
+    ? readyItems.findIndex((q) => q.id === currentItem.id) + 1
+    : 0;
+
+  // Whenever the current item changes, pre-fill the editable
+  // category/explanation/depreciation form fields with whatever
+  // the AI suggested. User can override before approving.
+  useEffect(() => {
+    if (!currentItem?.parsed) return;
+    const p = currentItem.parsed;
+    setReviewCategory(p.suggestedCategory ?? "sanemts_pakalpojums");
+    setReviewDepreciation(
+      (p.suggestedDepreciationYears as DepreciationPeriod) ?? 5
+    );
+    setReviewExplanation(p.description ?? "");
+  }, [currentItem?.id, currentItem?.parsed]);
 
   return (
     <div className="space-y-6">
@@ -223,7 +333,7 @@ export function IzejosieTab() {
         transition={{ duration: 0.4 }}
       >
         <AnimatePresence mode="wait">
-          {!parsed && !parsing && (
+          {queue.length === 0 && (
             <motion.div
               key="dropzone"
               initial={{ opacity: 0 }}
@@ -272,27 +382,31 @@ export function IzejosieTab() {
             </motion.div>
           )}
 
-          {parsing && (
-            <motion.div
-              key="parsing"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="rounded-2xl border border-graphite-200 bg-white py-14 px-6 text-center"
-            >
-              <div className="flex items-center justify-center gap-3">
-                <div className="h-5 w-5 rounded-full border-2 border-graphite-200 border-t-graphite-900 animate-spin" />
-                <span className="text-[14px] text-graphite-700 font-medium">
-                  Apstrādājam rēķinu…
-                </span>
-              </div>
-              <p className="mt-2 text-[12px] text-graphite-500">
-                Izgūstam datus no PDF
-              </p>
-            </motion.div>
-          )}
+          {queue.length > 0 &&
+            readyItems.length === 0 &&
+            errorItems.length === 0 && (
+              <motion.div
+                key="parsing"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="rounded-2xl border border-graphite-200 bg-white py-14 px-6 text-center"
+              >
+                <div className="flex items-center justify-center gap-3">
+                  <div className="h-5 w-5 rounded-full border-2 border-graphite-200 border-t-graphite-900 animate-spin" />
+                  <span className="text-[14px] text-graphite-700 font-medium">
+                    {parsingItems.length === 1
+                      ? "Apstrādājam rēķinu…"
+                      : `Apstrādājam ${parsingItems.length} rēķinus…`}
+                  </span>
+                </div>
+                <p className="mt-2 text-[12px] text-graphite-500">
+                  Izgūstam datus no PDF
+                </p>
+              </motion.div>
+            )}
 
-          {parseError && (
+          {readyItems.length === 0 && errorItems.length > 0 && (
             <motion.div
               key="error"
               initial={{ opacity: 0, y: 4 }}
@@ -306,18 +420,27 @@ export function IzejosieTab() {
                   </div>
                   <div className="flex-1">
                     <h3 className="text-[14.5px] font-semibold tracking-tight text-graphite-900">
-                      Neizdevās apstrādāt rēķinu
+                      {errorItems.length === 1
+                        ? "Neizdevās apstrādāt rēķinu"
+                        : `${errorItems.length} rēķini netika apstrādāti`}
                     </h3>
-                    <p className="text-[12.5px] text-graphite-600 mt-1 leading-relaxed">
-                      {parseError}
-                    </p>
+                    <ul className="text-[12.5px] text-graphite-600 mt-2 space-y-1">
+                      {errorItems.map((e) => (
+                        <li key={e.id} className="leading-relaxed">
+                          <span className="font-mono text-graphite-500">
+                            {e.fileName}:
+                          </span>{" "}
+                          {e.error ?? "Nezināma kļūda"}
+                        </li>
+                      ))}
+                    </ul>
                     <div className="mt-3 flex gap-2">
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => setParseError(null)}
+                        onClick={clearAll}
                       >
-                        Mēģināt vēlreiz
+                        Notīrīt un mēģināt vēlreiz
                       </Button>
                     </div>
                   </div>
@@ -326,7 +449,7 @@ export function IzejosieTab() {
             </motion.div>
           )}
 
-          {parsed && !parsing && (
+          {currentItem?.parsed && (
             <motion.div
               key="parsed"
               initial={{ opacity: 0, y: 4 }}
@@ -340,34 +463,42 @@ export function IzejosieTab() {
                       <Check className="h-4 w-4" strokeWidth={2.5} />
                     </div>
                     <div>
-                      <h3 className="text-[14.5px] font-semibold tracking-tight text-graphite-900">
-                        Rēķina dati izgūti
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-[14.5px] font-semibold tracking-tight text-graphite-900">
+                          Rēķina dati izgūti
+                        </h3>
+                        {readyItems.length > 1 && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-graphite-100 px-2 py-0.5 text-[11px] font-medium text-graphite-700">
+                            {currentReadyIndex} / {readyItems.length}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11.5px] text-graphite-500 mt-0.5 font-mono">
-                        {parsed.fileName}
+                        {currentItem.fileName}
                       </p>
                     </div>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={clearParsed}
+                    onClick={skipCurrent}
+                    title="Izlaist šo rēķinu"
                   >
                     <X className="h-3.5 w-3.5" />
                   </Button>
                 </div>
 
                 {/* PAID warning — shown prominently if AI detected paid markings */}
-                {parsed.isPaid && (
+                {currentItem.parsed.isPaid && (
                   <div className="mx-5 mt-5 rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3">
                     <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <div className="text-[13px] font-semibold text-red-900">
                         Šis rēķins jau ir apmaksāts
                       </div>
-                      {parsed.paidEvidence && (
+                      {currentItem.parsed.paidEvidence && (
                         <div className="text-[12px] text-red-800 mt-1 leading-relaxed">
-                          AI atrada: <span className="italic">&ldquo;{parsed.paidEvidence}&rdquo;</span>
+                          AI atrada: <span className="italic">&ldquo;{currentItem.parsed.paidEvidence}&rdquo;</span>
                         </div>
                       )}
                       <div className="text-[11.5px] text-red-700 mt-2">
@@ -378,11 +509,11 @@ export function IzejosieTab() {
                 )}
 
                 {/* AI-flagged notes (when something looks unusual) */}
-                {parsed.notes && (
+                {currentItem.parsed.notes && (
                   <div className="mx-5 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
                     <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="text-[12px] text-amber-900 leading-relaxed">
-                      {parsed.notes}
+                      {currentItem.parsed.notes}
                     </div>
                   </div>
                 )}
@@ -397,15 +528,15 @@ export function IzejosieTab() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <ParsedField
                         label="Nosaukums"
-                        value={parsed.supplier}
-                        confidence={parsed.confidence.supplier_name}
-                        source={parsed.sources.supplier_name}
+                        value={currentItem.parsed.supplier}
+                        confidence={currentItem.parsed.confidence.supplier_name}
+                        source={currentItem.parsed.sources.supplier_name}
                       />
-                      {parsed.supplier_reg_number && (
+                      {currentItem.parsed.supplier_reg_number && (
                         <ParsedField
                           label="Reģ. Nr."
-                          value={parsed.supplier_reg_number}
-                          confidence={parsed.confidence.supplier_reg_number}
+                          value={currentItem.parsed.supplier_reg_number}
+                          confidence={currentItem.parsed.confidence.supplier_reg_number}
                           mono
                         />
                       )}
@@ -420,24 +551,20 @@ export function IzejosieTab() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <ParsedField
                         label="Rēķina numurs"
-                        value={parsed.invoiceNumber}
-                        confidence={parsed.confidence.invoice_number}
-                        source={parsed.sources.invoice_number}
+                        value={currentItem.parsed.invoiceNumber}
+                        confidence={currentItem.parsed.confidence.invoice_number}
+                        source={currentItem.parsed.sources.invoice_number}
                         mono
                       />
                       <ParsedField
-                        label="Apraksts"
-                        value={parsed.description}
-                      />
-                      <ParsedField
                         label="Izsniegts"
-                        value={parsed.issueDate ? formatDate(parsed.issueDate) : "—"}
+                        value={currentItem.parsed.issueDate ? formatDate(currentItem.parsed.issueDate) : "—"}
                       />
                       <ParsedField
                         label="Apmaksāt līdz"
-                        value={parsed.dueDate ? formatDate(parsed.dueDate) : "—"}
-                        confidence={parsed.confidence.due_date}
-                        source={parsed.sources.due_date}
+                        value={currentItem.parsed.dueDate ? formatDate(currentItem.parsed.dueDate) : "—"}
+                        confidence={currentItem.parsed.confidence.due_date}
+                        source={currentItem.parsed.sources.due_date}
                       />
                     </div>
                   </div>
@@ -448,23 +575,23 @@ export function IzejosieTab() {
                       Summas
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {parsed.amount_without_vat > 0 && (
+                      {currentItem.parsed.amount_without_vat > 0 && (
                         <ParsedField
                           label="Bez PVN"
-                          value={`${parsed.amount_without_vat.toFixed(2)} ${parsed.currency}`}
+                          value={`${currentItem.parsed.amount_without_vat.toFixed(2)} ${currentItem.parsed.currency}`}
                         />
                       )}
-                      {parsed.vat_amount > 0 && (
+                      {currentItem.parsed.vat_amount > 0 && (
                         <ParsedField
                           label="PVN"
-                          value={`${parsed.vat_amount.toFixed(2)} ${parsed.currency}`}
+                          value={`${currentItem.parsed.vat_amount.toFixed(2)} ${currentItem.parsed.currency}`}
                         />
                       )}
                       <ParsedField
-                        label={`Kopā (${parsed.currency})`}
-                        value={`${parsed.amount.toFixed(2)} ${parsed.currency}`}
-                        confidence={parsed.confidence.amount_total}
-                        source={parsed.sources.amount_total}
+                        label={`Kopā (${currentItem.parsed.currency})`}
+                        value={`${currentItem.parsed.amount.toFixed(2)} ${currentItem.parsed.currency}`}
+                        confidence={currentItem.parsed.confidence.amount_total}
+                        source={currentItem.parsed.sources.amount_total}
                         emphasize
                       />
                     </div>
@@ -477,11 +604,102 @@ export function IzejosieTab() {
                     </div>
                     <ParsedField
                       label="IBAN"
-                      value={parsed.iban || "—"}
-                      confidence={parsed.confidence.iban}
-                      source={parsed.sources.iban}
+                      value={currentItem.parsed.iban || "—"}
+                      confidence={currentItem.parsed.confidence.iban}
+                      source={currentItem.parsed.sources.iban}
                       mono
                     />
+                  </div>
+
+                  {/* Accounting category + explanation — editable */}
+                  <div className="border-t border-graphite-100 pt-5">
+                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
+                      Grāmatvedībai
+                      {currentItem.parsed.suggestedCategory && (
+                        <span className="ml-2 text-[10px] text-violet-600 font-medium normal-case tracking-normal">
+                          AI ierosināja: {accountingCategoryLabels[currentItem.parsed.suggestedCategory]}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Category radio-style buttons */}
+                      <div>
+                        <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+                          Kategorija
+                        </Label>
+                        <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {(Object.keys(accountingCategoryLabels) as AccountingCategory[]).map((cat) => {
+                            const selected = reviewCategory === cat;
+                            const wasSuggested = currentItem.parsed?.suggestedCategory === cat;
+                            return (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => setReviewCategory(cat)}
+                                className={cn(
+                                  "rounded-lg border px-3 py-2 text-[12.5px] font-medium text-left transition-colors",
+                                  selected
+                                    ? "border-graphite-900 bg-graphite-900 text-white"
+                                    : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span>{accountingCategoryLabels[cat]}</span>
+                                  {wasSuggested && !selected && (
+                                    <Sparkles className="h-3 w-3 text-violet-500" />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Depreciation period — only shown for amortizacija */}
+                      {reviewCategory === "amortizacija" && (
+                        <div>
+                          <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+                            Amortizācijas periods
+                          </Label>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {depreciationOptions.map((years) => {
+                              const selected = reviewDepreciation === years;
+                              return (
+                                <button
+                                  key={years}
+                                  type="button"
+                                  onClick={() => setReviewDepreciation(years)}
+                                  className={cn(
+                                    "rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
+                                    selected
+                                      ? "border-graphite-900 bg-graphite-900 text-white"
+                                      : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                                  )}
+                                >
+                                  {depreciationLabel(years)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Description / explanation — same field for both UI label
+                          and accounting meta. AI pre-fills with synthesized
+                          description; user edits if needed. */}
+                      <div>
+                        <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+                          Apraksts / Skaidrojums grāmatvedim
+                        </Label>
+                        <Textarea
+                          value={reviewExplanation}
+                          onChange={(e) => setReviewExplanation(e.target.value)}
+                          className="mt-2 text-[13px] min-h-[60px]"
+                          placeholder="Piem.: Telekomunikāciju pakalpojumi 04/2026"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -489,18 +707,20 @@ export function IzejosieTab() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={clearParsed}
+                    onClick={skipCurrent}
                   >
-                    Atcelt
+                    {readyItems.length > 1 ? "Izlaist" : "Atcelt"}
                   </Button>
                   <Button
                     size="sm"
                     onClick={handlePreparePayment}
-                    variant={parsed.isPaid ? "secondary" : "default"}
+                    variant={currentItem.parsed.isPaid ? "secondary" : "default"}
                   >
                     <Send className="h-3.5 w-3.5" />
-                    {parsed.isPaid
+                    {currentItem.parsed.isPaid
                       ? "Pievienot vēsturei"
+                      : readyItems.length > 1
+                      ? "Apstiprināt un nākamais →"
                       : "Sagatavot maksājumu bankā"}
                   </Button>
                 </div>
@@ -509,6 +729,40 @@ export function IzejosieTab() {
           )}
         </AnimatePresence>
       </motion.div>
+
+      {/* Queue progress summary — visible while there's anything in queue */}
+      {queue.length > 0 && readyItems.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-lg border border-graphite-200 bg-graphite-50 px-4 py-2.5 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-4 text-[12.5px]">
+            <span className="text-graphite-700">
+              <span className="font-semibold text-graphite-900">
+                {readyItems.length}
+              </span>{" "}
+              gatavi pārskatīšanai
+            </span>
+            {parsingItems.length > 0 && (
+              <span className="text-graphite-600 inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-graphite-300 animate-pulse" />
+                Apstrādājas {parsingItems.length}
+              </span>
+            )}
+            {errorItems.length > 0 && (
+              <span className="text-red-600">
+                {errorItems.length} ar kļūdām
+              </span>
+            )}
+          </div>
+          {queue.length > 1 && (
+            <Button variant="ghost" size="sm" onClick={clearAll}>
+              Notīrīt visu
+            </Button>
+          )}
+        </motion.div>
+      )}
 
       {/* List of prepared payments */}
       <Card className="overflow-hidden">

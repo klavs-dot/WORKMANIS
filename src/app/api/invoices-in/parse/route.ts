@@ -126,7 +126,23 @@ const EXTRACT_TOOL = {
       description: {
         type: "string",
         description:
-          "Brief one-line summary of WHAT the invoice is for. Examples: 'Telekomunikācijas pakalpojumi 04/2026', 'Kancelejas preces', 'Konsultāciju pakalpojumi'. Synthesize from line items.",
+          "Brief one-line summary of WHAT the invoice is for. This should also serve as the explanation a bookkeeper would need. Examples: 'Telekomunikācijas pakalpojumi 04/2026', 'Kancelejas preces (papīrs, pildspalvas)', 'Konsultāciju pakalpojumi par mārketinga stratēģiju'. Synthesize from line items. Be specific enough that a bookkeeper understands the business purpose.",
+      },
+      suggested_category: {
+        type: "string",
+        enum: [
+          "izejvielas",
+          "sarazota_produkcija",
+          "sanemts_pakalpojums",
+          "amortizacija",
+        ],
+        description:
+          "Suggested accounting category for the bookkeeper. Pick ONE based on what was bought:\n- 'izejvielas' (raw materials): physical materials/goods used to produce something — wood, metal, fabric, electronic components\n- 'sarazota_produkcija' (finished goods): inventory items purchased for resale\n- 'sanemts_pakalpojums' (received service): services — consulting, telecoms, electricity, software subscriptions, accounting, transport, repairs, advertising, rent\n- 'amortizacija' (depreciation): one-time purchase of long-lived equipment > 1 year — vehicles, computers, machinery, furniture\n\nDefault to 'sanemts_pakalpojums' if uncertain — most invoices are services.",
+      },
+      suggested_depreciation_years: {
+        type: "number",
+        description:
+          "Only when suggested_category is 'amortizacija': estimated useful life in years for depreciation. Common values:\n- 3 years: computers, phones, software\n- 5 years: office furniture, small machinery\n- 7 years: large machinery, vehicles\n- 10 years: buildings, infrastructure\nUse 0 when category is not 'amortizacija'.",
       },
       is_paid: {
         type: "boolean",
@@ -195,6 +211,8 @@ const EXTRACT_TOOL = {
       "due_date",
       "issue_date",
       "description",
+      "suggested_category",
+      "suggested_depreciation_years",
       "is_paid",
       "paid_evidence",
       "sources",
@@ -237,6 +255,8 @@ interface ParsedInvoice {
   due_date: string;
   issue_date: string;
   description: string;
+  suggested_category: string;
+  suggested_depreciation_years: number;
   is_paid: boolean;
   paid_evidence: string;
   sources: {
@@ -414,6 +434,11 @@ export async function POST(request: Request) {
       due_date: parsed.due_date,
       issue_date: parsed.issue_date,
       description: parsed.description,
+      suggested_category: parsed.suggested_category,
+      suggested_depreciation_years:
+        parsed.suggested_depreciation_years > 0
+          ? parsed.suggested_depreciation_years
+          : undefined,
       is_paid: parsed.is_paid,
       paid_evidence: parsed.paid_evidence || undefined,
       sources: parsed.sources,
