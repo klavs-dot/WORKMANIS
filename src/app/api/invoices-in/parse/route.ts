@@ -82,7 +82,17 @@ const EXTRACT_TOOL = {
       supplier_reg_number: {
         type: "string",
         description:
-          "Latvian company registration number (Reģ. Nr.) — usually 11 digits. Empty string if not present.",
+          "Latvian company registration number (Reģ. Nr.) of the SUPPLIER — usually 11 digits. Empty string if not present.",
+      },
+      recipient_name: {
+        type: "string",
+        description:
+          "Name of the company the invoice is BILLED TO (the buyer/recipient/customer). Look for 'Pircējs', 'Pasūtītājs', 'Klients', 'Adresāts', 'Bill to', 'Customer'. Important: this is DIFFERENT from the supplier — supplier is who SENT the invoice, recipient is who is supposed to PAY it.",
+      },
+      recipient_reg_number: {
+        type: "string",
+        description:
+          "Latvian registration number of the recipient/buyer (Pircēja Reģ. Nr.) — 11 digits. Empty string if not present.",
       },
       invoice_number: {
         type: "string",
@@ -154,6 +164,16 @@ const EXTRACT_TOOL = {
         description:
           "If is_paid is TRUE, briefly describe what evidence you saw (e.g., 'Red APMAKSĀTS stamp at top-right', 'Status field reads Apmaksāts', 'Payment confirmation line at bottom'). Empty string if not paid.",
       },
+      is_credit_note: {
+        type: "boolean",
+        description:
+          "TRUE if this document is a CREDIT NOTE (Latvian: 'Kredītrēķins'), not a regular invoice. Credit notes return money to the customer or cancel part of a previous invoice. Indicators: title says 'Kredītrēķins' / 'Credit Note' / 'Kredīta rēķins' / 'Reverse', amounts are negative or shown with minus sign, document references an original invoice being credited. FALSE for regular invoices.",
+      },
+      credit_note_evidence: {
+        type: "string",
+        description:
+          "If is_credit_note is TRUE, briefly describe what evidence you saw (e.g., 'Title reads Kredītrēķins', 'All amounts shown as negative', 'References original invoice 12345 being reversed'). Empty string if not a credit note.",
+      },
       sources: {
         type: "object",
         description:
@@ -202,6 +222,7 @@ const EXTRACT_TOOL = {
     },
     required: [
       "supplier_name",
+      "recipient_name",
       "invoice_number",
       "amount_total",
       "amount_without_vat",
@@ -215,6 +236,8 @@ const EXTRACT_TOOL = {
       "suggested_depreciation_years",
       "is_paid",
       "paid_evidence",
+      "is_credit_note",
+      "credit_note_evidence",
       "sources",
       "confidence",
     ],
@@ -246,6 +269,8 @@ Be precise on amounts — invoice amounts are legally significant. If you can't 
 interface ParsedInvoice {
   supplier_name: string;
   supplier_reg_number: string;
+  recipient_name: string;
+  recipient_reg_number: string;
   invoice_number: string;
   amount_total: number;
   amount_without_vat: number;
@@ -259,6 +284,8 @@ interface ParsedInvoice {
   suggested_depreciation_years: number;
   is_paid: boolean;
   paid_evidence: string;
+  is_credit_note: boolean;
+  credit_note_evidence: string;
   sources: {
     supplier_name: string;
     invoice_number: string;
@@ -425,6 +452,8 @@ export async function POST(request: Request) {
     data: {
       supplier: parsed.supplier_name,
       supplier_reg_number: parsed.supplier_reg_number || undefined,
+      recipient: parsed.recipient_name || undefined,
+      recipient_reg_number: parsed.recipient_reg_number || undefined,
       invoice_number: parsed.invoice_number,
       amount: parsed.amount_total,
       amount_without_vat: parsed.amount_without_vat,
@@ -441,6 +470,8 @@ export async function POST(request: Request) {
           : undefined,
       is_paid: parsed.is_paid,
       paid_evidence: parsed.paid_evidence || undefined,
+      is_credit_note: parsed.is_credit_note,
+      credit_note_evidence: parsed.credit_note_evidence || undefined,
       sources: parsed.sources,
       confidence: parsed.confidence,
       notes: parsed.notes || undefined,

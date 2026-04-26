@@ -51,6 +51,9 @@ import type {
   ReceivedInvoiceAccountingMeta,
   ReceivedInvoice,
 } from "@/lib/billing-store";
+import { useCompany } from "@/lib/company-context";
+import { useNetwork } from "@/lib/network-store";
+import type { BusinessContactCategory } from "@/lib/network-types";
 import {
   accountingCategoryLabels,
   depreciationLabel,
@@ -65,10 +68,52 @@ import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { EditReceivedModal } from "@/components/billing/edit-received-modal";
 
+// ============================================================
+// Helpers for matching parsed-invoice data against known parties
+// ============================================================
+
+/**
+ * Normalize a company name for fuzzy comparison: lowercase, trim,
+ * collapse whitespace, strip legal-form prefixes/suffixes (SIA,
+ * AS, OÜ, Ltd, GmbH, A/S etc), strip punctuation. Used as a
+ * fallback when reg-number match isn't possible.
+ */
+function normalizeCompanyName(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    // strip common legal forms (anywhere in the string)
+    .replace(/\b(sia|as|a\/s|ltd|llc|inc|gmbh|oy|oü|ou|ab)\b/g, "")
+    .replace(/[.,'"`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Check if two company names refer to the same entity.
+ * Reg numbers (when both available) are authoritative; otherwise
+ * fall back to normalized-name match.
+ */
+function companiesMatch(
+  aName: string,
+  aRegNumber: string | undefined,
+  bName: string,
+  bRegNumber: string | undefined
+): boolean {
+  if (aRegNumber && bRegNumber) {
+    return aRegNumber.trim() === bRegNumber.trim();
+  }
+  if (!aName || !bName) return false;
+  return normalizeCompanyName(aName) === normalizeCompanyName(bName);
+}
+
 // Parsed invoice shape returned by /api/invoices-in/parse
 interface ParsedFields {
   supplier: string;
   supplier_reg_number?: string;
+  /** Who the invoice is BILLED TO. Should match active company. */
+  recipient?: string;
+  recipient_reg_number?: string;
   invoiceNumber: string;
   amount: number;
   amount_without_vat: number;
@@ -82,6 +127,8 @@ interface ParsedFields {
   suggestedDepreciationYears?: DepreciationPeriod;
   isPaid: boolean;
   paidEvidence?: string;
+  isCreditNote: boolean;
+  creditNoteEvidence?: string;
   sources: {
     supplier_name: string;
     invoice_number: string;
@@ -112,6 +159,8 @@ interface QueueItem {
 export function IzejosieTab() {
   const { received, addReceived, updateReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
     useBilling();
+  const { activeCompany } = useCompany();
+  const network = useNetwork();
   const [isDragging, setIsDragging] = useState(false);
   // Queue of all files dropped together. We parse all in parallel,
   // then user reviews/approves each one in turn.
@@ -134,6 +183,13 @@ export function IzejosieTab() {
   const [reviewDepreciation, setReviewDepreciation] = useState<DepreciationPeriod>(5);
   const [reviewExplanation, setReviewExplanation] = useState("");
 
+  // For "add new supplier" mini-modal when supplier isn't in
+  // partner list yet. Pre-filled from AI extraction.
+  const [addPartnerOpen, setAddPartnerOpen] = useState(false);
+  const [newPartnerName, setNewPartnerName] = useState("");
+  const [newPartnerCategory, setNewPartnerCategory] =
+    useState<BusinessContactCategory>("piegadataji");
+
   // Parses ONE file and updates the queue item with the result.
   // Called once per dropped file; runs in parallel.
   const parseOneFile = async (item: QueueItem, file: File) => {
@@ -150,6 +206,8 @@ export function IzejosieTab() {
       const parsed: ParsedFields = {
         supplier: d.supplier ?? "",
         supplier_reg_number: d.supplier_reg_number,
+        recipient: d.recipient,
+        recipient_reg_number: d.recipient_reg_number,
         invoiceNumber: d.invoice_number ?? "",
         amount: d.amount ?? 0,
         amount_without_vat: d.amount_without_vat ?? 0,
@@ -165,6 +223,8 @@ export function IzejosieTab() {
           | undefined,
         isPaid: d.is_paid === true,
         paidEvidence: d.paid_evidence,
+        isCreditNote: d.is_credit_note === true,
+        creditNoteEvidence: d.credit_note_evidence,
         sources: d.sources ?? {
           supplier_name: "",
           invoice_number: "",
@@ -301,6 +361,32 @@ export function IzejosieTab() {
     if (inputRef.current) inputRef.current.value = "";
   };
 
+  // Open the "add partner" dialog, pre-filled with whatever
+  // the AI extracted for the supplier on the current invoice.
+  const openAddPartner = () => {
+    if (!currentItem?.parsed) return;
+    setNewPartnerName(currentItem.parsed.supplier);
+    setNewPartnerCategory("piegadataji");
+    setAddPartnerOpen(true);
+  };
+
+  const submitAddPartner = () => {
+    if (!newPartnerName.trim()) return;
+    network.addContact({
+      category: newPartnerCategory,
+      name: newPartnerName.trim(),
+      countryCode: "LV",
+      address: "",
+      contactPerson: "",
+      email: "",
+      phone: "",
+      comment: currentItem?.parsed?.supplier_reg_number
+        ? `Reģ. Nr. ${currentItem.parsed.supplier_reg_number} · Pievienots automātiski no rēķina.`
+        : "Pievienots automātiski no rēķina.",
+    });
+    setAddPartnerOpen(false);
+  };
+
   // Queue stats — drives the bottom progress bar and the
   // "Rēķins X no Y" badge in the review header.
   const readyItems = queue.filter((q) => q.status === "ready");
@@ -310,6 +396,45 @@ export function IzejosieTab() {
   const currentReadyIndex = currentItem
     ? readyItems.findIndex((q) => q.id === currentItem.id) + 1
     : 0;
+
+  // ---------- Validation: recipient + supplier checks ----------
+  // These computed values drive the warning banners and gate
+  // the "Sagatavot maksājumu" button. All recompute when the
+  // current queue item changes.
+
+  /** Was the invoice billed to OUR active company? */
+  const recipientCheck: "match" | "mismatch" | "unknown" = (() => {
+    if (!currentItem?.parsed) return "unknown";
+    const p = currentItem.parsed;
+    if (!p.recipient && !p.recipient_reg_number) return "unknown";
+    if (!activeCompany) return "unknown";
+    return companiesMatch(
+      p.recipient ?? "",
+      p.recipient_reg_number,
+      activeCompany.legalName ?? activeCompany.name,
+      activeCompany.regNumber
+    )
+      ? "match"
+      : "mismatch";
+  })();
+
+  /** Is the supplier already in our partner/distributor lists? */
+  const supplierMatch = (() => {
+    if (!currentItem?.parsed) return null;
+    const p = currentItem.parsed;
+    // Check distributors first
+    const distHit = network.distributors.find((d) =>
+      companiesMatch(d.name, undefined, p.supplier, p.supplier_reg_number)
+    );
+    if (distHit) return { kind: "distributor" as const, entity: distHit };
+    // Then business contacts (partners, suppliers, services)
+    const contactHit = network.contacts.find((c) =>
+      companiesMatch(c.name, undefined, p.supplier, p.supplier_reg_number)
+    );
+    if (contactHit) return { kind: "contact" as const, entity: contactHit };
+    return null;
+  })();
+  const supplierIsKnown = supplierMatch !== null;
 
   // Whenever the current item changes, pre-fill the editable
   // category/explanation/depreciation form fields with whatever
@@ -504,6 +629,117 @@ export function IzejosieTab() {
                       <div className="text-[11.5px] text-red-700 mt-2">
                         Pārliecinies, ka neapmaksā vēlreiz. Ja apmaksāts, izveido tikai ierakstu vēsturei.
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* CREDIT NOTE warning — purple, distinct from paid */}
+                {currentItem.parsed.isCreditNote && (
+                  <div className="mx-5 mt-5 rounded-lg border border-violet-200 bg-violet-50 p-4 flex items-start gap-3">
+                    <AlertTriangle className="h-4 w-4 text-violet-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-[13px] font-semibold text-violet-900">
+                        Šis ir kredītrēķins, nevis maksājuma rēķins
+                      </div>
+                      {currentItem.parsed.creditNoteEvidence && (
+                        <div className="text-[12px] text-violet-800 mt-1 leading-relaxed">
+                          AI atrada: <span className="italic">&ldquo;{currentItem.parsed.creditNoteEvidence}&rdquo;</span>
+                        </div>
+                      )}
+                      <div className="text-[11.5px] text-violet-700 mt-2">
+                        Kredītrēķins atgriež naudu vai atceļ daļu no iepriekšēja rēķina — to nemaksā. Iegrāmato vēsturei kā kompensāciju.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* RECIPIENT MISMATCH warning — red, blocks payment */}
+                {recipientCheck === "mismatch" && (
+                  <div className="mx-5 mt-5 rounded-lg border border-red-300 bg-red-50 p-4 flex items-start gap-3">
+                    <AlertTriangle className="h-4 w-4 text-red-700 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-[13px] font-semibold text-red-900">
+                        Šis rēķins nav adresēts tev
+                      </div>
+                      <div className="text-[12px] text-red-800 mt-1 leading-relaxed">
+                        Rēķins adresēts:{" "}
+                        <span className="font-mono font-medium">
+                          {currentItem.parsed.recipient ?? "—"}
+                        </span>
+                        {currentItem.parsed.recipient_reg_number && (
+                          <>
+                            {" "}
+                            (Reģ. Nr.{" "}
+                            <span className="font-mono">
+                              {currentItem.parsed.recipient_reg_number}
+                            </span>
+                            )
+                          </>
+                        )}
+                      </div>
+                      <div className="text-[12px] text-red-800 mt-1">
+                        Tavs aktīvais uzņēmums:{" "}
+                        <span className="font-medium">
+                          {activeCompany?.legalName ?? activeCompany?.name ?? "—"}
+                        </span>
+                        {activeCompany?.regNumber && (
+                          <>
+                            {" "}
+                            (Reģ. Nr.{" "}
+                            <span className="font-mono">
+                              {activeCompany.regNumber}
+                            </span>
+                            )
+                          </>
+                        )}
+                      </div>
+                      <div className="text-[11.5px] text-red-700 mt-2">
+                        Pārliecinies, vai šis rēķins ir paredzēts tavam uzņēmumam. Citādi atceļ.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SUPPLIER NOT IN PARTNERS warning — amber, blocks payment */}
+                {!supplierIsKnown && (
+                  <div className="mx-5 mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-[13px] font-semibold text-amber-900">
+                        Piegādātājs nav atrasts partneru sarakstā
+                      </div>
+                      <div className="text-[12px] text-amber-800 mt-1 leading-relaxed">
+                        <span className="font-medium">
+                          {currentItem.parsed.supplier}
+                        </span>{" "}
+                        nav reģistrēts kā partneris vai distributors. Pirms maksājuma sagatavošanas pievieno viņu sarakstam.
+                      </div>
+                      <div className="mt-3">
+                        <Button size="sm" variant="default" onClick={openAddPartner}>
+                          <Building2 className="h-3.5 w-3.5" />
+                          Pievienot partneri
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SUPPLIER IS KNOWN — quiet green confirmation */}
+                {supplierIsKnown && supplierMatch && (
+                  <div className="mx-5 mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    <div className="text-[12px] text-emerald-800">
+                      Piegādātājs atrasts:{" "}
+                      <span className="font-medium">
+                        {supplierMatch.entity.name}
+                      </span>{" "}
+                      <span className="text-emerald-600">
+                        (
+                        {supplierMatch.kind === "distributor"
+                          ? "Distributors"
+                          : "Partneris"}
+                        )
+                      </span>
                     </div>
                   </div>
                 )}
@@ -703,26 +939,48 @@ export function IzejosieTab() {
                   </div>
                 </div>
 
-                <div className="p-5 pt-0 flex items-center justify-end gap-2 border-t border-graphite-100 mt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={skipCurrent}
-                  >
-                    {readyItems.length > 1 ? "Izlaist" : "Atcelt"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handlePreparePayment}
-                    variant={currentItem.parsed.isPaid ? "secondary" : "default"}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    {currentItem.parsed.isPaid
-                      ? "Pievienot vēsturei"
-                      : readyItems.length > 1
-                      ? "Apstiprināt un nākamais →"
-                      : "Sagatavot maksājumu bankā"}
-                  </Button>
+                <div className="p-5 pt-0 border-t border-graphite-100 mt-2">
+                  {/* Hint above the buttons explaining why submit might be blocked */}
+                  {(!supplierIsKnown || recipientCheck === "mismatch") && (
+                    <div className="text-[11.5px] text-graphite-500 mb-3 leading-relaxed">
+                      {!supplierIsKnown && recipientCheck === "mismatch"
+                        ? "Pirms maksājuma sagatavošanas pievieno piegādātāju partneru sarakstā un pārliecinies par adresātu."
+                        : !supplierIsKnown
+                        ? "Pirms maksājuma sagatavošanas pievieno piegādātāju partneru sarakstā."
+                        : "Pārliecinies, vai šis rēķins ir paredzēts tavam aktīvajam uzņēmumam."}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={skipCurrent}
+                    >
+                      {readyItems.length > 1 ? "Izlaist" : "Atcelt"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handlePreparePayment}
+                      disabled={
+                        !supplierIsKnown || recipientCheck === "mismatch"
+                      }
+                      variant={
+                        currentItem.parsed.isPaid ||
+                        currentItem.parsed.isCreditNote
+                          ? "secondary"
+                          : "default"
+                      }
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      {currentItem.parsed.isCreditNote
+                        ? "Pievienot vēsturei (kredīts)"
+                        : currentItem.parsed.isPaid
+                        ? "Pievienot vēsturei"
+                        : readyItems.length > 1
+                        ? "Apstiprināt un nākamais →"
+                        : "Sagatavot maksājumu bankā"}
+                    </Button>
+                  </div>
                 </div>
               </Card>
             </motion.div>
@@ -992,6 +1250,99 @@ export function IzejosieTab() {
           }
         }}
       />
+
+      {/* Add-partner mini-modal — opens when AI-extracted supplier
+          isn't found in the partner list. Pre-filled from AI data. */}
+      <Dialog open={addPartnerOpen} onOpenChange={setAddPartnerOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pievienot partneri</DialogTitle>
+            <DialogDescription>
+              Šis piegādātājs tiks pievienots partneru sarakstā. Pēc pievienošanas varēsi sagatavot maksājumu.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            <div>
+              <Label className="text-[12px] font-medium text-graphite-700">
+                Nosaukums
+              </Label>
+              <Input
+                value={newPartnerName}
+                onChange={(e) => setNewPartnerName(e.target.value)}
+                placeholder="SIA Piemērs"
+                className="mt-1.5"
+              />
+            </div>
+
+            {currentItem?.parsed?.supplier_reg_number && (
+              <div>
+                <Label className="text-[12px] font-medium text-graphite-700">
+                  Reģ. Nr.
+                </Label>
+                <p className="mt-1.5 text-[13px] font-mono text-graphite-600">
+                  {currentItem.parsed.supplier_reg_number}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <Label className="text-[12px] font-medium text-graphite-700">
+                Kategorija
+              </Label>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {(
+                  [
+                    ["piegadataji", "Piegādātāji"],
+                    ["pakalpojumi", "Pakalpojumi"],
+                    ["razotaji", "Ražotāji"],
+                    ["logistika", "Loģistika"],
+                  ] as [BusinessContactCategory, string][]
+                ).map(([cat, label]) => {
+                  const selected = newPartnerCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setNewPartnerCategory(cat)}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-[12.5px] font-medium text-left transition-colors",
+                        selected
+                          ? "border-graphite-900 bg-graphite-900 text-white"
+                          : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <p className="text-[11.5px] text-graphite-500 leading-relaxed">
+              Detalizētāku informāciju (adrese, kontaktpersona, e-pasts) varēsi pievienot vēlāk sadaļā Partneri.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-graphite-100">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAddPartnerOpen(false)}
+            >
+              Atcelt
+            </Button>
+            <Button
+              size="sm"
+              onClick={submitAddPartner}
+              disabled={!newPartnerName.trim()}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Pievienot
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
