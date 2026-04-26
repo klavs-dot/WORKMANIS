@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
   FileText,
+  FileEdit,
   Check,
   X,
   Eye,
@@ -17,6 +18,8 @@ import {
   Download,
   Pencil,
   AlertTriangle,
+  Trash2,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -52,6 +55,7 @@ import type {
   ReceivedInvoice,
 } from "@/lib/billing-store";
 import { useCompany } from "@/lib/company-context";
+import type { Company } from "@/lib/types";
 import { useNetwork } from "@/lib/network-store";
 import type { BusinessContactCategory } from "@/lib/network-types";
 import {
@@ -147,13 +151,68 @@ interface ParsedFields {
   notes?: string;
 }
 
-// One queued file with status: parsing → ready (parsed ok) or error
+// One queued file with status: parsing → ready (parsed ok) or error.
+// User edits (category, explanation, depreciation period) are stored
+// PER ITEM so they survive a page reload — not just in transient
+// component state. This is what makes the queue act like a draft
+// folder rather than an ephemeral review screen.
 interface QueueItem {
   id: string;
   fileName: string;
   status: "parsing" | "ready" | "error";
   parsed?: ParsedFields;
   error?: string;
+  /** User-editable fields, persisted across reloads. Initialized
+   *  from AI suggestions when the parsed data first arrives. */
+  edits?: {
+    category: AccountingCategory;
+    depreciationPeriod?: DepreciationPeriod;
+    explanation: string;
+  };
+  /** When the file was added to the queue. Used to sort drafts
+   *  oldest-first in the UI so the user works through them in
+   *  the order they uploaded. */
+  addedAt: string;
+}
+
+// ============================================================
+// Draft persistence — queue saved to localStorage per company,
+// so navigating away or closing the tab doesn't lose work.
+// ============================================================
+
+const DRAFTS_KEY_PREFIX = "workmanis:received-drafts:";
+
+function loadDrafts(companyId: string): QueueItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(DRAFTS_KEY_PREFIX + companyId);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as QueueItem[];
+    if (!Array.isArray(parsed)) return [];
+    // Drop any items still in 'parsing' state from a previous
+    // session — those would be orphans (the parse promise died
+    // when the page unloaded). User can re-upload if needed.
+    return parsed.filter((q) => q.status !== "parsing");
+  } catch {
+    return [];
+  }
+}
+
+function saveDrafts(companyId: string, drafts: QueueItem[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (drafts.length === 0) {
+      localStorage.removeItem(DRAFTS_KEY_PREFIX + companyId);
+    } else {
+      localStorage.setItem(
+        DRAFTS_KEY_PREFIX + companyId,
+        JSON.stringify(drafts)
+      );
+    }
+  } catch {
+    // localStorage quota — ignore. Worst case: drafts lost on
+    // reload. Better than crashing the page.
+  }
 }
 
 export function IzejosieTab() {
@@ -162,12 +221,9 @@ export function IzejosieTab() {
   const { activeCompany } = useCompany();
   const network = useNetwork();
   const [isDragging, setIsDragging] = useState(false);
-  // Queue of all files dropped together. We parse all in parallel,
-  // then user reviews/approves each one in turn.
+  // Queue of all files dropped (and not yet approved). Persists
+  // to localStorage per company — see useEffect below.
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  // Index of the currently-shown queue item in the review form.
-  // Only items with status === 'ready' are shown.
-  const [reviewIndex, setReviewIndex] = useState(0);
   const [openedInvoice, setOpenedInvoice] = useState<ReceivedInvoice | null>(
     null
   );
@@ -176,19 +232,35 @@ export function IzejosieTab() {
   const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // For category editing in the review form
-  const [reviewCategory, setReviewCategory] = useState<AccountingCategory>(
-    "sanemts_pakalpojums"
-  );
-  const [reviewDepreciation, setReviewDepreciation] = useState<DepreciationPeriod>(5);
-  const [reviewExplanation, setReviewExplanation] = useState("");
-
   // For "add new supplier" mini-modal when supplier isn't in
   // partner list yet. Pre-filled from AI extraction.
   const [addPartnerOpen, setAddPartnerOpen] = useState(false);
   const [newPartnerName, setNewPartnerName] = useState("");
   const [newPartnerCategory, setNewPartnerCategory] =
     useState<BusinessContactCategory>("piegadataji");
+  /** Which queue item triggered the add-partner dialog. We need
+   *  this so the partner name and reg-number prefill come from
+   *  the right invoice (queue can have multiple suppliers). */
+  const [addPartnerForItem, setAddPartnerForItem] = useState<string | null>(
+    null
+  );
+
+  // ---------- Draft persistence ----------
+  // Load saved drafts on first render (per company). The hasLoaded
+  // ref ensures we don't overwrite the loaded data with the
+  // initial empty array on the very first save effect run.
+  const hasLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!activeCompany?.id) return;
+    setQueue(loadDrafts(activeCompany.id));
+    hasLoadedRef.current = true;
+  }, [activeCompany?.id]);
+
+  useEffect(() => {
+    if (!activeCompany?.id) return;
+    if (!hasLoadedRef.current) return;
+    saveDrafts(activeCompany.id, queue);
+  }, [queue, activeCompany?.id]);
 
   // Parses ONE file and updates the queue item with the result.
   // Called once per dropped file; runs in parallel.
@@ -244,7 +316,23 @@ export function IzejosieTab() {
       };
       setQueue((prev) =>
         prev.map((q) =>
-          q.id === item.id ? { ...q, status: "ready", parsed } : q
+          q.id === item.id
+            ? {
+                ...q,
+                status: "ready",
+                parsed,
+                edits: q.edits ?? {
+                  // Initialize from AI suggestions on first parse.
+                  // If user already had edits (e.g. they re-tried
+                  // a parse on the same item), preserve them.
+                  category:
+                    parsed.suggestedCategory ?? "sanemts_pakalpojums",
+                  depreciationPeriod:
+                    parsed.suggestedDepreciationYears ?? 5,
+                  explanation: parsed.description ?? "",
+                },
+              }
+            : q
         )
       );
     } catch (err) {
@@ -267,19 +355,14 @@ export function IzejosieTab() {
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    // Convert FileList → array (avoids reusing the same File index
-    // across async callbacks)
     const fileArray = Array.from(files);
     const newItems: QueueItem[] = fileArray.map((f) => ({
       id: `q-${Math.random().toString(36).slice(2, 10)}`,
       fileName: f.name,
       status: "parsing" as const,
+      addedAt: new Date().toISOString(),
     }));
     setQueue((prev) => [...prev, ...newItems]);
-    // Reset review index when starting fresh
-    if (queue.length === 0) setReviewIndex(0);
-    // Kick off parallel parses (each updates its own queue item
-    // when done; user can start reviewing the first one to finish)
     fileArray.forEach((file, i) => {
       void parseOneFile(newItems[i], file);
     });
@@ -296,82 +379,103 @@ export function IzejosieTab() {
     handleFiles(e.dataTransfer.files);
   };
 
-  const handlePreparePayment = () => {
-    if (!currentItem?.parsed) return;
-    const p = currentItem.parsed;
+  // Apply user edits (category, depreciation, explanation) for
+  // a specific queue item. Stores get persisted automatically.
+  const updateItemEdits = (
+    id: string,
+    patch: Partial<NonNullable<QueueItem["edits"]>>
+  ) => {
+    setQueue((prev) =>
+      prev.map((q) => {
+        if (q.id !== id) return q;
+        const current = q.edits ?? {
+          category: "sanemts_pakalpojums",
+          depreciationPeriod: 5,
+          explanation: "",
+        };
+        return { ...q, edits: { ...current, ...patch } };
+      })
+    );
+  };
+
+  // Save a parsed-and-reviewed item: write to billing-store +
+  // attach accounting metadata, then drop from queue.
+  const approveItem = (item: QueueItem) => {
+    if (!item.parsed) return;
+    const p = item.parsed;
+    const e = item.edits ?? {
+      category: "sanemts_pakalpojums" as AccountingCategory,
+      depreciationPeriod: 5 as DepreciationPeriod,
+      explanation: p.description ?? "",
+    };
     addReceived({
       supplier: p.supplier,
       invoiceNumber: p.invoiceNumber,
       amount: p.amount,
       iban: p.iban,
       dueDate: p.dueDate,
-      fileName: currentItem.fileName,
+      fileName: item.fileName,
     });
-    // The accounting metadata (category + explanation) gets
-    // attached separately via setReceivedMeta. addReceived
-    // generates a temp id; we listen for the real id by hooking
-    // into the next render cycle. For V1 simplicity, we use the
-    // explanation+category we have right now, applied to the
-    // most recent invoice (which will be this one once the queue
-    // settles). If race conditions matter later, billing-store
-    // could expose addReceivedWithMeta() to do both in one go.
-    if (reviewExplanation.trim() || reviewCategory) {
-      // Defer one tick so the optimistic invoice is in `received`
-      // before we try to set its meta
+    // Defer one tick for the optimistic invoice to land in
+    // received[], then attach accounting meta. Match by fileName
+    // (same approach as before; race-safe enough for V1).
+    if (e.explanation.trim() || e.category) {
       setTimeout(() => {
-        // Find the just-added invoice — it's the most recently
-        // added one matching this fileName
         const justAdded = [...received]
           .reverse()
-          .find((inv) => inv.fileName === currentItem.fileName);
+          .find((inv) => inv.fileName === item.fileName);
         if (justAdded) {
           setReceivedMeta(justAdded.id, {
-            category: reviewCategory,
+            category: e.category,
             depreciationPeriod:
-              reviewCategory === "amortizacija"
-                ? reviewDepreciation
-                : undefined,
-            explanation: reviewExplanation,
+              e.category === "amortizacija" ? e.depreciationPeriod : undefined,
+            explanation: e.explanation,
             updatedAt: new Date().toISOString(),
           });
         }
       }, 0);
     }
-    // Remove this item from the queue and advance to next ready
-    // item, or empty out if it was the last one.
-    removeFromQueue(currentItem.id);
-  };
-
-  const skipCurrent = () => {
-    if (!currentItem) return;
-    removeFromQueue(currentItem.id);
+    removeFromQueue(item.id);
   };
 
   const removeFromQueue = (id: string) => {
     setQueue((prev) => prev.filter((q) => q.id !== id));
-    // Reset reviewIndex — after removal the index might point
-    // past the end, so just go back to 0 and let the next item
-    // become "current".
-    setReviewIndex(0);
+  };
+
+  // Approve all items that are ready AND pass validation gates
+  // (supplier known, recipient match). Items that fail gates
+  // stay in the queue.
+  const approveAllValid = () => {
+    queue.forEach((item) => {
+      if (item.status !== "ready" || !item.parsed) return;
+      if (!checkSupplierKnown(item.parsed)) return;
+      if (checkRecipient(item.parsed) === "mismatch") return;
+      // Skip already-paid and credit notes — those are not
+      // routine "send to bank" items, the user should review
+      // each one explicitly.
+      if (item.parsed.isPaid || item.parsed.isCreditNote) return;
+      approveItem(item);
+    });
   };
 
   const clearAll = () => {
     setQueue([]);
-    setReviewIndex(0);
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  // Open the "add partner" dialog, pre-filled with whatever
-  // the AI extracted for the supplier on the current invoice.
-  const openAddPartner = () => {
-    if (!currentItem?.parsed) return;
-    setNewPartnerName(currentItem.parsed.supplier);
+  // Open the add-partner dialog for a specific queue item.
+  // Pre-fills name from that item's AI-extracted supplier.
+  const openAddPartnerFor = (item: QueueItem) => {
+    if (!item.parsed) return;
+    setNewPartnerName(item.parsed.supplier);
     setNewPartnerCategory("piegadataji");
+    setAddPartnerForItem(item.id);
     setAddPartnerOpen(true);
   };
 
   const submitAddPartner = () => {
     if (!newPartnerName.trim()) return;
+    const sourceItem = queue.find((q) => q.id === addPartnerForItem);
     network.addContact({
       category: newPartnerCategory,
       name: newPartnerName.trim(),
@@ -380,628 +484,164 @@ export function IzejosieTab() {
       contactPerson: "",
       email: "",
       phone: "",
-      comment: currentItem?.parsed?.supplier_reg_number
-        ? `Reģ. Nr. ${currentItem.parsed.supplier_reg_number} · Pievienots automātiski no rēķina.`
+      comment: sourceItem?.parsed?.supplier_reg_number
+        ? `Reģ. Nr. ${sourceItem.parsed.supplier_reg_number} · Pievienots automātiski no rēķina.`
         : "Pievienots automātiski no rēķina.",
     });
     setAddPartnerOpen(false);
+    setAddPartnerForItem(null);
   };
 
-  // Queue stats — drives the bottom progress bar and the
-  // "Rēķins X no Y" badge in the review header.
-  const readyItems = queue.filter((q) => q.status === "ready");
+  // Queue stats — drives the summary header and bulk action button.
   const parsingItems = queue.filter((q) => q.status === "parsing");
+  const readyItems = queue.filter((q) => q.status === "ready");
   const errorItems = queue.filter((q) => q.status === "error");
-  const currentItem = readyItems[reviewIndex] ?? readyItems[0];
-  const currentReadyIndex = currentItem
-    ? readyItems.findIndex((q) => q.id === currentItem.id) + 1
-    : 0;
 
-  // ---------- Validation: recipient + supplier checks ----------
-  // These computed values drive the warning banners and gate
-  // the "Sagatavot maksājumu" button. All recompute when the
-  // current queue item changes.
+  // ---------- Validation helpers (per item) ----------
+  // Used both for inline rendering of warning banners and for
+  // gating "approve all" / individual approve buttons.
 
-  /** Was the invoice billed to OUR active company? */
-  const recipientCheck: "match" | "mismatch" | "unknown" = (() => {
-    if (!currentItem?.parsed) return "unknown";
-    const p = currentItem.parsed;
-    if (!p.recipient && !p.recipient_reg_number) return "unknown";
+  const checkRecipient = (
+    parsed: ParsedFields
+  ): "match" | "mismatch" | "unknown" => {
+    if (!parsed.recipient && !parsed.recipient_reg_number) return "unknown";
     if (!activeCompany) return "unknown";
     return companiesMatch(
-      p.recipient ?? "",
-      p.recipient_reg_number,
+      parsed.recipient ?? "",
+      parsed.recipient_reg_number,
       activeCompany.legalName ?? activeCompany.name,
       activeCompany.regNumber
     )
       ? "match"
       : "mismatch";
-  })();
+  };
 
-  /** Is the supplier already in our partner/distributor lists? */
-  const supplierMatch = (() => {
-    if (!currentItem?.parsed) return null;
-    const p = currentItem.parsed;
-    // Check distributors first
+  const findSupplierMatch = (parsed: ParsedFields) => {
     const distHit = network.distributors.find((d) =>
-      companiesMatch(d.name, undefined, p.supplier, p.supplier_reg_number)
+      companiesMatch(d.name, undefined, parsed.supplier, parsed.supplier_reg_number)
     );
     if (distHit) return { kind: "distributor" as const, entity: distHit };
-    // Then business contacts (partners, suppliers, services)
     const contactHit = network.contacts.find((c) =>
-      companiesMatch(c.name, undefined, p.supplier, p.supplier_reg_number)
+      companiesMatch(c.name, undefined, parsed.supplier, parsed.supplier_reg_number)
     );
     if (contactHit) return { kind: "contact" as const, entity: contactHit };
     return null;
-  })();
-  const supplierIsKnown = supplierMatch !== null;
+  };
 
-  // Whenever the current item changes, pre-fill the editable
-  // category/explanation/depreciation form fields with whatever
-  // the AI suggested. User can override before approving.
-  useEffect(() => {
-    if (!currentItem?.parsed) return;
-    const p = currentItem.parsed;
-    setReviewCategory(p.suggestedCategory ?? "sanemts_pakalpojums");
-    setReviewDepreciation(
-      (p.suggestedDepreciationYears as DepreciationPeriod) ?? 5
-    );
-    setReviewExplanation(p.description ?? "");
-  }, [currentItem?.id, currentItem?.parsed]);
+  const checkSupplierKnown = (parsed: ParsedFields): boolean =>
+    findSupplierMatch(parsed) !== null;
 
   return (
     <div className="space-y-6">
-      {/* Upload area */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-      >
-        <AnimatePresence mode="wait">
-          {queue.length === 0 && (
-            <motion.div
-              key="dropzone"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => inputRef.current?.click()}
-              className={cn(
-                "rounded-2xl border-2 border-dashed transition-all cursor-pointer",
-                "flex flex-col items-center justify-center py-14 px-6 text-center",
-                isDragging
-                  ? "border-graphite-900 bg-graphite-50 scale-[1.005]"
-                  : "border-graphite-200 bg-white hover:border-graphite-300 hover:bg-graphite-50/40"
-              )}
-            >
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                onChange={(e) => handleFiles(e.target.files)}
-              />
-              <div
-                className={cn(
-                  "flex h-12 w-12 items-center justify-center rounded-xl transition-colors mb-4",
-                  isDragging
-                    ? "bg-graphite-900 text-white"
-                    : "bg-graphite-100 text-graphite-700"
-                )}
-              >
-                <Upload className="h-5 w-5" strokeWidth={2} />
-              </div>
-              <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
-                Ievelc rēķinu šeit vai augšupielādē
+      {/* Drop zone — full size when queue is empty, compact strip
+          when there are drafts so the queue stays the focus */}
+      <DropZone
+        compact={queue.length > 0}
+        isDragging={isDragging}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+      />
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+
+      {/* Drafts area — visible whenever queue has any items.
+          Each invoice renders as its own card, stacked top-to-bottom
+          in upload order. Drafts persist to localStorage so they
+          survive navigation and reload. */}
+      {queue.length > 0 && (
+        <div className="space-y-4">
+          {/* Header with summary + bulk actions */}
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900 flex items-center gap-2">
+                <FileEdit className="h-4 w-4 text-graphite-500" />
+                Melnraksti
+                <span className="inline-flex items-center rounded-md bg-graphite-100 px-2 py-0.5 text-[11px] font-mono font-medium text-graphite-700">
+                  {queue.length}
+                </span>
               </h3>
-              <p className="mt-1.5 text-[12.5px] text-graphite-500 max-w-md">
-                PDF faili · Automātiski izgūsim piegādātāju, summu, IBAN un
-                apmaksas termiņu
-              </p>
-              <Button variant="secondary" size="sm" className="mt-4">
-                <Upload className="h-3.5 w-3.5" />
-                Izvēlēties failu
-              </Button>
-            </motion.div>
-          )}
-
-          {queue.length > 0 &&
-            readyItems.length === 0 &&
-            errorItems.length === 0 && (
-              <FunnyParsingState count={parsingItems.length} />
-            )}
-
-          {readyItems.length === 0 && errorItems.length > 0 && (
-            <motion.div
-              key="error"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-            >
-              <Card className="overflow-hidden border-red-200">
-                <div className="p-5 flex items-start gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 shrink-0">
-                    <AlertTriangle className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-[14.5px] font-semibold tracking-tight text-graphite-900">
-                      {errorItems.length === 1
-                        ? "Neizdevās apstrādāt rēķinu"
-                        : `${errorItems.length} rēķini netika apstrādāti`}
-                    </h3>
-                    <ul className="text-[12.5px] text-graphite-600 mt-2 space-y-1">
-                      {errorItems.map((e) => (
-                        <li key={e.id} className="leading-relaxed">
-                          <span className="font-mono text-graphite-500">
-                            {e.fileName}:
-                          </span>{" "}
-                          {e.error ?? "Nezināma kļūda"}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-3 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={clearAll}
-                      >
-                        Notīrīt un mēģināt vēlreiz
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          )}
-
-          {currentItem?.parsed && (
-            <motion.div
-              key="parsed"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-            >
-              <Card className="overflow-hidden">
-                <div className="p-5 border-b border-graphite-100 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                      <Check className="h-4 w-4" strokeWidth={2.5} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-[14.5px] font-semibold tracking-tight text-graphite-900">
-                          Rēķina dati izgūti
-                        </h3>
-                        {readyItems.length > 1 && (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-graphite-100 px-2 py-0.5 text-[11px] font-medium text-graphite-700">
-                            {currentReadyIndex} / {readyItems.length}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11.5px] text-graphite-500 mt-0.5 font-mono">
-                        {currentItem.fileName}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={skipCurrent}
-                    title="Izlaist šo rēķinu"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-
-                {/* PAID warning — shown prominently if AI detected paid markings */}
-                {currentItem.parsed.isPaid && (
-                  <div className="mx-5 mt-5 rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="text-[13px] font-semibold text-red-900">
-                        Šis rēķins jau ir apmaksāts
-                      </div>
-                      {currentItem.parsed.paidEvidence && (
-                        <div className="text-[12px] text-red-800 mt-1 leading-relaxed">
-                          AI atrada: <span className="italic">&ldquo;{currentItem.parsed.paidEvidence}&rdquo;</span>
-                        </div>
-                      )}
-                      <div className="text-[11.5px] text-red-700 mt-2">
-                        Pārliecinies, ka neapmaksā vēlreiz. Ja apmaksāts, izveido tikai ierakstu vēsturei.
-                      </div>
-                    </div>
-                  </div>
+              <p className="mt-0.5 text-[12px] text-graphite-500">
+                {readyItems.length > 0 && (
+                  <>
+                    <span className="text-emerald-600 font-medium">
+                      {readyItems.length} gatavi
+                    </span>
+                    {(parsingItems.length > 0 || errorItems.length > 0) && " · "}
+                  </>
                 )}
-
-                {/* CREDIT NOTE warning — purple, distinct from paid */}
-                {currentItem.parsed.isCreditNote && (
-                  <div className="mx-5 mt-5 rounded-lg border border-violet-200 bg-violet-50 p-4 flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 text-violet-600 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="text-[13px] font-semibold text-violet-900">
-                        Šis ir kredītrēķins, nevis maksājuma rēķins
-                      </div>
-                      {currentItem.parsed.creditNoteEvidence && (
-                        <div className="text-[12px] text-violet-800 mt-1 leading-relaxed">
-                          AI atrada: <span className="italic">&ldquo;{currentItem.parsed.creditNoteEvidence}&rdquo;</span>
-                        </div>
-                      )}
-                      <div className="text-[11.5px] text-violet-700 mt-2">
-                        Kredītrēķins atgriež naudu vai atceļ daļu no iepriekšēja rēķina — to nemaksā. Iegrāmato vēsturei kā kompensāciju.
-                      </div>
-                    </div>
-                  </div>
+                {parsingItems.length > 0 && (
+                  <>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-graphite-400 animate-pulse" />
+                      Apstrādājas {parsingItems.length}
+                    </span>
+                    {errorItems.length > 0 && " · "}
+                  </>
                 )}
-
-                {/* RECIPIENT MISMATCH warning — red, blocks payment */}
-                {recipientCheck === "mismatch" && (
-                  <div className="mx-5 mt-5 rounded-lg border border-red-300 bg-red-50 p-4 flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 text-red-700 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="text-[13px] font-semibold text-red-900">
-                        Šis rēķins nav adresēts tev
-                      </div>
-                      <div className="text-[12px] text-red-800 mt-1 leading-relaxed">
-                        Rēķins adresēts:{" "}
-                        <span className="font-mono font-medium">
-                          {currentItem.parsed.recipient ?? "—"}
-                        </span>
-                        {currentItem.parsed.recipient_reg_number && (
-                          <>
-                            {" "}
-                            (Reģ. Nr.{" "}
-                            <span className="font-mono">
-                              {currentItem.parsed.recipient_reg_number}
-                            </span>
-                            )
-                          </>
-                        )}
-                      </div>
-                      <div className="text-[12px] text-red-800 mt-1">
-                        Tavs aktīvais uzņēmums:{" "}
-                        <span className="font-medium">
-                          {activeCompany?.legalName ?? activeCompany?.name ?? "—"}
-                        </span>
-                        {activeCompany?.regNumber && (
-                          <>
-                            {" "}
-                            (Reģ. Nr.{" "}
-                            <span className="font-mono">
-                              {activeCompany.regNumber}
-                            </span>
-                            )
-                          </>
-                        )}
-                      </div>
-                      <div className="text-[11.5px] text-red-700 mt-2">
-                        Pārliecinies, vai šis rēķins ir paredzēts tavam uzņēmumam. Citādi atceļ.
-                      </div>
-                    </div>
-                  </div>
+                {errorItems.length > 0 && (
+                  <span className="text-red-600 font-medium">
+                    {errorItems.length} ar kļūdu
+                  </span>
                 )}
-
-                {/* SUPPLIER NOT IN PARTNERS warning — amber, blocks payment */}
-                {!supplierIsKnown && (
-                  <div className="mx-5 mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="text-[13px] font-semibold text-amber-900">
-                        Piegādātājs nav atrasts partneru sarakstā
-                      </div>
-                      <div className="text-[12px] text-amber-800 mt-1 leading-relaxed">
-                        <span className="font-medium">
-                          {currentItem.parsed.supplier}
-                        </span>{" "}
-                        nav reģistrēts kā partneris vai distributors. Pirms maksājuma sagatavošanas pievieno viņu sarakstam.
-                      </div>
-                      <div className="mt-3">
-                        <Button size="sm" variant="default" onClick={openAddPartner}>
-                          <Building2 className="h-3.5 w-3.5" />
-                          Pievienot partneri
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* SUPPLIER IS KNOWN — quiet green confirmation */}
-                {supplierIsKnown && supplierMatch && (
-                  <div className="mx-5 mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 flex items-center gap-2">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    <div className="text-[12px] text-emerald-800">
-                      Piegādātājs atrasts:{" "}
-                      <span className="font-medium">
-                        {supplierMatch.entity.name}
-                      </span>{" "}
-                      <span className="text-emerald-600">
-                        (
-                        {supplierMatch.kind === "distributor"
-                          ? "Distributors"
-                          : "Partneris"}
-                        )
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* AI-flagged notes (when something looks unusual) */}
-                {currentItem.parsed.notes && (
-                  <div className="mx-5 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="text-[12px] text-amber-900 leading-relaxed">
-                      {currentItem.parsed.notes}
-                    </div>
-                  </div>
-                )}
-
-                {/* All fields, grouped */}
-                <div className="p-5 space-y-5">
-                  {/* Supplier section */}
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
-                      Piegādātājs
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <ParsedField
-                        label="Nosaukums"
-                        value={currentItem.parsed.supplier}
-                        confidence={currentItem.parsed.confidence.supplier_name}
-                        source={currentItem.parsed.sources.supplier_name}
-                      />
-                      {currentItem.parsed.supplier_reg_number && (
-                        <ParsedField
-                          label="Reģ. Nr."
-                          value={currentItem.parsed.supplier_reg_number}
-                          confidence={currentItem.parsed.confidence.supplier_reg_number}
-                          mono
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Invoice details section */}
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
-                      Rēķina informācija
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <ParsedField
-                        label="Rēķina numurs"
-                        value={currentItem.parsed.invoiceNumber}
-                        confidence={currentItem.parsed.confidence.invoice_number}
-                        source={currentItem.parsed.sources.invoice_number}
-                        mono
-                      />
-                      <ParsedField
-                        label="Izsniegts"
-                        value={currentItem.parsed.issueDate ? formatDate(currentItem.parsed.issueDate) : "—"}
-                      />
-                      <ParsedField
-                        label="Apmaksāt līdz"
-                        value={currentItem.parsed.dueDate ? formatDate(currentItem.parsed.dueDate) : "—"}
-                        confidence={currentItem.parsed.confidence.due_date}
-                        source={currentItem.parsed.sources.due_date}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Amounts section */}
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
-                      Summas
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {currentItem.parsed.amount_without_vat > 0 && (
-                        <ParsedField
-                          label="Bez PVN"
-                          value={`${currentItem.parsed.amount_without_vat.toFixed(2)} ${currentItem.parsed.currency}`}
-                        />
-                      )}
-                      {currentItem.parsed.vat_amount > 0 && (
-                        <ParsedField
-                          label="PVN"
-                          value={`${currentItem.parsed.vat_amount.toFixed(2)} ${currentItem.parsed.currency}`}
-                        />
-                      )}
-                      <ParsedField
-                        label={`Kopā (${currentItem.parsed.currency})`}
-                        value={`${currentItem.parsed.amount.toFixed(2)} ${currentItem.parsed.currency}`}
-                        confidence={currentItem.parsed.confidence.amount_total}
-                        source={currentItem.parsed.sources.amount_total}
-                        emphasize
-                      />
-                    </div>
-                  </div>
-
-                  {/* Payment section */}
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
-                      Maksājuma rekvizīti
-                    </div>
-                    <ParsedField
-                      label="IBAN"
-                      value={currentItem.parsed.iban || "—"}
-                      confidence={currentItem.parsed.confidence.iban}
-                      source={currentItem.parsed.sources.iban}
-                      mono
-                    />
-                  </div>
-
-                  {/* Accounting category + explanation — editable */}
-                  <div className="border-t border-graphite-100 pt-5">
-                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
-                      Grāmatvedībai
-                      {currentItem.parsed.suggestedCategory && (
-                        <span className="ml-2 text-[10px] text-violet-600 font-medium normal-case tracking-normal">
-                          AI ierosināja: {accountingCategoryLabels[currentItem.parsed.suggestedCategory]}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="space-y-4">
-                      {/* Category radio-style buttons */}
-                      <div>
-                        <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-                          Kategorija
-                        </Label>
-                        <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {(Object.keys(accountingCategoryLabels) as AccountingCategory[]).map((cat) => {
-                            const selected = reviewCategory === cat;
-                            const wasSuggested = currentItem.parsed?.suggestedCategory === cat;
-                            return (
-                              <button
-                                key={cat}
-                                type="button"
-                                onClick={() => setReviewCategory(cat)}
-                                className={cn(
-                                  "rounded-lg border px-3 py-2 text-[12.5px] font-medium text-left transition-colors",
-                                  selected
-                                    ? "border-graphite-900 bg-graphite-900 text-white"
-                                    : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
-                                )}
-                              >
-                                <div className="flex items-center justify-between gap-1">
-                                  <span>{accountingCategoryLabels[cat]}</span>
-                                  {wasSuggested && !selected && (
-                                    <Sparkles className="h-3 w-3 text-violet-500" />
-                                  )}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Depreciation period — only shown for amortizacija */}
-                      {reviewCategory === "amortizacija" && (
-                        <div>
-                          <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-                            Amortizācijas periods
-                          </Label>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {depreciationOptions.map((years) => {
-                              const selected = reviewDepreciation === years;
-                              return (
-                                <button
-                                  key={years}
-                                  type="button"
-                                  onClick={() => setReviewDepreciation(years)}
-                                  className={cn(
-                                    "rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
-                                    selected
-                                      ? "border-graphite-900 bg-graphite-900 text-white"
-                                      : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
-                                  )}
-                                >
-                                  {depreciationLabel(years)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Description / explanation — same field for both UI label
-                          and accounting meta. AI pre-fills with synthesized
-                          description; user edits if needed. */}
-                      <div>
-                        <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-                          Apraksts / Skaidrojums grāmatvedim
-                        </Label>
-                        <Textarea
-                          value={reviewExplanation}
-                          onChange={(e) => setReviewExplanation(e.target.value)}
-                          className="mt-2 text-[13px] min-h-[60px]"
-                          placeholder="Piem.: Telekomunikāciju pakalpojumi 04/2026"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-5 pt-0 border-t border-graphite-100 mt-2">
-                  {/* Hint above the buttons explaining why submit might be blocked */}
-                  {(!supplierIsKnown || recipientCheck === "mismatch") && (
-                    <div className="text-[11.5px] text-graphite-500 mb-3 leading-relaxed">
-                      {!supplierIsKnown && recipientCheck === "mismatch"
-                        ? "Pirms maksājuma sagatavošanas pievieno piegādātāju partneru sarakstā un pārliecinies par adresātu."
-                        : !supplierIsKnown
-                        ? "Pirms maksājuma sagatavošanas pievieno piegādātāju partneru sarakstā."
-                        : "Pārliecinies, vai šis rēķins ir paredzēts tavam aktīvajam uzņēmumam."}
-                    </div>
+                {parsingItems.length === 0 &&
+                  errorItems.length === 0 &&
+                  readyItems.length === 0 && (
+                    <span>Saglabājas automātiski</span>
                   )}
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={skipCurrent}
-                    >
-                      {readyItems.length > 1 ? "Izlaist" : "Atcelt"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handlePreparePayment}
-                      disabled={
-                        !supplierIsKnown || recipientCheck === "mismatch"
-                      }
-                      variant={
-                        currentItem.parsed.isPaid ||
-                        currentItem.parsed.isCreditNote
-                          ? "secondary"
-                          : "default"
-                      }
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                      {currentItem.parsed.isCreditNote
-                        ? "Pievienot vēsturei (kredīts)"
-                        : currentItem.parsed.isPaid
-                        ? "Pievienot vēsturei"
-                        : readyItems.length > 1
-                        ? "Apstiprināt un nākamais →"
-                        : "Sagatavot maksājumu bankā"}
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* Queue progress summary — visible while there's anything in queue */}
-      {queue.length > 0 && readyItems.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-graphite-200 bg-graphite-50 px-4 py-2.5 flex items-center justify-between gap-3"
-        >
-          <div className="flex items-center gap-4 text-[12.5px]">
-            <span className="text-graphite-700">
-              <span className="font-semibold text-graphite-900">
-                {readyItems.length}
-              </span>{" "}
-              gatavi pārskatīšanai
-            </span>
-            {parsingItems.length > 0 && (
-              <span className="text-graphite-600 inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-graphite-300 animate-pulse" />
-                Apstrādājas {parsingItems.length}
-              </span>
-            )}
-            {errorItems.length > 0 && (
-              <span className="text-red-600">
-                {errorItems.length} ar kļūdām
-              </span>
-            )}
+                {parsingItems.length === 0 && (
+                  <span className="text-graphite-400 ml-2">
+                    · Saglabājas automātiski
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              {readyItems.length > 1 && (
+                <Button size="sm" onClick={approveAllValid}>
+                  <Check className="h-3.5 w-3.5" />
+                  Apstiprināt visus derīgos
+                </Button>
+              )}
+              {queue.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearAll}>
+                  <X className="h-3.5 w-3.5" />
+                  Notīrīt visu
+                </Button>
+              )}
+            </div>
           </div>
-          {queue.length > 1 && (
-            <Button variant="ghost" size="sm" onClick={clearAll}>
-              Notīrīt visu
-            </Button>
-          )}
-        </motion.div>
+
+          {/* Stacked invoice cards, oldest first (upload order) */}
+          <div className="space-y-4">
+            {[...queue]
+              .sort((a, b) => a.addedAt.localeCompare(b.addedAt))
+              .map((item) => (
+                <InvoiceDraftCard
+                  key={item.id}
+                  item={item}
+                  recipientStatus={
+                    item.parsed ? checkRecipient(item.parsed) : "unknown"
+                  }
+                  supplierMatch={
+                    item.parsed ? findSupplierMatch(item.parsed) : null
+                  }
+                  activeCompany={activeCompany}
+                  onUpdateEdits={(patch) => updateItemEdits(item.id, patch)}
+                  onApprove={() => approveItem(item)}
+                  onRemove={() => removeFromQueue(item.id)}
+                  onAddPartner={() => openAddPartnerFor(item)}
+                />
+              ))}
+          </div>
+        </div>
       )}
 
       {/* List of prepared payments */}
@@ -1257,16 +897,20 @@ export function IzejosieTab() {
               />
             </div>
 
-            {currentItem?.parsed?.supplier_reg_number && (
-              <div>
-                <Label className="text-[12px] font-medium text-graphite-700">
-                  Reģ. Nr.
-                </Label>
-                <p className="mt-1.5 text-[13px] font-mono text-graphite-600">
-                  {currentItem.parsed.supplier_reg_number}
-                </p>
-              </div>
-            )}
+            {(() => {
+              const sourceItem = queue.find((q) => q.id === addPartnerForItem);
+              if (!sourceItem?.parsed?.supplier_reg_number) return null;
+              return (
+                <div>
+                  <Label className="text-[12px] font-medium text-graphite-700">
+                    Reģ. Nr.
+                  </Label>
+                  <p className="mt-1.5 text-[13px] font-mono text-graphite-600">
+                    {sourceItem.parsed.supplier_reg_number}
+                  </p>
+                </div>
+              );
+            })()}
 
             <div>
               <Label className="text-[12px] font-medium text-graphite-700">
@@ -1819,5 +1463,523 @@ function RobotAnimation() {
         <rect x="44" y="77" width="6" height="10" rx="1.5" fill="#1e293b" />
       </svg>
     </motion.div>
+  );
+}
+
+// ============================================================
+// DropZone — full size when queue is empty (initial state),
+// compact strip when there are drafts (so the queue stays the
+// visual focus, but user can still drop more files).
+// ============================================================
+
+function DropZone({
+  compact,
+  isDragging,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onClick,
+}: {
+  compact: boolean;
+  isDragging: boolean;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
+  onClick: () => void;
+}) {
+  if (compact) {
+    return (
+      <div
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={onClick}
+        className={cn(
+          "rounded-xl border-2 border-dashed transition-all cursor-pointer",
+          "flex items-center gap-3 px-4 py-3",
+          isDragging
+            ? "border-graphite-900 bg-graphite-50"
+            : "border-graphite-200 bg-white hover:border-graphite-300 hover:bg-graphite-50/40"
+        )}
+      >
+        <div
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-lg shrink-0 transition-colors",
+            isDragging
+              ? "bg-graphite-900 text-white"
+              : "bg-graphite-100 text-graphite-700"
+          )}
+        >
+          <Upload className="h-3.5 w-3.5" strokeWidth={2} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[12.5px] font-medium text-graphite-700">
+            Pievienot vēl rēķinus
+          </div>
+          <p className="text-[11px] text-graphite-500">
+            Ievelc šeit vai klikšķini, lai izvēlētos
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onClick={onClick}
+      className={cn(
+        "rounded-2xl border-2 border-dashed transition-all cursor-pointer",
+        "flex flex-col items-center justify-center py-14 px-6 text-center",
+        isDragging
+          ? "border-graphite-900 bg-graphite-50 scale-[1.005]"
+          : "border-graphite-200 bg-white hover:border-graphite-300 hover:bg-graphite-50/40"
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-12 w-12 items-center justify-center rounded-xl transition-colors mb-4",
+          isDragging
+            ? "bg-graphite-900 text-white"
+            : "bg-graphite-100 text-graphite-700"
+        )}
+      >
+        <Upload className="h-5 w-5" strokeWidth={2} />
+      </div>
+      <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
+        Ievelc rēķinu šeit vai augšupielādē
+      </h3>
+      <p className="mt-1.5 text-[12.5px] text-graphite-500 max-w-md">
+        PDF faili · Automātiski izgūsim piegādātāju, summu, IBAN un apmaksas
+        termiņu · Vairāki uzreiz arī iet
+      </p>
+      <Button variant="secondary" size="sm" className="mt-4">
+        <Upload className="h-3.5 w-3.5" />
+        Izvēlēties failu
+      </Button>
+    </motion.div>
+  );
+}
+
+// ============================================================
+// InvoiceDraftCard — renders one queue item in any of its three
+// states (parsing / ready / error). Kept as a single component
+// so user can compare cards visually side-by-side and bulk
+// approve. Errors render in-place rather than in a separate
+// banner above the queue.
+// ============================================================
+
+function InvoiceDraftCard({
+  item,
+  recipientStatus,
+  supplierMatch,
+  activeCompany,
+  onUpdateEdits,
+  onApprove,
+  onRemove,
+  onAddPartner,
+}: {
+  item: QueueItem;
+  recipientStatus: "match" | "mismatch" | "unknown";
+  supplierMatch:
+    | { kind: "distributor"; entity: { name: string } }
+    | { kind: "contact"; entity: { name: string; category: string } }
+    | null;
+  activeCompany: Company | null;
+  onUpdateEdits: (patch: Partial<NonNullable<QueueItem["edits"]>>) => void;
+  onApprove: () => void;
+  onRemove: () => void;
+  onAddPartner: () => void;
+}) {
+  // ---------- Parsing state ----------
+  if (item.status === "parsing") {
+    return (
+      <Card className="overflow-hidden">
+        <div className="p-4 flex items-center gap-4">
+          <div className="h-10 w-10 rounded-lg bg-graphite-50 flex items-center justify-center shrink-0">
+            <div className="h-4 w-4 rounded-full border-2 border-graphite-200 border-t-graphite-900 animate-spin" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-medium text-graphite-700 truncate">
+              {item.fileName}
+            </p>
+            <p className="text-[11.5px] text-graphite-500 italic mt-0.5">
+              Apstrādāju ar AI…
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRemove}
+            title="Noņemt no melnrakstiem"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  // ---------- Error state ----------
+  if (item.status === "error") {
+    return (
+      <Card className="overflow-hidden border-red-200">
+        <div className="p-4 flex items-start gap-3">
+          <div className="h-9 w-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+            <AlertTriangle className="h-4 w-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-graphite-900 truncate">
+              {item.fileName}
+            </p>
+            <p className="text-[12px] text-red-700 mt-1 leading-relaxed">
+              {item.error ?? "Nezināma kļūda apstrādājot rēķinu"}
+            </p>
+            <p className="mt-2 text-[11.5px] text-graphite-500 leading-relaxed">
+              Mēģini vēlreiz augšupielādēt failu vai noņem to no melnrakstiem.
+              Bieži tas ir saistīts ar nesaskenētu PDF vai sliktu attēla
+              kvalitāti.
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRemove}
+            title="Noņemt no melnrakstiem"
+            className="shrink-0"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  // ---------- Ready state — full review form ----------
+  if (!item.parsed || !item.edits) return null;
+  const p = item.parsed;
+  const e = item.edits;
+
+  const isPaid = p.isPaid;
+  const isCreditNote = p.isCreditNote;
+  const supplierIsKnown = supplierMatch !== null;
+  const submitDisabled =
+    !supplierIsKnown || recipientStatus === "mismatch";
+
+  let buttonLabel: string;
+  if (isCreditNote) buttonLabel = "Pievienot vēsturei (kredīts)";
+  else if (isPaid) buttonLabel = "Pievienot vēsturei";
+  else buttonLabel = "Sagatavot maksājumu bankā";
+
+  let disabledReason: string | null = null;
+  if (!supplierIsKnown && recipientStatus === "mismatch") {
+    disabledReason =
+      "Lai turpinātu: pievieno piegādātāju partneru sarakstā un pārbaudi adresātu.";
+  } else if (!supplierIsKnown) {
+    disabledReason = "Lai turpinātu: pievieno piegādātāju partneru sarakstā.";
+  } else if (recipientStatus === "mismatch") {
+    disabledReason =
+      "Šis rēķins nav adresēts aktīvajam uzņēmumam — pārbaudi vai izvēlies citu uzņēmumu.";
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-graphite-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+            <Check className="h-4 w-4" strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-[14px] font-semibold tracking-tight text-graphite-900 truncate">
+              {p.supplier || "Nezināms piegādātājs"}
+            </h3>
+            <p className="text-[11.5px] text-graphite-500 mt-0.5 font-mono truncate">
+              {item.fileName}
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onRemove}
+          title="Noņemt no melnrakstiem"
+          className="shrink-0"
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <div className="p-5 space-y-4">
+        {/* Banners — paid, credit note, recipient mismatch, supplier */}
+        {isPaid && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-start gap-2.5">
+            <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[12.5px] font-semibold text-red-900">
+                Šis rēķins jau ir apmaksāts
+              </p>
+              {p.paidEvidence && (
+                <p className="text-[11.5px] text-red-700 mt-0.5 italic">
+                  AI atrada: &ldquo;{p.paidEvidence}&rdquo;
+                </p>
+              )}
+              <p className="text-[11.5px] text-red-700 mt-1">
+                Pievienojot to, tas ieies vēsturē kā jau apmaksāts, ne kā
+                gaidāms maksājums.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {isCreditNote && (
+          <div className="rounded-lg bg-violet-50 border border-violet-200 p-3 flex items-start gap-2.5">
+            <Info className="h-4 w-4 text-violet-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[12.5px] font-semibold text-violet-900">
+                Šis ir kredītrēķins, nevis maksājuma rēķins
+              </p>
+              {p.creditNoteEvidence && (
+                <p className="text-[11.5px] text-violet-700 mt-0.5 italic">
+                  AI atrada: &ldquo;{p.creditNoteEvidence}&rdquo;
+                </p>
+              )}
+              <p className="text-[11.5px] text-violet-700 mt-1">
+                Kredītrēķins atgriež naudu — to nav jāmaksā. Pievienojot, tas
+                būs vēsturē kā informācija.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {recipientStatus === "mismatch" && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-start gap-2.5">
+            <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[12.5px] font-semibold text-red-900">
+                Šis rēķins nav adresēts tev
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-3 text-[11.5px]">
+                <div>
+                  <p className="text-red-700 font-medium">Rēķinā:</p>
+                  <p className="text-red-900 truncate">{p.recipient ?? "—"}</p>
+                  {p.recipient_reg_number && (
+                    <p className="font-mono text-red-700 mt-0.5">
+                      {p.recipient_reg_number}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-red-700 font-medium">Aktīvais uzņēmums:</p>
+                  <p className="text-red-900 truncate">
+                    {activeCompany?.legalName ?? activeCompany?.name ?? "—"}
+                  </p>
+                  {activeCompany?.regNumber && (
+                    <p className="font-mono text-red-700 mt-0.5">
+                      {activeCompany.regNumber}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!supplierIsKnown && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <Building2 className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-semibold text-amber-900">
+                  Piegādātājs nav atrasts partneru sarakstā
+                </p>
+                <p className="text-[11.5px] text-amber-700 mt-0.5 truncate">
+                  {p.supplier}
+                  {p.supplier_reg_number && ` · ${p.supplier_reg_number}`}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onAddPartner}
+              className="shrink-0"
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Pievienot partneri
+            </Button>
+          </div>
+        )}
+
+        {supplierIsKnown && supplierMatch && (
+          <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 flex items-center gap-2 text-[11.5px] text-emerald-800">
+            <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            <span>
+              Piegādātājs atrasts:{" "}
+              <span className="font-semibold">{supplierMatch.entity.name}</span>{" "}
+              <span className="text-emerald-600">
+                (
+                {supplierMatch.kind === "distributor"
+                  ? "Distributors"
+                  : "Partneris"}
+                )
+              </span>
+            </span>
+          </div>
+        )}
+
+        {/* Parsed fields — 2 columns */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-3 pt-1">
+          <ParsedField
+            label="Piegādātājs"
+            value={p.supplier}
+            confidence={p.confidence.supplier_name}
+            source={p.sources.supplier_name}
+          />
+          <ParsedField
+            label="Rēķina nr."
+            value={p.invoiceNumber}
+            mono
+            confidence={p.confidence.invoice_number}
+            source={p.sources.invoice_number}
+          />
+          <ParsedField
+            label="Summa kopā"
+            value={`${p.amount.toFixed(2)} ${p.currency}`}
+            mono
+            confidence={p.confidence.amount_total}
+            source={p.sources.amount_total}
+          />
+          <ParsedField
+            label="IBAN"
+            value={p.iban || "—"}
+            mono
+            confidence={p.confidence.iban}
+            source={p.sources.iban}
+          />
+          <ParsedField
+            label="Izrakstīts"
+            value={p.issueDate ? formatDate(p.issueDate) : "—"}
+          />
+          <ParsedField
+            label="Apmaksas termiņš"
+            value={p.dueDate ? formatDate(p.dueDate) : "—"}
+            confidence={p.confidence.due_date}
+            source={p.sources.due_date}
+          />
+        </div>
+
+        {/* Category + explanation editor */}
+        <div className="pt-3 border-t border-graphite-100 space-y-3">
+          <div>
+            <Label className="text-[11.5px] font-medium text-graphite-700 flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-violet-500" />
+              Grāmatvedības kategorija
+              {p.suggestedCategory && (
+                <span className="text-[10.5px] text-graphite-400 font-normal italic">
+                  · AI ierosināja
+                </span>
+              )}
+            </Label>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+              {(
+                [
+                  ["izejvielas", "Izejvielas"],
+                  ["sarazota_produkcija", "Saražotā produkcija"],
+                  ["sanemts_pakalpojums", "Saņemtais pakalpojums"],
+                  ["amortizacija", "Amortizācija"],
+                ] as [AccountingCategory, string][]
+              ).map(([cat, label]) => {
+                const selected = e.category === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => onUpdateEdits({ category: cat })}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1.5 text-[11.5px] font-medium text-left transition-colors",
+                      selected
+                        ? "border-graphite-900 bg-graphite-900 text-white"
+                        : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {e.category === "amortizacija" && (
+            <div>
+              <Label className="text-[11.5px] font-medium text-graphite-700">
+                Amortizācijas periods
+              </Label>
+              <div className="mt-1.5 flex gap-1.5">
+                {([3, 5, 7, 10] as DepreciationPeriod[]).map((years) => {
+                  const selected = e.depreciationPeriod === years;
+                  return (
+                    <button
+                      key={years}
+                      type="button"
+                      onClick={() =>
+                        onUpdateEdits({ depreciationPeriod: years })
+                      }
+                      className={cn(
+                        "rounded-md border px-3 py-1 text-[11.5px] font-medium transition-colors",
+                        selected
+                          ? "border-graphite-900 bg-graphite-900 text-white"
+                          : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
+                      )}
+                    >
+                      {years} gadi
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <Label className="text-[11.5px] font-medium text-graphite-700">
+              Skaidrojums grāmatvedei
+            </Label>
+            <Textarea
+              value={e.explanation}
+              onChange={(ev) => onUpdateEdits({ explanation: ev.target.value })}
+              placeholder="Par ko šis rēķins, kāds bija mērķis…"
+              rows={2}
+              className="mt-1.5 text-[12.5px]"
+            />
+          </div>
+        </div>
+
+        {/* Action footer */}
+        <div className="pt-3 border-t border-graphite-100 flex items-center justify-between gap-3">
+          {disabledReason ? (
+            <p className="text-[11px] text-graphite-500 italic max-w-md leading-relaxed">
+              {disabledReason}
+            </p>
+          ) : (
+            <span />
+          )}
+          <Button
+            size="sm"
+            variant={isPaid || isCreditNote ? "secondary" : "default"}
+            onClick={onApprove}
+            disabled={submitDisabled}
+            className="shrink-0"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {buttonLabel}
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
