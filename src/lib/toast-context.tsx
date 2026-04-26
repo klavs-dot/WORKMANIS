@@ -68,15 +68,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const push = useCallback(
-    (kind: ToastKind, message: string, ttlMs: number) => {
+    (kind: ToastKind, message: string, ttlMs?: number) => {
+      const effectiveTtl = ttlMs ?? (kind === "error" ? 7000 : 3500);
       const id = Math.random().toString(36).slice(2, 10);
       setToasts((prev) => {
         // Keep max 5 toasts on screen — drop oldest if we exceed
-        const next = [...prev, { id, kind, message, ttlMs }];
+        const next = [...prev, { id, kind, message, ttlMs: effectiveTtl }];
         return next.slice(-5);
       });
-      if (ttlMs > 0) {
-        setTimeout(() => dismiss(id), ttlMs);
+      if (effectiveTtl > 0) {
+        setTimeout(() => dismiss(id), effectiveTtl);
       }
     },
     [dismiss]
