@@ -46,6 +46,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCompany } from "@/lib/company-context";
+import { pushToastGlobally } from "@/lib/toast-context";
 import type {
   AccountingCategory,
   DepreciationPeriod,
@@ -423,6 +424,10 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       updatedAtMapRef.current = newMap;
     } catch (err) {
       console.error("Fetch billing failed:", err);
+      pushToastGlobally(
+        "error",
+        "Neizdevās ielādēt rēķinu datus no Google Sheets. Pārbaudiet savienojumu."
+      );
     } finally {
       setLoading(false);
     }
@@ -507,6 +512,10 @@ export function BillingProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error(`${args.apiPath} add sync failed:`, err);
+        pushToastGlobally(
+          "error",
+          "Saglabāšana neizdevās. Ieraksts tika atcelts."
+        );
         args.setState((prev) => {
           const next = prev.filter((x) => x.id !== args.item.id);
           writeCache(args.cachePrefix, args.companyId, next);
@@ -569,6 +578,10 @@ export function BillingProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error(`${args.apiPath} update sync failed:`, err);
+        pushToastGlobally(
+          "error",
+          "Izmaiņas nepaspēja saglabāties. Atgriezu vecās vērtības."
+        );
         const prev2 = args.previous;
         args.setState((prev) => {
           const next = prev.map((x) => (x.id === args.id ? prev2 : x));
@@ -693,6 +706,10 @@ export function BillingProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("clearReceivedMeta sync failed:", err);
+        pushToastGlobally(
+          "error",
+          "Grāmatvedības metadatu dzēšana neizdevās."
+        );
         if (previous) {
           const prev2 = previous;
           setReceived((prev) => {

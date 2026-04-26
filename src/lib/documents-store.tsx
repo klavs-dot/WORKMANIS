@@ -25,6 +25,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCompany } from "@/lib/company-context";
+import { pushToastGlobally } from "@/lib/toast-context";
 
 // ============================================================
 // Types (unchanged from V3)
@@ -208,6 +209,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       writeCache(companyId, fresh);
     } catch (err) {
       console.error("Fetch documents failed:", err);
+      pushToastGlobally("error", "Neizdevās ielādēt dokumentus.");
     } finally {
       setLoading(false);
     }
@@ -283,6 +285,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("addDocument sync failed:", err);
+        pushToastGlobally("error", "Dokumenta saglabāšana neizdevās.");
         setDocuments((prev) => {
           const next = prev.filter((d) => d.id !== tempId);
           writeCache(companyId, next);
@@ -345,6 +348,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("updateDocument sync failed:", err);
+        pushToastGlobally("error", "Dokumenta izmaiņas nesaglabājās.");
         if (previous) {
           const prevDoc = previous;
           setDocuments((prev) => {
@@ -383,6 +387,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
       } catch (err) {
         console.error("deleteDocument sync failed:", err);
+        pushToastGlobally("error", "Dokumenta dzēšana neizdevās.");
         if (removed) {
           const restored = removed;
           setDocuments((prev) => {

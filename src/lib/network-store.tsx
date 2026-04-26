@@ -27,6 +27,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCompany } from "@/lib/company-context";
+import { pushToastGlobally } from "@/lib/toast-context";
 import type {
   BusinessContact,
   BusinessContactCategory,
@@ -267,6 +268,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
       updatedAtMapRef.current = newUpdatedAt;
     } catch (err) {
       console.error("Fetch network failed:", err);
+      pushToastGlobally("error", "Neizdevās ielādēt partneru un distributoru datus.");
     } finally {
       setLoading(false);
     }
@@ -360,6 +362,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
           });
         } catch (err) {
           console.error(`${config.apiPath} add sync failed:`, err);
+          pushToastGlobally("error", "Saglabāšana neizdevās.");
           config.setState((prev) => {
             const next = prev.filter((x) => x.id !== tempId);
             writeCache(config.cachePrefix, companyId, next);
@@ -419,6 +422,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
           });
         } catch (err) {
           console.error(`${config.apiPath} update sync failed:`, err);
+          pushToastGlobally("error", "Izmaiņas nesaglabājās.");
           if (previous) {
             const prev2 = previous;
             config.setState((prev) => {
@@ -458,6 +462,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
           if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
         } catch (err) {
           console.error(`${config.apiPath} delete sync failed:`, err);
+          pushToastGlobally("error", "Dzēšana neizdevās.");
           if (removed) {
             const restored = removed;
             config.setState((prev) => {

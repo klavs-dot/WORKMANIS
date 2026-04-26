@@ -46,6 +46,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCompany } from "@/lib/company-context";
+import { pushToastGlobally } from "@/lib/toast-context";
 
 // ============================================================
 // Types
@@ -168,6 +169,7 @@ export function AssetProvider({ children }: { children: ReactNode }) {
       writeCache(companyId, fresh);
     } catch (err) {
       console.error("Fetch assets failed:", err);
+      pushToastGlobally("error", "Neizdevās ielādēt aktīvus.");
     } finally {
       setLoading(false);
     }
@@ -246,6 +248,7 @@ export function AssetProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("addAsset server sync failed:", err);
+        pushToastGlobally("error", "Aktīva saglabāšana neizdevās.");
         setAssets((prev) => {
           const next = prev.filter((a) => a.id !== tempId);
           writeCache(companyId, next);
@@ -312,6 +315,7 @@ export function AssetProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("updateAsset server sync failed:", err);
+        pushToastGlobally("error", "Aktīva izmaiņas nesaglabājās.");
         if (previous) {
           const prevAsset = previous;
           setAssets((prev) => {
@@ -354,6 +358,7 @@ export function AssetProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error("deleteAsset server sync failed:", err);
+        pushToastGlobally("error", "Aktīva dzēšana neizdevās.");
         if (removed) {
           const restored = removed;
           setAssets((prev) => {

@@ -27,6 +27,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCompany } from "@/lib/company-context";
+import { pushToastGlobally } from "@/lib/toast-context";
 
 // ============================================================
 // Types (unchanged from pre-Phase-4)
@@ -296,6 +297,7 @@ export function EmployeesProvider({ children }: { children: ReactNode }) {
       writeCache(companyId, fresh);
     } catch (err) {
       console.error("Fetch employees failed:", err);
+      pushToastGlobally("error", "Neizdevās ielādēt darbiniekus.");
     } finally {
       setLoading(false);
     }
@@ -364,6 +366,7 @@ export function EmployeesProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("addEmployee sync failed:", err);
+        pushToastGlobally("error", "Darbinieka saglabāšana neizdevās.");
         setEmployees((prev) => {
           const next = prev.filter((e) => e.id !== tempId);
           writeCache(companyId, next);
@@ -420,6 +423,7 @@ export function EmployeesProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("updateEmployee sync failed:", err);
+        pushToastGlobally("error", "Darbinieka izmaiņas nesaglabājās.");
         if (previous) {
           const prev2 = previous;
           setEmployees((prev) => {
@@ -459,6 +463,7 @@ export function EmployeesProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
       } catch (err) {
         console.error("deleteEmployee sync failed:", err);
+        pushToastGlobally("error", "Darbinieka dzēšana neizdevās.");
         if (removed) {
           const restored = removed;
           setEmployees((prev) => {

@@ -32,6 +32,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCompany } from "@/lib/company-context";
+import { pushToastGlobally } from "@/lib/toast-context";
 import type {
   Client,
   InvoiceTemplate,
@@ -227,6 +228,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       writeClientsCache(companyId, fresh);
     } catch (err) {
       console.error("Fetch clients failed:", err);
+      pushToastGlobally("error", "Neizdevās ielādēt klientus.");
     } finally {
       setLoading(false);
     }
@@ -248,6 +250,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       writeTemplatesCache(companyId, fresh);
     } catch (err) {
       console.error("Fetch templates failed:", err);
+      pushToastGlobally("error", "Neizdevās ielādēt rēķinu šablonus.");
     }
   }, []);
 
@@ -329,6 +332,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("addClient sync failed:", err);
+        pushToastGlobally("error", "Klienta saglabāšana neizdevās.");
         setClients((prev) => {
           const next = prev.filter((c) => c.id !== tempId);
           writeClientsCache(companyId, next);
@@ -388,6 +392,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("updateClient sync failed:", err);
+        pushToastGlobally("error", "Klienta izmaiņas nesaglabājās.");
         setClients((prev) => {
           const next = prev.map((c) => (c.id === id ? previous : c));
           writeClientsCache(companyId, next);
@@ -440,6 +445,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
       } catch (err) {
         console.error("deleteClient sync failed:", err);
+        pushToastGlobally("error", "Klienta dzēšana neizdevās.");
         if (removed) {
           const restored = removed;
           setClients((prev) => {
@@ -592,6 +598,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("addTemplate sync failed:", err);
+        pushToastGlobally("error", "Šablona saglabāšana neizdevās.");
         setTemplates((prev) => {
           const next = prev.filter((t) => t.id !== tempId);
           writeTemplatesCache(companyId, next);
@@ -654,6 +661,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("updateTemplate sync failed:", err);
+        pushToastGlobally("error", "Šablona izmaiņas nesaglabājās.");
         if (previous) {
           const prev2 = previous;
           setTemplates((prev) => {
@@ -693,6 +701,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
       } catch (err) {
         console.error("deleteTemplate sync failed:", err);
+        pushToastGlobally("error", "Šablona dzēšana neizdevās.");
         if (removed) {
           const restored = removed;
           setTemplates((prev) => {

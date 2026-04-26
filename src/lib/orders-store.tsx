@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { useCompany } from "@/lib/company-context";
+import { pushToastGlobally } from "@/lib/toast-context";
 
 // ============================================================
 // Types (unchanged)
@@ -252,6 +253,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       writeCache(companyId, fresh);
     } catch (err) {
       console.error("Fetch orders failed:", err);
+      pushToastGlobally("error", "Neizdevās ielādēt rīkojumus.");
     } finally {
       setLoading(false);
     }
@@ -320,6 +322,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("addOrder sync failed:", err);
+        pushToastGlobally("error", "Rīkojuma saglabāšana neizdevās.");
         setOrders((prev) => {
           const next = prev.filter((o) => o.id !== tempId);
           writeCache(companyId, next);
@@ -376,6 +379,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         });
       } catch (err) {
         console.error("updateOrder sync failed:", err);
+        pushToastGlobally("error", "Rīkojuma izmaiņas nesaglabājās.");
         if (previous) {
           const prev2 = previous;
           setOrders((prev) => {
@@ -415,6 +419,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
       } catch (err) {
         console.error("deleteOrder sync failed:", err);
+        pushToastGlobally("error", "Rīkojuma dzēšana neizdevās.");
         if (removed) {
           const restored = removed;
           setOrders((prev) => {
