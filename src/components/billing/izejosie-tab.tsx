@@ -16,6 +16,7 @@ import {
   Landmark,
   Download,
   Pencil,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -64,37 +65,37 @@ import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { EditReceivedModal } from "@/components/billing/edit-received-modal";
 
-// Mock parsed invoices — rotates by upload count for demo realism
-const mockParsings = [
-  {
-    supplier: "AS Latvenergo",
-    invoiceNumber: "LE-26-04-02291",
-    amount: 850.0,
-    iban: "LV61HABA0001408042678",
-    dueDate: "2026-04-30",
-  },
-  {
-    supplier: "SIA Tet",
-    invoiceNumber: "TET-2026-04-8812",
-    amount: 143.0,
-    iban: "LV77HABA0551000562189",
-    dueDate: "2026-04-28",
-  },
-  {
-    supplier: "Adobe Systems Software Ireland",
-    invoiceNumber: "ADB-2026-04128",
-    amount: 898.0,
-    iban: "IE29AIBK93115212345678",
-    dueDate: "2026-05-02",
-  },
-];
-
+// Parsed invoice shape returned by /api/invoices-in/parse
 interface ParsedFields {
   supplier: string;
+  supplier_reg_number?: string;
   invoiceNumber: string;
   amount: number;
+  amount_without_vat: number;
+  vat_amount: number;
+  currency: string;
   iban: string;
   dueDate: string;
+  issueDate: string;
+  description: string;
+  isPaid: boolean;
+  paidEvidence?: string;
+  sources: {
+    supplier_name: string;
+    invoice_number: string;
+    amount_total: string;
+    iban: string;
+    due_date: string;
+  };
+  confidence: {
+    supplier_name: number;
+    supplier_reg_number: number;
+    invoice_number: number;
+    amount_total: number;
+    iban: number;
+    due_date: number;
+  };
+  notes?: string;
 }
 
 export function IzejosieTab() {
@@ -105,6 +106,7 @@ export function IzejosieTab() {
   const [parsed, setParsed] = useState<
     (ParsedFields & { fileName: string }) | null
   >(null);
+  const [parseError, setParseError] = useState<string | null>(null);
   const [openedInvoice, setOpenedInvoice] = useState<ReceivedInvoice | null>(
     null
   );
@@ -112,24 +114,73 @@ export function IzejosieTab() {
   const [editing, setEditing] = useState<ReceivedInvoice | null>(null);
   const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const uploadCountRef = useRef(0);
 
-  const simulateParse = (fileName: string) => {
+  const parseInvoiceWithAI = async (file: File) => {
     setParsing(true);
     setParsed(null);
-    // Simulate ~1.1s parse
-    setTimeout(() => {
-      const mock = mockParsings[uploadCountRef.current % mockParsings.length];
-      uploadCountRef.current += 1;
-      setParsed({ ...mock, fileName });
+    setParseError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/invoices-in/parse", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? "Neparedzēta kļūda");
+      }
+      const d = json.data;
+      setParsed({
+        supplier: d.supplier ?? "",
+        supplier_reg_number: d.supplier_reg_number,
+        invoiceNumber: d.invoice_number ?? "",
+        amount: d.amount ?? 0,
+        amount_without_vat: d.amount_without_vat ?? 0,
+        vat_amount: d.vat_amount ?? 0,
+        currency: d.currency ?? "EUR",
+        iban: d.iban ?? "",
+        dueDate: d.due_date ?? "",
+        issueDate: d.issue_date ?? "",
+        description: d.description ?? "",
+        isPaid: d.is_paid === true,
+        paidEvidence: d.paid_evidence,
+        sources: d.sources ?? {
+          supplier_name: "",
+          invoice_number: "",
+          amount_total: "",
+          iban: "",
+          due_date: "",
+        },
+        confidence: d.confidence ?? {
+          supplier_name: 1,
+          supplier_reg_number: 1,
+          invoice_number: 1,
+          amount_total: 1,
+          iban: 1,
+          due_date: 1,
+        },
+        notes: d.notes,
+        fileName: file.name,
+      });
+    } catch (err) {
+      console.error("Parse failed:", err);
+      setParseError(
+        err instanceof Error
+          ? err.message
+          : "Neizdevās apstrādāt failu. Mēģini vēlreiz vai ievadi datus manuāli."
+      );
+    } finally {
       setParsing(false);
-    }, 1100);
+    }
   };
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
-    simulateParse(file.name);
+    void parseInvoiceWithAI(file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -154,10 +205,12 @@ export function IzejosieTab() {
       fileName: parsed.fileName,
     });
     setParsed(null);
+    setParseError(null);
   };
 
   const clearParsed = () => {
     setParsed(null);
+    setParseError(null);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -239,6 +292,40 @@ export function IzejosieTab() {
             </motion.div>
           )}
 
+          {parseError && (
+            <motion.div
+              key="error"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+            >
+              <Card className="overflow-hidden border-red-200">
+                <div className="p-5 flex items-start gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 shrink-0">
+                    <AlertTriangle className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-[14.5px] font-semibold tracking-tight text-graphite-900">
+                      Neizdevās apstrādāt rēķinu
+                    </h3>
+                    <p className="text-[12.5px] text-graphite-600 mt-1 leading-relaxed">
+                      {parseError}
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setParseError(null)}
+                      >
+                        Mēģināt vēlreiz
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+          )}
+
           {parsed && !parsing && (
             <motion.div
               key="parsed"
@@ -270,25 +357,135 @@ export function IzejosieTab() {
                   </Button>
                 </div>
 
-                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <ParsedField label="Nosaukums" value={parsed.supplier} />
-                  <ParsedField
-                    label="Rēķina numurs"
-                    value={parsed.invoiceNumber}
-                    mono
-                  />
-                  <ParsedField
-                    label="Summa"
-                    value={formatCurrency(parsed.amount)}
-                  />
-                  <ParsedField label="IBAN" value={parsed.iban} mono />
-                  <ParsedField
-                    label="Termiņš"
-                    value={formatDate(parsed.dueDate)}
-                  />
+                {/* PAID warning — shown prominently if AI detected paid markings */}
+                {parsed.isPaid && (
+                  <div className="mx-5 mt-5 rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3">
+                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="text-[13px] font-semibold text-red-900">
+                        Šis rēķins jau ir apmaksāts
+                      </div>
+                      {parsed.paidEvidence && (
+                        <div className="text-[12px] text-red-800 mt-1 leading-relaxed">
+                          AI atrada: <span className="italic">&ldquo;{parsed.paidEvidence}&rdquo;</span>
+                        </div>
+                      )}
+                      <div className="text-[11.5px] text-red-700 mt-2">
+                        Pārliecinies, ka neapmaksā vēlreiz. Ja apmaksāts, izveido tikai ierakstu vēsturei.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* AI-flagged notes (when something looks unusual) */}
+                {parsed.notes && (
+                  <div className="mx-5 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 flex items-start gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-[12px] text-amber-900 leading-relaxed">
+                      {parsed.notes}
+                    </div>
+                  </div>
+                )}
+
+                {/* All fields, grouped */}
+                <div className="p-5 space-y-5">
+                  {/* Supplier section */}
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
+                      Piegādātājs
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ParsedField
+                        label="Nosaukums"
+                        value={parsed.supplier}
+                        confidence={parsed.confidence.supplier_name}
+                        source={parsed.sources.supplier_name}
+                      />
+                      {parsed.supplier_reg_number && (
+                        <ParsedField
+                          label="Reģ. Nr."
+                          value={parsed.supplier_reg_number}
+                          confidence={parsed.confidence.supplier_reg_number}
+                          mono
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Invoice details section */}
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
+                      Rēķina informācija
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ParsedField
+                        label="Rēķina numurs"
+                        value={parsed.invoiceNumber}
+                        confidence={parsed.confidence.invoice_number}
+                        source={parsed.sources.invoice_number}
+                        mono
+                      />
+                      <ParsedField
+                        label="Apraksts"
+                        value={parsed.description}
+                      />
+                      <ParsedField
+                        label="Izsniegts"
+                        value={parsed.issueDate ? formatDate(parsed.issueDate) : "—"}
+                      />
+                      <ParsedField
+                        label="Apmaksāt līdz"
+                        value={parsed.dueDate ? formatDate(parsed.dueDate) : "—"}
+                        confidence={parsed.confidence.due_date}
+                        source={parsed.sources.due_date}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Amounts section */}
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
+                      Summas
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {parsed.amount_without_vat > 0 && (
+                        <ParsedField
+                          label="Bez PVN"
+                          value={`${parsed.amount_without_vat.toFixed(2)} ${parsed.currency}`}
+                        />
+                      )}
+                      {parsed.vat_amount > 0 && (
+                        <ParsedField
+                          label="PVN"
+                          value={`${parsed.vat_amount.toFixed(2)} ${parsed.currency}`}
+                        />
+                      )}
+                      <ParsedField
+                        label={`Kopā (${parsed.currency})`}
+                        value={`${parsed.amount.toFixed(2)} ${parsed.currency}`}
+                        confidence={parsed.confidence.amount_total}
+                        source={parsed.sources.amount_total}
+                        emphasize
+                      />
+                    </div>
+                  </div>
+
+                  {/* Payment section */}
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-semibold mb-3">
+                      Maksājuma rekvizīti
+                    </div>
+                    <ParsedField
+                      label="IBAN"
+                      value={parsed.iban || "—"}
+                      confidence={parsed.confidence.iban}
+                      source={parsed.sources.iban}
+                      mono
+                    />
+                  </div>
                 </div>
 
-                <div className="p-5 pt-0 flex items-center justify-end gap-2">
+                <div className="p-5 pt-0 flex items-center justify-end gap-2 border-t border-graphite-100 mt-2">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -296,9 +493,15 @@ export function IzejosieTab() {
                   >
                     Atcelt
                   </Button>
-                  <Button size="sm" onClick={handlePreparePayment}>
+                  <Button
+                    size="sm"
+                    onClick={handlePreparePayment}
+                    variant={parsed.isPaid ? "secondary" : "default"}
+                  >
                     <Send className="h-3.5 w-3.5" />
-                    Sagatavot maksājumu bankā
+                    {parsed.isPaid
+                      ? "Pievienot vēsturei"
+                      : "Sagatavot maksājumu bankā"}
                   </Button>
                 </div>
               </Card>
@@ -543,24 +746,52 @@ function ParsedField({
   label,
   value,
   mono,
+  confidence,
+  source,
+  emphasize,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  /** 0.0-1.0 from AI; below 0.7 shows a warning indicator */
+  confidence?: number;
+  /** Where in the document AI found this value (shown as tooltip) */
+  source?: string;
+  /** Larger/bolder for emphasized fields like the total */
+  emphasize?: boolean;
 }) {
+  const isLowConfidence = confidence !== undefined && confidence < 0.7;
+
   return (
     <div>
-      <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-        {label}
-      </Label>
+      <div className="flex items-center gap-1.5">
+        <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+          {label}
+        </Label>
+        {isLowConfidence && (
+          <span
+            title={`AI nav drošs par šo lauku (${Math.round((confidence ?? 0) * 100)}%). Pārbaudi pirms apstiprināšanas.`}
+            className="inline-flex items-center justify-center h-3.5 w-3.5 rounded-full bg-amber-100 text-amber-700 cursor-help"
+          >
+            <AlertTriangle className="h-2.5 w-2.5" />
+          </span>
+        )}
+      </div>
       <p
         className={cn(
           "mt-1.5 text-[14px] font-medium text-graphite-900",
-          mono && "font-mono text-[13px]"
+          mono && "font-mono text-[13px]",
+          emphasize && "text-[16px] font-semibold",
+          isLowConfidence && "text-amber-900"
         )}
       >
         {value}
       </p>
+      {source && (
+        <p className="mt-1 text-[10.5px] text-graphite-400 italic">
+          {source}
+        </p>
+      )}
     </div>
   );
 }

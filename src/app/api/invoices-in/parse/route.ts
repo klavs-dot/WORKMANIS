@@ -128,6 +128,35 @@ const EXTRACT_TOOL = {
         description:
           "Brief one-line summary of WHAT the invoice is for. Examples: 'Telekomunikācijas pakalpojumi 04/2026', 'Kancelejas preces', 'Konsultāciju pakalpojumi'. Synthesize from line items.",
       },
+      is_paid: {
+        type: "boolean",
+        description:
+          "TRUE if there is clear visual evidence the invoice has ALREADY been paid. Look for: 'APMAKSĀTS' / 'PAID' / 'SAMAKSĀTS' stamps, paid-label watermarks, 'Status: Apmaksāts', attached payment confirmation, paid-in-full notations. FALSE for normal unpaid invoices. When in doubt, FALSE — only mark TRUE with strong visual evidence.",
+      },
+      paid_evidence: {
+        type: "string",
+        description:
+          "If is_paid is TRUE, briefly describe what evidence you saw (e.g., 'Red APMAKSĀTS stamp at top-right', 'Status field reads Apmaksāts', 'Payment confirmation line at bottom'). Empty string if not paid.",
+      },
+      sources: {
+        type: "object",
+        description:
+          "For each major extracted field, briefly state WHERE in the document you found it. Helps the user verify. Use short Latvian descriptions like 'No header', 'No tabulas augšā', 'Apakšā pie maksājuma rekvizītiem'.",
+        properties: {
+          supplier_name: { type: "string" },
+          invoice_number: { type: "string" },
+          amount_total: { type: "string" },
+          iban: { type: "string" },
+          due_date: { type: "string" },
+        },
+        required: [
+          "supplier_name",
+          "invoice_number",
+          "amount_total",
+          "iban",
+          "due_date",
+        ],
+      },
       confidence: {
         type: "object",
         description:
@@ -166,6 +195,9 @@ const EXTRACT_TOOL = {
       "due_date",
       "issue_date",
       "description",
+      "is_paid",
+      "paid_evidence",
+      "sources",
       "confidence",
     ],
   },
@@ -205,6 +237,15 @@ interface ParsedInvoice {
   due_date: string;
   issue_date: string;
   description: string;
+  is_paid: boolean;
+  paid_evidence: string;
+  sources: {
+    supplier_name: string;
+    invoice_number: string;
+    amount_total: string;
+    iban: string;
+    due_date: string;
+  };
   confidence: {
     supplier_name: number;
     supplier_reg_number: number;
@@ -373,10 +414,12 @@ export async function POST(request: Request) {
       due_date: parsed.due_date,
       issue_date: parsed.issue_date,
       description: parsed.description,
+      is_paid: parsed.is_paid,
+      paid_evidence: parsed.paid_evidence || undefined,
+      sources: parsed.sources,
       confidence: parsed.confidence,
       notes: parsed.notes || undefined,
     },
-    // Pass through usage info for debugging / cost tracking
     usage: {
       input_tokens: response.usage.input_tokens,
       output_tokens: response.usage.output_tokens,
