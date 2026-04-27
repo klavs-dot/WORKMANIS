@@ -15,6 +15,8 @@ import {
   Briefcase,
   Calculator,
   IdCard,
+  Warehouse,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,14 +29,18 @@ interface NavItem {
 }
 
 interface NavGroup {
+  /** Optional section title shown above the items. When omitted,
+   *  the group renders as a quiet block separated only by a divider. */
+  label?: string;
   items: NavItem[];
 }
 
-// Three visually separated blocks with a blank line between them.
-// Content per the user's spec:
+// Visually separated blocks. Groups with a `label` get a small uppercase
+// header above them; groups without just sit inside dividers.
 //   1) Company context
 //   2) Financial & operational workflows
-//   3) Relationships & external partners
+//   3) Production (warehouse, demo, finished goods)
+//   4) Relationships & external partners
 const navGroups: NavGroup[] = [
   {
     items: [
@@ -51,8 +57,15 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Produkcija",
     items: [
+      { href: "/noliktava", label: "Noliktava", icon: Warehouse },
       { href: "/demo", label: "Demo produkcija", icon: Boxes },
+      { href: "/gatava-produkcija", label: "Gatavā produkcija", icon: Sparkles },
+    ],
+  },
+  {
+    items: [
       { href: "/distributori", label: "Distributori & Aģenti", icon: Handshake },
       { href: "/partneri", label: "Iepirkumi", icon: Briefcase },
       { href: "/klienti", label: "Klienti & Partneri", icon: Users },
@@ -331,53 +344,56 @@ export function Sidebar() {
         </div>
 
         {navGroups.map((group, groupIdx) => (
-          <ul
+          <div
             key={groupIdx}
             className={cn(
-              "space-y-0.5",
-              // Spacer between groups — first group has no top margin,
-              // subsequent groups are pushed down with a subtle divider
-              // that reads as a breathing space rather than a hard rule.
-              groupIdx > 0 &&
-                "mt-4 pt-4 border-t border-graphite-200/40"
+              groupIdx > 0 && "mt-4 pt-4 border-t border-graphite-200/40"
             )}
           >
-            {group.items.map((item) => {
-              const isActive =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
-              const Icon = item.icon;
-              const badgeCount = badgeFor(item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-all",
-                      isActive
-                        ? "bg-white text-graphite-900 shadow-soft-xs border border-graphite-200/60"
-                        : "text-graphite-600 hover:text-graphite-900 hover:bg-white/60"
-                    )}
-                  >
-                    <Icon
+            {group.label && (
+              <div className="px-2 mb-2">
+                <span className="text-[10.5px] font-medium uppercase tracking-wider text-graphite-400">
+                  {group.label}
+                </span>
+              </div>
+            )}
+            <ul className="space-y-0.5">
+              {group.items.map((item) => {
+                const isActive =
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.href);
+                const Icon = item.icon;
+                const badgeCount = badgeFor(item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
                       className={cn(
-                        "h-4 w-4 transition-colors",
+                        "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-all",
                         isActive
-                          ? "text-graphite-900"
-                          : "text-graphite-400 group-hover:text-graphite-600"
+                          ? "bg-white text-graphite-900 shadow-soft-xs border border-graphite-200/60"
+                          : "text-graphite-600 hover:text-graphite-900 hover:bg-white/60"
                       )}
-                      strokeWidth={2}
-                    />
-                    <span className="flex-1">{item.label}</span>
-                    {badgeCount > 0 && (
-                      <span
+                    >
+                      <Icon
                         className={cn(
-                          "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular",
+                          "h-4 w-4 transition-colors",
                           isActive
-                            ? "bg-red-600 text-white"
-                            : "bg-red-50 text-red-600 border border-red-100"
+                            ? "text-graphite-900"
+                            : "text-graphite-400 group-hover:text-graphite-600"
                         )}
+                        strokeWidth={2}
+                      />
+                      <span className="flex-1">{item.label}</span>
+                      {badgeCount > 0 && (
+                        <span
+                          className={cn(
+                            "flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular",
+                            isActive
+                              ? "bg-red-600 text-white"
+                              : "bg-red-50 text-red-600 border border-red-100"
+                          )}
                       >
                         {badgeCount}
                       </span>
@@ -387,6 +403,7 @@ export function Sidebar() {
               );
             })}
           </ul>
+          </div>
         ))}
       </nav>
 
