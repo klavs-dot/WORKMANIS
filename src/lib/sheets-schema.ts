@@ -439,6 +439,12 @@ export type TableName =
 // Helpers
 // ============================================================
 
+// Imported at module level since warehouse-schema doesn't import
+// from this file — no circular dependency risk. Earlier draft used
+// require() to be extra-cautious, but that needs an eslint rule
+// that isn't configured in this project.
+import { WAREHOUSE_TABS } from "./warehouse-schema";
+
 /**
  * Look up the schema for a table. Throws if the table name doesn't
  * exist (which TypeScript should have caught at compile time, but
@@ -448,14 +454,9 @@ export type TableName =
  * is unique enough that there's no collision risk.
  */
 export function getTableSchema(table: TableName): TableSchema {
-  // Lazy import to avoid circular dep with warehouse-schema.ts
-  // (warehouse-schema doesn't import sheets-schema, so this is safe)
   const found =
     COMPANY_TABS.find((t) => t.name === table) ??
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    (require("./warehouse-schema").WAREHOUSE_TABS as TableSchema[]).find(
-      (t) => t.name === table
-    );
+    (WAREHOUSE_TABS as readonly TableSchema[]).find((t) => t.name === table);
   if (!found) {
     throw new Error(`Unknown table: ${table}`);
   }
