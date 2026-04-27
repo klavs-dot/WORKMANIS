@@ -10,6 +10,7 @@ interface ApiPartner {
   id: string;
   category: string;
   name: string;
+  regNumber: string;
   countryCode: string;
   address: string;
   contactPerson: string;
@@ -36,6 +37,7 @@ function parseUpdateBody(
   for (const key of [
     "category",
     "name",
+    "reg_number",
     "country_code",
     "address",
     "contact_person",
@@ -55,6 +57,7 @@ function rowToApi(row: Record<string, unknown>): ApiPartner {
     id: row.id as string,
     category: (row.category as string) ?? "razotaji",
     name: (row.name as string) ?? "",
+    regNumber: (row.reg_number as string) ?? "",
     countryCode: (row.country_code as string) ?? "LV",
     address: (row.address as string) ?? "",
     contactPerson: (row.contact_person as string) ?? "",

@@ -56,6 +56,7 @@ import type {
 } from "@/lib/billing-store";
 import { useCompany } from "@/lib/company-context";
 import type { Company } from "@/lib/types";
+import { useToast } from "@/lib/toast-context";
 import { useNetwork } from "@/lib/network-store";
 import type { BusinessContactCategory } from "@/lib/network-types";
 import {
@@ -248,6 +249,7 @@ export function IzejosieTab() {
   const { received, addReceived, updateReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
     useBilling();
   const { activeCompany } = useCompany();
+  const { pushSuccess } = useToast();
   const network = useNetwork();
   const [isDragging, setIsDragging] = useState(false);
   // Queue of all files dropped (and not yet approved). Persists
@@ -508,15 +510,15 @@ export function IzejosieTab() {
     network.addContact({
       category: newPartnerCategory,
       name: newPartnerName.trim(),
+      regNumber: sourceItem?.parsed?.supplier_reg_number,
       countryCode: "LV",
       address: "",
       contactPerson: "",
       email: "",
       phone: "",
-      comment: sourceItem?.parsed?.supplier_reg_number
-        ? `Reģ. Nr. ${sourceItem.parsed.supplier_reg_number} · Pievienots automātiski no rēķina.`
-        : "Pievienots automātiski no rēķina.",
+      comment: "Pievienots automātiski no rēķina.",
     });
+    pushSuccess(`${newPartnerName.trim()} pievienots partneru sarakstā`);
     setAddPartnerOpen(false);
     setAddPartnerForItem(null);
   };
@@ -551,7 +553,7 @@ export function IzejosieTab() {
     );
     if (distHit) return { kind: "distributor" as const, entity: distHit };
     const contactHit = network.contacts.find((c) =>
-      companiesMatch(c.name, undefined, parsed.supplier, parsed.supplier_reg_number)
+      companiesMatch(c.name, c.regNumber, parsed.supplier, parsed.supplier_reg_number)
     );
     if (contactHit) return { kind: "contact" as const, entity: contactHit };
     return null;

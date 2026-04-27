@@ -120,6 +120,7 @@ export const COMPANY_TABS = [
     cols: [
       "category",
       "name",
+      "reg_number",
       "country_code",
       "address",
       "contact_person",

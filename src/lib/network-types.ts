@@ -32,6 +32,11 @@ export interface BusinessContact {
   id: string;
   category: BusinessContactCategory;
   name: string;
+  /** Latvian Reģ. Nr. (11 digits) or foreign equivalent.
+   *  Optional — not all partners are companies, and some
+   *  records pre-date this field. Used as the authoritative
+   *  match signal when both sides have it. */
+  regNumber?: string;
   countryCode: string;
   address: string;
   contactPerson: string;

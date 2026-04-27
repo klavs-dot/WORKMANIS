@@ -278,6 +278,9 @@ export default function PartneriPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 pt-2">
+                {detail.regNumber && (
+                  <DetailField label="Reģ. Nr." value={detail.regNumber} />
+                )}
                 <DetailField label="Adrese" value={detail.address} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <DetailField
@@ -734,6 +737,7 @@ function ContactModal({
   const [category, setCategory] =
     useState<BusinessContactCategory>(defaultCategory);
   const [name, setName] = useState("");
+  const [regNumber, setRegNumber] = useState("");
   const [countryCode, setCountryCode] = useState("LV");
   const [address, setAddress] = useState("");
   const [contactPerson, setContactPerson] = useState("");
@@ -746,6 +750,7 @@ function ContactModal({
     if (editing) {
       setCategory(editing.category);
       setName(editing.name);
+      setRegNumber(editing.regNumber ?? "");
       setCountryCode(editing.countryCode);
       setAddress(editing.address);
       setContactPerson(editing.contactPerson);
@@ -755,6 +760,7 @@ function ContactModal({
     } else {
       setCategory(defaultCategory);
       setName("");
+      setRegNumber("");
       setCountryCode("LV");
       setAddress("");
       setContactPerson("");
@@ -769,6 +775,7 @@ function ContactModal({
     onSubmit({
       category,
       name: name.trim(),
+      regNumber: regNumber.trim() || undefined,
       countryCode,
       address: address.trim(),
       contactPerson: contactPerson.trim(),
@@ -825,6 +832,19 @@ function ContactModal({
               <Label>Valsts</Label>
               <CountrySelect value={countryCode} onChange={setCountryCode} />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Reģ. Nr.</Label>
+              <Input
+                value={regNumber}
+                onChange={(e) => setRegNumber(e.target.value)}
+                placeholder="40001234567"
+                className="font-mono"
+              />
+            </div>
+            <div />
           </div>
 
           <div className="space-y-1.5">

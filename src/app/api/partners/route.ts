@@ -11,6 +11,7 @@ export const maxDuration = 30;
 interface PartnerRow extends Record<string, string> {
   category: string;
   name: string;
+  reg_number: string;
   country_code: string;
   address: string;
   contact_person: string;
@@ -23,6 +24,7 @@ interface ApiPartner {
   id: string;
   category: string;
   name: string;
+  regNumber: string;
   countryCode: string;
   address: string;
   contactPerson: string;
@@ -41,6 +43,7 @@ function parseCreateBody(body: unknown): PartnerRow | null {
   return {
     category: b.category,
     name: (b.name as string).trim(),
+    reg_number: typeof b.reg_number === "string" ? b.reg_number.trim() : "",
     country_code: typeof b.country_code === "string" ? b.country_code : "LV",
     address: typeof b.address === "string" ? b.address : "",
     contact_person:
@@ -56,6 +59,7 @@ function rowToApi(row: Record<string, unknown>): ApiPartner {
     id: row.id as string,
     category: (row.category as string) ?? "razotaji",
     name: (row.name as string) ?? "",
+    regNumber: (row.reg_number as string) ?? "",
     countryCode: (row.country_code as string) ?? "LV",
     address: (row.address as string) ?? "",
     contactPerson: (row.contact_person as string) ?? "",

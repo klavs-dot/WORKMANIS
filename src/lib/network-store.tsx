@@ -127,6 +127,7 @@ interface ApiPartner {
   id: string;
   category: string;
   name: string;
+  regNumber: string;
   countryCode: string;
   address: string;
   contactPerson: string;
@@ -177,6 +178,7 @@ function apiToContact(a: ApiPartner): BusinessContact {
     id: a.id,
     category: a.category as BusinessContactCategory,
     name: a.name,
+    regNumber: a.regNumber || undefined,
     countryCode: a.countryCode,
     address: a.address,
     contactPerson: a.contactPerson,
@@ -526,6 +528,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     toApiBody: (data) => ({
       ...(data.category !== undefined && { category: data.category }),
       ...(data.name !== undefined && { name: data.name }),
+      ...(data.regNumber !== undefined && { reg_number: data.regNumber ?? "" }),
       ...(data.countryCode !== undefined && { country_code: data.countryCode }),
       ...(data.address !== undefined && { address: data.address }),
       ...(data.contactPerson !== undefined && {
