@@ -79,20 +79,20 @@ export function Sidebar() {
   return (
     <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-graphite-100 bg-surface-subtle">
       {/* Brand */}
-      <div className="flex h-14 items-center gap-2.5 px-5 border-b border-graphite-100">
+      <div className="flex h-20 items-center gap-3 px-5 border-b border-graphite-100">
         <motion.div
-          animate={{ y: [0, -2, 0] }}
+          animate={{ y: [0, -3, 0] }}
           transition={{
             duration: 1.6,
             repeat: Infinity,
             ease: "easeInOut",
           }}
-          className="flex h-8 w-8 items-center justify-center shrink-0"
+          className="flex h-14 w-14 items-center justify-center shrink-0"
         >
           <svg
             viewBox="0 0 80 90"
             fill="none"
-            className="h-7 w-7"
+            className="h-14 w-14"
             xmlns="http://www.w3.org/2000/svg"
           >
             {/* Antenna */}
@@ -163,10 +163,10 @@ export function Sidebar() {
           </svg>
         </motion.div>
         <div className="flex flex-col leading-none">
-          <span className="text-[14px] font-semibold tracking-tight text-graphite-900">
+          <span className="text-[21px] font-semibold tracking-tight text-graphite-900">
             WORKMANIS
           </span>
-          <span className="text-[10.5px] text-graphite-400 mt-0.5">
+          <span className="text-[10.5px] text-graphite-400 mt-1">
             Komandcentrs. Seko biznesam.
           </span>
         </div>

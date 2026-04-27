@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <!-- Background — rounded square so the icon fills the standard
+       favicon canvas instead of having empty corners -->
+  <rect width="80" height="80" rx="14" fill="#f8fafc" />
+
+  <!-- Antenna line -->
+  <line x1="40" y1="14" x2="40" y2="22" stroke="#475569" stroke-width="2.5" stroke-linecap="round" />
+  <!-- Antenna ball — violet -->
+  <circle cx="40" cy="11" r="4" fill="#8b5cf6" />
+
+  <!-- Robot head — same shape as the in-app robot, sized to fill
+       the favicon so it's recognizable at 16x16 and 32x32 -->
+  <rect x="14" y="22" width="52" height="42" rx="8" fill="#1e293b" />
+
+  <!-- Eyes — emerald, slightly larger than usual since the favicon
+       only ever shows the head, no body -->
+  <circle cx="28" cy="38" r="5" fill="#34d399" />
+  <circle cx="52" cy="38" r="5" fill="#34d399" />
+
+  <!-- Mouth — small smile, lighter color so it reads on dark head -->
+  <path d="M 28 50 Q 40 56 52 50" stroke="#cbd5e1" stroke-width="2.5" fill="none" stroke-linecap="round" />
+</svg>
