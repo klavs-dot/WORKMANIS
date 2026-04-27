@@ -116,49 +116,84 @@ export function Sidebar() {
               {/* Soft bg gradient halo */}
               <rect x="0" y="0" width="80" height="95" fill="url(#sidebar-robot-bg-grad)" />
 
-              {/* Cyan horizontal scanline that sweeps top → bottom.
-                  Classic CRT/VHS glitch hint without going overboard. */}
+              {/* Glitch tear bars — random horizontal flashes that
+                  briefly displace and flicker. No sweeping scanlines
+                  per user request; just punchy intermittent breakup.
+                  Each bar has its own duration and timing offsets so
+                  they never sync, giving real 'random corruption'
+                  feel. Heights, widths, and Y positions chosen to
+                  spread the action across the icon's full vertical. */}
               <motion.rect
-                x="0"
-                width="80"
-                height="2.5"
-                fill="#22d3ee"
-                opacity="0.55"
-                animate={{ y: [-5, 95, -5] }}
-                transition={{ duration: 3.2, repeat: Infinity, ease: "linear" }}
-              />
-
-              {/* Magenta scanline going the other direction at a
-                  different speed — they cross over each other and
-                  produce that 'broken signal' feel */}
-              <motion.rect
-                x="0"
-                width="80"
-                height="1.5"
-                fill="#f472b6"
-                opacity="0.45"
-                animate={{ y: [95, -5, 95] }}
-                transition={{ duration: 4.7, repeat: Infinity, ease: "linear" }}
-              />
-
-              {/* Three short horizontal 'tear' bars that flicker on
-                  and off at random offsets — looks like the image
-                  is breaking up briefly. Each one is a separate
-                  motion.rect with its own timing so they never sync. */}
-              <motion.rect
-                x="8" y="28" width="22" height="1.2" fill="#22d3ee" opacity="0.6"
-                animate={{ opacity: [0, 0.6, 0, 0, 0.4, 0], x: [8, 12, 8, 8, 6, 8] }}
-                transition={{ duration: 2.1, repeat: Infinity, times: [0, 0.05, 0.1, 0.5, 0.55, 0.6] }}
+                x="6" y="18" width="32" height="3" fill="#22d3ee"
+                animate={{
+                  opacity: [0, 0.85, 0, 0, 0.7, 0, 0],
+                  x: [6, 14, 6, 6, 2, 6, 6],
+                }}
+                transition={{
+                  duration: 1.6,
+                  repeat: Infinity,
+                  times: [0, 0.04, 0.1, 0.45, 0.5, 0.55, 1],
+                }}
               />
               <motion.rect
-                x="42" y="58" width="30" height="0.8" fill="#f472b6" opacity="0.6"
-                animate={{ opacity: [0, 0, 0.7, 0, 0, 0.5, 0], x: [42, 42, 38, 42, 42, 46, 42] }}
-                transition={{ duration: 3.3, repeat: Infinity, times: [0, 0.3, 0.32, 0.36, 0.7, 0.72, 0.76] }}
+                x="38" y="32" width="38" height="2.5" fill="#f472b6"
+                animate={{
+                  opacity: [0, 0, 0.9, 0, 0, 0.75, 0, 0],
+                  x: [38, 38, 30, 38, 38, 44, 38, 38],
+                }}
+                transition={{
+                  duration: 2.1,
+                  repeat: Infinity,
+                  times: [0, 0.2, 0.23, 0.3, 0.6, 0.63, 0.7, 1],
+                }}
               />
               <motion.rect
-                x="14" y="74" width="40" height="1" fill="#a78bfa" opacity="0.5"
-                animate={{ opacity: [0, 0, 0, 0.6, 0, 0, 0.5, 0] }}
-                transition={{ duration: 2.7, repeat: Infinity, times: [0, 0.2, 0.4, 0.42, 0.45, 0.7, 0.72, 0.75] }}
+                x="2" y="50" width="48" height="2" fill="#a78bfa"
+                animate={{
+                  opacity: [0, 0.8, 0, 0, 0, 0.7, 0],
+                  x: [2, -4, 2, 2, 2, 8, 2],
+                }}
+                transition={{
+                  duration: 1.9,
+                  repeat: Infinity,
+                  times: [0, 0.06, 0.12, 0.4, 0.7, 0.74, 0.8],
+                }}
+              />
+              <motion.rect
+                x="44" y="64" width="34" height="3" fill="#22d3ee"
+                animate={{
+                  opacity: [0, 0, 0, 0.85, 0, 0, 0.7, 0],
+                  x: [44, 44, 44, 50, 44, 44, 38, 44],
+                }}
+                transition={{
+                  duration: 2.4,
+                  repeat: Infinity,
+                  times: [0, 0.15, 0.3, 0.32, 0.4, 0.7, 0.73, 0.8],
+                }}
+              />
+              <motion.rect
+                x="10" y="78" width="44" height="2.5" fill="#f472b6"
+                animate={{
+                  opacity: [0, 0, 0.85, 0, 0, 0, 0.7, 0],
+                  x: [10, 10, 4, 10, 10, 10, 16, 10],
+                }}
+                transition={{
+                  duration: 1.7,
+                  repeat: Infinity,
+                  times: [0, 0.25, 0.28, 0.35, 0.55, 0.85, 0.88, 0.95],
+                }}
+              />
+              <motion.rect
+                x="20" y="90" width="40" height="2" fill="#a78bfa"
+                animate={{
+                  opacity: [0, 0, 0, 0, 0.8, 0, 0],
+                  x: [20, 20, 20, 20, 26, 20, 20],
+                }}
+                transition={{
+                  duration: 2.2,
+                  repeat: Infinity,
+                  times: [0, 0.2, 0.4, 0.5, 0.55, 0.65, 1],
+                }}
               />
             </g>
 
