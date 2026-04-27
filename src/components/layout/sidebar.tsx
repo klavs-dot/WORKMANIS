@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   FileText,
@@ -79,33 +80,94 @@ export function Sidebar() {
     <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-graphite-100 bg-surface-subtle">
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 px-5 border-b border-graphite-100">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-graphite-900 shadow-soft-xs">
+        <motion.div
+          animate={{ y: [0, -2, 0] }}
+          transition={{
+            duration: 1.6,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="flex h-8 w-8 items-center justify-center shrink-0"
+        >
           <svg
-            viewBox="0 0 24 24"
+            viewBox="0 0 80 90"
             fill="none"
-            className="h-3.5 w-3.5 text-white"
+            className="h-7 w-7"
             xmlns="http://www.w3.org/2000/svg"
           >
-            <path
-              d="M4 8L12 3L20 8V16L12 21L4 16V8Z"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinejoin="round"
+            {/* Antenna */}
+            <line
+              x1="40"
+              y1="14"
+              x2="40"
+              y2="22"
+              stroke="#475569"
+              strokeWidth="2.5"
+              strokeLinecap="round"
             />
+            <motion.circle
+              cx="40"
+              cy="11"
+              r="4"
+              fill="#8b5cf6"
+              animate={{
+                scale: [1, 1.3, 1],
+                opacity: [0.7, 1, 0.7],
+              }}
+              transition={{
+                duration: 1.2,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            />
+
+            {/* Head */}
+            <rect x="20" y="22" width="40" height="32" rx="6" fill="#1e293b" />
+
+            {/* Eyes — blink occasionally */}
+            <motion.g
+              animate={{ scaleY: [1, 1, 0.1, 1, 1] }}
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                times: [0, 0.85, 0.9, 0.95, 1],
+                ease: "easeInOut",
+              }}
+              style={{ transformOrigin: "40px 36px" }}
+            >
+              <circle cx="31" cy="36" r="4" fill="#34d399" />
+              <circle cx="49" cy="36" r="4" fill="#34d399" />
+            </motion.g>
+
+            {/* Mouth */}
             <path
-              d="M4 8L12 13M12 13L20 8M12 13V21"
-              stroke="currentColor"
+              d="M 31 46 Q 40 50 49 46"
+              stroke="#cbd5e1"
               strokeWidth="2"
-              strokeLinejoin="round"
+              fill="none"
+              strokeLinecap="round"
+            />
+
+            {/* Body */}
+            <rect x="24" y="57" width="32" height="22" rx="3" fill="#334155" />
+
+            {/* Chest light */}
+            <motion.circle
+              cx="40"
+              cy="68"
+              r="3"
+              fill="#f59e0b"
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ duration: 1, repeat: Infinity }}
             />
           </svg>
-        </div>
+        </motion.div>
         <div className="flex flex-col leading-none">
           <span className="text-[14px] font-semibold tracking-tight text-graphite-900">
             WORKMANIS
           </span>
           <span className="text-[10.5px] text-graphite-400 mt-0.5">
-            Uzņēmumu pārvaldība
+            Komandcentrs. Seko biznesam.
           </span>
         </div>
       </div>
