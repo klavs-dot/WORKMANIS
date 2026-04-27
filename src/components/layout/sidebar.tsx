@@ -57,11 +57,12 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "Produkcija",
+    label: "Noliktava",
     items: [
       { href: "/noliktava", label: "Noliktava", icon: Warehouse },
       { href: "/demo", label: "Demo produkcija", icon: Boxes },
       { href: "/gatava-produkcija", label: "Gatavā produkcija", icon: Sparkles },
+      { href: "/noliktavas-darbinieki", label: "Noliktavas darbinieki", icon: Users },
     ],
   },
   {

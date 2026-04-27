@@ -9,12 +9,13 @@ import { NetworkProvider } from "@/lib/network-store";
 import { EmployeesProvider } from "@/lib/employees-store";
 import { OrdersProvider } from "@/lib/orders-store";
 import { DocumentsProvider } from "@/lib/documents-store";
+import { WarehouseProvider } from "@/lib/warehouse-store";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "WORKMANIS — Uzņēmumu pārvaldība",
+  title: "WORKMANIS — Komandcentrs. Seko biznesam.",
   description:
-    "Premium tool abonementu, rēķinu un maksājumu pārvaldībai. Visiem jūsu uzņēmumiem vienuviet.",
+    "Komandcentrs visu tavu uzņēmumu pārvaldībai — rēķini, maksājumi, noliktava un grāmatvedība vienuviet.",
 };
 
 export default function RootLayout({
@@ -34,7 +35,9 @@ export default function RootLayout({
                     <NetworkProvider>
                       <EmployeesProvider>
                         <OrdersProvider>
-                          <DocumentsProvider>{children}</DocumentsProvider>
+                          <DocumentsProvider>
+                            <WarehouseProvider>{children}</WarehouseProvider>
+                          </DocumentsProvider>
                         </OrdersProvider>
                       </EmployeesProvider>
                     </NetworkProvider>

@@ -419,7 +419,7 @@ export async function reconcileSchemaForSheet(
   return ensureTabsAndHeaders(sheets, spreadsheetId, tabs);
 }
 
-async function ensureTabsAndHeaders(
+export async function ensureTabsAndHeaders(
   sheets: sheets_v4.Sheets,
   spreadsheetId: string,
   tabs: Array<{ name: string; cols: readonly string[] }>

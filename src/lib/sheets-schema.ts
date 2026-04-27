@@ -421,8 +421,19 @@ export const COMPANY_TABS = [
 // Type-level table name union
 // ============================================================
 
-/** Union of all valid table names — auto-derived from COMPANY_TABS */
-export type TableName = (typeof COMPANY_TABS)[number]["name"];
+/** Union of all valid per-company table names */
+export type CompanyTableName = (typeof COMPANY_TABS)[number]["name"];
+
+/** Union of all valid table names — both per-company and warehouse.
+ *  SheetsClient accepts either; the spreadsheetId in the client
+ *  config determines which sheet the table is read from. */
+export type TableName =
+  | CompanyTableName
+  | "01_warehouse"
+  | "02_demo_production"
+  | "03_finished_production"
+  | "04_warehouse_employees"
+  | "05_movements";
 
 // ============================================================
 // Helpers
@@ -432,9 +443,19 @@ export type TableName = (typeof COMPANY_TABS)[number]["name"];
  * Look up the schema for a table. Throws if the table name doesn't
  * exist (which TypeScript should have caught at compile time, but
  * this is a defensive runtime check for safety).
+ *
+ * Searches both COMPANY_TABS and WAREHOUSE_TABS — the table name
+ * is unique enough that there's no collision risk.
  */
 export function getTableSchema(table: TableName): TableSchema {
-  const found = COMPANY_TABS.find((t) => t.name === table);
+  // Lazy import to avoid circular dep with warehouse-schema.ts
+  // (warehouse-schema doesn't import sheets-schema, so this is safe)
+  const found =
+    COMPANY_TABS.find((t) => t.name === table) ??
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    (require("./warehouse-schema").WAREHOUSE_TABS as TableSchema[]).find(
+      (t) => t.name === table
+    );
   if (!found) {
     throw new Error(`Unknown table: ${table}`);
   }
