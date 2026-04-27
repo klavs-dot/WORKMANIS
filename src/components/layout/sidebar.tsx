@@ -87,14 +87,81 @@ export function Sidebar() {
             repeat: Infinity,
             ease: "easeInOut",
           }}
-          className="flex h-14 w-14 items-center justify-center shrink-0"
+          className="flex h-16 w-16 items-center justify-center shrink-0"
         >
           <svg
-            viewBox="0 0 80 90"
+            viewBox="0 0 80 95"
             fill="none"
-            className="h-14 w-14"
+            className="h-16 w-16 overflow-visible"
             xmlns="http://www.w3.org/2000/svg"
           >
+            <defs>
+              {/* Clip the glitch background to a rounded rect so it
+                  doesn't bleed past the icon's intended bounds */}
+              <clipPath id="sidebar-robot-glitch-clip">
+                <rect x="0" y="0" width="80" height="95" rx="10" />
+              </clipPath>
+              {/* Subtle radial gradient — gives the background just
+                  enough lift so the glitch lines have something to
+                  layer on top of, without making the icon feel boxy */}
+              <radialGradient id="sidebar-robot-bg-grad" cx="0.5" cy="0.45" r="0.7">
+                <stop offset="0%" stopColor="#e0e7ff" stopOpacity="0.7" />
+                <stop offset="100%" stopColor="#f1f5f9" stopOpacity="0" />
+              </radialGradient>
+            </defs>
+
+            {/* Glitch background — clipped so it stays within the
+                logo footprint. Bands and noise sit BEHIND the robot. */}
+            <g clipPath="url(#sidebar-robot-glitch-clip)">
+              {/* Soft bg gradient halo */}
+              <rect x="0" y="0" width="80" height="95" fill="url(#sidebar-robot-bg-grad)" />
+
+              {/* Cyan horizontal scanline that sweeps top → bottom.
+                  Classic CRT/VHS glitch hint without going overboard. */}
+              <motion.rect
+                x="0"
+                width="80"
+                height="2.5"
+                fill="#22d3ee"
+                opacity="0.55"
+                animate={{ y: [-5, 95, -5] }}
+                transition={{ duration: 3.2, repeat: Infinity, ease: "linear" }}
+              />
+
+              {/* Magenta scanline going the other direction at a
+                  different speed — they cross over each other and
+                  produce that 'broken signal' feel */}
+              <motion.rect
+                x="0"
+                width="80"
+                height="1.5"
+                fill="#f472b6"
+                opacity="0.45"
+                animate={{ y: [95, -5, 95] }}
+                transition={{ duration: 4.7, repeat: Infinity, ease: "linear" }}
+              />
+
+              {/* Three short horizontal 'tear' bars that flicker on
+                  and off at random offsets — looks like the image
+                  is breaking up briefly. Each one is a separate
+                  motion.rect with its own timing so they never sync. */}
+              <motion.rect
+                x="8" y="28" width="22" height="1.2" fill="#22d3ee" opacity="0.6"
+                animate={{ opacity: [0, 0.6, 0, 0, 0.4, 0], x: [8, 12, 8, 8, 6, 8] }}
+                transition={{ duration: 2.1, repeat: Infinity, times: [0, 0.05, 0.1, 0.5, 0.55, 0.6] }}
+              />
+              <motion.rect
+                x="42" y="58" width="30" height="0.8" fill="#f472b6" opacity="0.6"
+                animate={{ opacity: [0, 0, 0.7, 0, 0, 0.5, 0], x: [42, 42, 38, 42, 42, 46, 42] }}
+                transition={{ duration: 3.3, repeat: Infinity, times: [0, 0.3, 0.32, 0.36, 0.7, 0.72, 0.76] }}
+              />
+              <motion.rect
+                x="14" y="74" width="40" height="1" fill="#a78bfa" opacity="0.5"
+                animate={{ opacity: [0, 0, 0, 0.6, 0, 0, 0.5, 0] }}
+                transition={{ duration: 2.7, repeat: Infinity, times: [0, 0.2, 0.4, 0.42, 0.45, 0.7, 0.72, 0.75] }}
+              />
+            </g>
+
             {/* Antenna */}
             <line
               x1="40"
@@ -148,6 +215,50 @@ export function Sidebar() {
               strokeLinecap="round"
             />
 
+            {/* Left arm — waves */}
+            <motion.g
+              style={{ transformOrigin: "24px 60px" }}
+              animate={{ rotate: [-15, 15, -15] }}
+              transition={{
+                duration: 1.4,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            >
+              <line
+                x1="24"
+                y1="60"
+                x2="13"
+                y2="68"
+                stroke="#475569"
+                strokeWidth="2.8"
+                strokeLinecap="round"
+              />
+              <circle cx="12" cy="69" r="2.8" fill="#1e293b" />
+            </motion.g>
+
+            {/* Right arm — waves opposite */}
+            <motion.g
+              style={{ transformOrigin: "56px 60px" }}
+              animate={{ rotate: [15, -15, 15] }}
+              transition={{
+                duration: 1.4,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
+            >
+              <line
+                x1="56"
+                y1="60"
+                x2="67"
+                y2="68"
+                stroke="#475569"
+                strokeWidth="2.8"
+                strokeLinecap="round"
+              />
+              <circle cx="68" cy="69" r="2.8" fill="#1e293b" />
+            </motion.g>
+
             {/* Body */}
             <rect x="24" y="57" width="32" height="22" rx="3" fill="#334155" />
 
@@ -160,6 +271,10 @@ export function Sidebar() {
               animate={{ opacity: [0.4, 1, 0.4] }}
               transition={{ duration: 1, repeat: Infinity }}
             />
+
+            {/* Legs */}
+            <rect x="29" y="79" width="6" height="11" rx="1.5" fill="#1e293b" />
+            <rect x="45" y="79" width="6" height="11" rx="1.5" fill="#1e293b" />
           </svg>
         </motion.div>
         <div className="flex flex-col leading-none">
