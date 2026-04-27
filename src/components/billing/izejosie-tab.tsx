@@ -1645,9 +1645,9 @@ function InvoiceDraftCard({
   // ---------- Parsing state ----------
   if (item.status === "parsing") {
     return (
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden bg-graphite-50/60 border-2 border-[#39ff14] shadow-[0_0_0_1px_#39ff14,0_0_12px_-2px_rgba(57,255,20,0.4)]">
         <div className="p-4 flex items-center gap-4">
-          <div className="h-10 w-10 rounded-lg bg-graphite-50 flex items-center justify-center shrink-0">
+          <div className="h-10 w-10 rounded-lg bg-white/80 flex items-center justify-center shrink-0">
             <div className="h-4 w-4 rounded-full border-2 border-graphite-200 border-t-graphite-900 animate-spin" />
           </div>
           <div className="flex-1 min-w-0">
@@ -1734,9 +1734,9 @@ function InvoiceDraftCard({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden bg-graphite-50/60 border-2 border-[#39ff14] shadow-[0_0_0_1px_#39ff14,0_0_12px_-2px_rgba(57,255,20,0.4)]">
       {/* Header */}
-      <div className="p-4 border-b border-graphite-100 flex items-center justify-between gap-3">
+      <div className="p-4 border-b border-graphite-200/60 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
             <Check className="h-4 w-4" strokeWidth={2.5} />
