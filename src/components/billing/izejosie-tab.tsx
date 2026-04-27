@@ -81,22 +81,48 @@ import { EditReceivedModal } from "@/components/billing/edit-received-modal";
  * collapse whitespace, strip legal-form prefixes/suffixes (SIA,
  * AS, OÜ, Ltd, GmbH, A/S etc), strip punctuation. Used as a
  * fallback when reg-number match isn't possible.
+/**
+ * Strip legal-form prefixes/suffixes and normalize whitespace
+ * so two variants of the same company name compare equal.
+ *
+ * Handles short forms (SIA, AS, Ltd, GmbH) AND long forms
+ * ('Sabiedrība ar ierobežotu atbildību', 'Akciju sabiedrība').
+ * The long forms appear in formal documents while short forms
+ * appear in everyday usage — same entity, different writing.
  */
 function normalizeCompanyName(s: string): string {
   return s
     .toLowerCase()
     .trim()
-    // strip common legal forms (anywhere in the string)
-    .replace(/\b(sia|as|a\/s|ltd|llc|inc|gmbh|oy|oü|ou|ab)\b/g, "")
-    .replace(/[.,'"`]/g, "")
+    // Long Latvian legal forms first (more specific → match before short)
+    .replace(/\bsabiedrība\s+ar\s+ierobežotu\s+atbildību\b/g, "")
+    .replace(/\bakciju\s+sabiedrība\b/g, "")
+    .replace(/\bindividuālais\s+komersants\b/g, "")
+    // Short forms (Latvian + common foreign)
+    .replace(/\b(sia|as|a\/s|ik|ltd|llc|inc|gmbh|oy|oü|ou|ab)\b/g, "")
+    // Punctuation that varies between sources
+    .replace(/[.,'"`()]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 /**
  * Check if two company names refer to the same entity.
- * Reg numbers (when both available) are authoritative; otherwise
- * fall back to normalized-name match.
+ *
+ * Match logic, in priority order:
+ *   1. If both reg numbers present AND match → definitely same.
+ *   2. If both reg numbers present but DIFFER → still check name.
+ *      One side may have a wrong reg number stored (common when
+ *      a user typed it manually). If names normalize to the same
+ *      thing, treat as match — the typo'd reg number shouldn't
+ *      block legitimate matches.
+ *   3. If one side missing reg number → fall back to name match.
+ *
+ * False positives (different companies, same name) are extremely
+ * rare in practice — Latvia's company registry doesn't allow
+ * exact duplicates. False negatives (real match treated as
+ * mismatch) are much more common and more disruptive, so we
+ * lean toward matching.
  */
 function companiesMatch(
   aName: string,
@@ -104,9 +130,12 @@ function companiesMatch(
   bName: string,
   bRegNumber: string | undefined
 ): boolean {
-  if (aRegNumber && bRegNumber) {
-    return aRegNumber.trim() === bRegNumber.trim();
+  // Fast path: reg numbers both present and equal → definitely match
+  if (aRegNumber && bRegNumber && aRegNumber.trim() === bRegNumber.trim()) {
+    return true;
   }
+  // Either reg numbers don't match, or one/both are missing.
+  // Fall back to name-based matching.
   if (!aName || !bName) return false;
   return normalizeCompanyName(aName) === normalizeCompanyName(bName);
 }
