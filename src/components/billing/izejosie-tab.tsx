@@ -648,6 +648,17 @@ export function IzejosieTab() {
             </div>
           </div>
 
+          {/* Robot + funny rotating messages — visible only while
+              at least one item is still being parsed. Sits between
+              the section header and the cards so the user sees the
+              robot reacting to the work in real time, instead of
+              just stale spinners on each card. */}
+          <AnimatePresence>
+            {parsingItems.length > 0 && (
+              <FunnyParsingState count={parsingItems.length} />
+            )}
+          </AnimatePresence>
+
           {/* Stacked invoice cards, oldest first (upload order) */}
           <div className="space-y-4">
             {[...queue]
@@ -1306,51 +1317,57 @@ function FunnyParsingState({ count }: { count: number }) {
   return (
     <motion.div
       key="parsing"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="rounded-2xl border border-graphite-200 bg-gradient-to-b from-white to-graphite-50 py-12 px-6 text-center overflow-hidden"
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.3 }}
+      className="rounded-xl border border-graphite-200 bg-gradient-to-r from-white to-graphite-50 px-4 py-3.5 overflow-hidden"
     >
-      {/* The robot */}
-      <div className="flex justify-center mb-6">
-        <RobotAnimation />
-      </div>
-
-      {/* Header — count of files */}
-      <div className="text-[14px] text-graphite-700 font-semibold mb-1">
-        {count === 1
-          ? "Apstrādāju rēķinu…"
-          : `Apstrādāju ${count} rēķinus paralēli…`}
-      </div>
-
-      {/* Rotating funny message */}
-      <div className="h-6 mb-5 flex items-center justify-center">
-        <AnimatePresence mode="wait">
-          <motion.p
-            key={messageIndex}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.35 }}
-            className="text-[12.5px] text-graphite-500 italic max-w-md mx-auto"
-          >
-            {FUNNY_MESSAGES[messageIndex]}
-          </motion.p>
-        </AnimatePresence>
-      </div>
-
-      {/* Progress bar */}
-      <div className="max-w-sm mx-auto">
-        <div className="h-1.5 w-full rounded-full bg-graphite-100 overflow-hidden">
-          <motion.div
-            className="h-full bg-gradient-to-r from-violet-500 to-graphite-900 rounded-full"
-            initial={{ width: "0%" }}
-            animate={{ width: `${progress}%` }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-          />
+      <div className="flex items-center gap-4">
+        {/* Robot — pinned left, smaller scale than full version */}
+        <div className="shrink-0 -my-1">
+          <RobotAnimation />
         </div>
-        <div className="mt-1.5 text-[10.5px] text-graphite-400 font-mono">
-          {Math.round(progress)}%
+
+        {/* Text + progress, fills remaining space */}
+        <div className="flex-1 min-w-0">
+          {/* Top line: count header */}
+          <div className="text-[12.5px] text-graphite-700 font-semibold">
+            {count === 1
+              ? "Apstrādāju 1 rēķinu…"
+              : `Apstrādāju ${count} rēķinus paralēli…`}
+          </div>
+
+          {/* Rotating funny message, fixed height to prevent jitter */}
+          <div className="h-5 mt-0.5 flex items-center">
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={messageIndex}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.35 }}
+                className="text-[12px] text-graphite-500 italic truncate"
+              >
+                {FUNNY_MESSAGES[messageIndex]}
+              </motion.p>
+            </AnimatePresence>
+          </div>
+
+          {/* Slim progress bar */}
+          <div className="mt-2 flex items-center gap-2.5">
+            <div className="flex-1 h-1 rounded-full bg-graphite-100 overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-violet-500 to-graphite-900 rounded-full"
+                initial={{ width: "0%" }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+              />
+            </div>
+            <span className="text-[10px] text-graphite-400 font-mono shrink-0 w-8 text-right">
+              {Math.round(progress)}%
+            </span>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -1638,7 +1655,7 @@ function InvoiceDraftCard({
               {item.fileName}
             </p>
             <p className="text-[11.5px] text-graphite-500 italic mt-0.5">
-              Apstrādāju ar AI…
+              Dikti cītīgi iegūstu datus…
             </p>
           </div>
           <Button
