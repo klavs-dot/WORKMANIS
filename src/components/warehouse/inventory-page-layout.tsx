@@ -280,6 +280,7 @@ export function InventoryPageLayout({
                   active={category === c.id}
                   onClick={() => setCategory(c.id)}
                   alert={alert}
+                  size="lg"
                 >
                   {c.emoji} {c.label} ({count})
                 </CategoryChip>
