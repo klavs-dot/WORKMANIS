@@ -166,7 +166,7 @@ export function InventoryActionPanel({
           inputMode="numeric"
           value={manualAmount}
           onChange={(e) => setManualAmount(e.target.value)}
-          placeholder="N"
+          placeholder="Ierakstīt skaitu"
           className="flex-1 h-7 font-mono text-[12px] px-2"
         />
         <Button
