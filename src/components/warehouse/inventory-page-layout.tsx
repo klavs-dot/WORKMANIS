@@ -289,7 +289,7 @@ export function InventoryPageLayout({
           </Card>
         )
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="space-y-2">
           {visibleItems.map((item) => (
             <InventoryCard
               key={item.id}

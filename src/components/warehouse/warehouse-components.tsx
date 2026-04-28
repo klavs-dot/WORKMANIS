@@ -116,68 +116,65 @@ export function InventoryActionPanel({
   };
 
   return (
-    <div className="space-y-2.5">
-      {/* Quick action buttons — large, workshop-friendly */}
-      <div className="grid grid-cols-2 gap-2">
+    <div className="space-y-1.5">
+      {/* Quick action buttons — compact 4-button row, smaller height
+          to fit the horizontal card layout */}
+      <div className="grid grid-cols-4 gap-1">
         <Button
           variant="outline"
           size="sm"
           onClick={() => trigger("Paņemts", 1)}
           disabled={item.stock < 1}
-          className="h-9"
+          className="h-7 px-1.5 text-[11px] gap-0.5"
         >
-          <Minus className="h-3.5 w-3.5" />
-          Paņemt 1
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => trigger("Nolikts", 1)}
-          className="h-9"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Nolikt 1
+          <Minus className="h-3 w-3" />1
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={() => trigger("Paņemts", 2)}
           disabled={item.stock < 2}
-          className="h-9"
+          className="h-7 px-1.5 text-[11px] gap-0.5"
         >
-          <Minus className="h-3.5 w-3.5" />
-          Paņemt 2
+          <Minus className="h-3 w-3" />2
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => trigger("Nolikts", 1)}
+          className="h-7 px-1.5 text-[11px] gap-0.5"
+        >
+          <Plus className="h-3 w-3" />1
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={() => trigger("Nolikts", 2)}
-          className="h-9"
+          className="h-7 px-1.5 text-[11px] gap-0.5"
         >
-          <Plus className="h-3.5 w-3.5" />
-          Nolikt 2
+          <Plus className="h-3 w-3" />2
         </Button>
       </div>
 
       {/* Manual amount input + take/add */}
-      <div className="flex gap-1.5">
+      <div className="flex gap-1">
         <Input
           type="number"
           min={1}
           inputMode="numeric"
           value={manualAmount}
           onChange={(e) => setManualAmount(e.target.value)}
-          placeholder="Skaits"
-          className="flex-1 h-9 font-mono"
+          placeholder="N"
+          className="flex-1 h-7 font-mono text-[12px] px-2"
         />
         <Button
           variant="secondary"
           size="sm"
           onClick={() => onManual("Paņemts")}
           disabled={!manualAmount || parseInt(manualAmount, 10) <= 0}
-          className="h-9 shrink-0"
+          className="h-7 px-2 text-[11px] gap-0.5 shrink-0"
         >
-          <Minus className="h-3.5 w-3.5" />
+          <Minus className="h-3 w-3" />
           Paņemt
         </Button>
         <Button
@@ -185,9 +182,9 @@ export function InventoryActionPanel({
           size="sm"
           onClick={() => onManual("Nolikts")}
           disabled={!manualAmount || parseInt(manualAmount, 10) <= 0}
-          className="h-9 shrink-0"
+          className="h-7 px-2 text-[11px] gap-0.5 shrink-0"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-3 w-3" />
           Nolikt
         </Button>
       </div>
@@ -219,87 +216,115 @@ export function InventoryCard({
 }) {
   return (
     <Card className="overflow-hidden bg-white/85 backdrop-blur-sm">
-      <div className="p-4 flex flex-col gap-3.5">
-        {/* Top row: image + main info + actions */}
-        <div className="flex gap-3">
-          <ItemThumbnail src={item.imageUrl} />
+      {/* Horizontal row layout — all fields visible inline like a
+          spreadsheet. On narrow screens (<lg) the layout stacks
+          vertically; on wide screens everything sits in one row. */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4 p-3">
+        {/* Thumbnail — fixed width */}
+        <ItemThumbnail src={item.imageUrl} />
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="text-[14px] font-semibold tracking-tight text-graphite-900 line-clamp-2">
-                {item.name || "Bez nosaukuma"}
-              </h3>
-              <div className="flex gap-0.5 shrink-0 -mt-1 -mr-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => onEdit(item)}
-                  title="Labot"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => onDelete(item)}
-                  title="Dzēst"
-                  className="text-red-500 hover:text-red-700"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
+        {/* Name + supplier — flexible, takes remaining horizontal space */}
+        <div className="flex-1 min-w-0 lg:max-w-[280px]">
+          <h3 className="text-[13.5px] font-semibold tracking-tight text-graphite-900 truncate">
+            {item.name || "Bez nosaukuma"}
+          </h3>
+          {item.supplier && (
+            <p className="text-[11.5px] text-graphite-500 mt-0.5 truncate">
+              {item.supplier}
+            </p>
+          )}
+          {item.notes && (
+            <p className="text-[11px] text-graphite-500 mt-0.5 truncate italic">
+              {item.notes}
+            </p>
+          )}
+        </div>
 
-            {item.supplier && (
-              <p className="text-[11.5px] text-graphite-500 mt-0.5 truncate">
-                {item.supplier}
-              </p>
-            )}
-
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-[20px] font-semibold tabular text-graphite-900">
+        {/* Spreadsheet-style data columns: each cell has a tiny label
+            on top and the value below. Hidden labels on lg+ screens
+            are replaced by the column header in the table chrome. */}
+        <div className="grid grid-cols-3 lg:flex lg:items-center gap-3 lg:gap-5 lg:shrink-0">
+          <DataCell label="Vieta" value={item.location || "—"} />
+          <DataCell
+            label="Vienam gatavam"
+            value={item.qtyPerUnit > 0 ? String(item.qtyPerUnit) : "—"}
+            mono
+          />
+          <div className="flex flex-col gap-0.5 lg:items-center">
+            <span className="text-[10px] uppercase tracking-wider text-graphite-400 font-medium">
+              Atlikums
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[18px] font-semibold tabular text-graphite-900 leading-none">
                 {item.stock}
               </span>
               <StockStatusBadge stock={item.stock} />
             </div>
-
-            {(item.location || item.qtyPerUnit > 0) && (
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-graphite-500">
-                {item.location && (
-                  <span>
-                    Vieta:{" "}
-                    <span className="font-medium text-graphite-700">
-                      {item.location}
-                    </span>
-                  </span>
-                )}
-                {item.qtyPerUnit > 0 && (
-                  <span>
-                    Uz vienu gatavo:{" "}
-                    <span className="font-medium text-graphite-700 tabular">
-                      {item.qtyPerUnit}
-                    </span>
-                  </span>
-                )}
-              </div>
-            )}
-
-            {item.notes && (
-              <p className="text-[11.5px] text-graphite-600 mt-1.5 line-clamp-2 italic">
-                {item.notes}
-              </p>
-            )}
           </div>
         </div>
 
-        {/* Action panel (+/- buttons) */}
-        <InventoryActionPanel
-          item={item}
-          section={section}
-          onChange={onStockChange}
-        />
+        {/* Action panel — quick +/− buttons + manual input.
+            Compact horizontal version on lg+, full grid on mobile. */}
+        <div className="lg:shrink-0 lg:min-w-[280px] lg:border-l lg:border-graphite-200/70 lg:pl-4">
+          <InventoryActionPanel
+            item={item}
+            section={section}
+            onChange={onStockChange}
+          />
+        </div>
+
+        {/* Edit / Delete — icon-only on lg+ */}
+        <div className="flex gap-0.5 lg:shrink-0 lg:flex-col lg:gap-1">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onEdit(item)}
+            title="Labot"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onDelete(item)}
+            title="Dzēst"
+            className="text-red-500 hover:text-red-700"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * One column cell in the horizontal card layout — small label
+ * on top, value below. Used for Vieta, Vienam gatavam etc.
+ */
+function DataCell({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[10px] uppercase tracking-wider text-graphite-400 font-medium truncate">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "text-[12.5px] text-graphite-700 truncate",
+          mono && "font-mono tabular"
+        )}
+      >
+        {value}
+      </span>
+    </div>
   );
 }
 
