@@ -30,6 +30,11 @@ const GOOGLE_SCOPES = [
   "profile",
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/spreadsheets",
+  // Gmail read access for the 'Automātiskie & Internetā' feature.
+  // Read-only — we only search and read message bodies/attachments,
+  // never send or modify. User must reconsent on first login after
+  // deploy because this is a new scope on top of the existing two.
+  "https://www.googleapis.com/auth/gmail.readonly",
 ].join(" ");
 
 export const { handlers, auth, signIn, signOut } = NextAuth({

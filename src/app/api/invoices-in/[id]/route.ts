@@ -27,6 +27,8 @@ interface ApiInvoiceIn {
         updatedAt: string;
       }
     | undefined;
+  sourceChannel: string | undefined;
+  paymentEvidence: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +57,8 @@ function parseUpdateBody(
     "pn_akts",
     "pn_akts_source",
     "pn_akts_file_name",
+    "source_channel",
+    "payment_evidence",
   ] as const;
   for (const key of stringFields) {
     const v = b[key];
@@ -126,6 +130,10 @@ function rowToApi(row: Record<string, unknown>): ApiInvoiceIn {
           updatedAt: (row.accounting_updated_at as string) ?? "",
         }
       : undefined,
+    sourceChannel:
+      ((row.source_channel as string) || undefined) as string | undefined,
+    paymentEvidence:
+      ((row.payment_evidence as string) || undefined) as string | undefined,
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

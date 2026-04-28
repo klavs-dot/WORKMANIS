@@ -259,6 +259,14 @@ export const COMPANY_TABS = [
       "depreciation_period",
       "accounting_explanation",
       "accounting_updated_at",
+      // 2026-04 — Internet payments feature. Source channel
+      // distinguishes manually-added invoices from those auto-detected
+      // by scanning the user's Gmail for receipt PDFs. payment_evidence
+      // holds a Drive file URL when the invoice was matched against a
+      // bank statement transaction (so the user has proof that the
+      // listed payment actually went through).
+      "source_channel",
+      "payment_evidence",
     ],
   },
   {

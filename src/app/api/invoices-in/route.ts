@@ -29,6 +29,8 @@ interface InvoiceInRow extends Record<string, string> {
   depreciation_period: string;
   accounting_explanation: string;
   accounting_updated_at: string;
+  source_channel: string;
+  payment_evidence: string;
 }
 
 interface ApiInvoiceIn {
@@ -52,6 +54,8 @@ interface ApiInvoiceIn {
         updatedAt: string;
       }
     | undefined;
+  sourceChannel: string | undefined;
+  paymentEvidence: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +95,10 @@ function parseCreateBody(body: unknown): InvoiceInRow | null {
       typeof meta.explanation === "string" ? meta.explanation : "",
     accounting_updated_at:
       typeof meta.updatedAt === "string" ? meta.updatedAt : "",
+    source_channel:
+      typeof b.source_channel === "string" ? b.source_channel : "manual",
+    payment_evidence:
+      typeof b.payment_evidence === "string" ? b.payment_evidence : "",
   };
 }
 
@@ -127,6 +135,10 @@ function rowToApi(row: Record<string, unknown>): ApiInvoiceIn {
           updatedAt: (row.accounting_updated_at as string) ?? "",
         }
       : undefined,
+    sourceChannel:
+      ((row.source_channel as string) || undefined) as string | undefined,
+    paymentEvidence:
+      ((row.payment_evidence as string) || undefined) as string | undefined,
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

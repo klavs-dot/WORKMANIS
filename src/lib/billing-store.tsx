@@ -65,6 +65,18 @@ export interface ReceivedInvoiceAccountingMeta {
   updatedAt: string;
 }
 
+/**
+ * Where this invoice originated — drives UI cues and informs
+ * how aggressively to suggest matching against bank statements.
+ *
+ *   manual     — user uploaded or typed it in
+ *   internet   — auto-detected from Gmail receipt scan
+ *   auto_bank  — created from a bank statement transaction that
+ *                lacked a matching invoice (placeholder for missing
+ *                receipt — shown in red until user attaches one)
+ */
+export type InvoiceSourceChannel = "manual" | "internet" | "auto_bank";
+
 export interface ReceivedInvoice {
   id: string;
   supplier: string;
@@ -78,6 +90,12 @@ export interface ReceivedInvoice {
   pnAkts?: string;
   pnAktsSource?: "generated" | "uploaded";
   pnAktsFileName?: string;
+  /** How this invoice came into the system. Defaults to 'manual'
+   *  for legacy records that pre-date this field. */
+  sourceChannel?: InvoiceSourceChannel;
+  /** Drive URL of the payment receipt PDF (e.g. from a bank
+   *  statement match or an email auto-scan). Optional. */
+  paymentEvidence?: string;
   createdAt: string;
   /** Internal tracking for optimistic locking */
   updatedAt?: string;
@@ -246,6 +264,8 @@ interface ApiInvoiceIn {
         updatedAt: string;
       }
     | undefined;
+  sourceChannel: string | undefined;
+  paymentEvidence: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -297,6 +317,7 @@ function apiToIssued(a: ApiInvoiceOut): IssuedInvoice {
 }
 
 function apiToReceived(a: ApiInvoiceIn): ReceivedInvoice {
+  const channel = a.sourceChannel;
   return {
     id: a.id,
     supplier: a.supplier,
@@ -322,6 +343,11 @@ function apiToReceived(a: ApiInvoiceIn): ReceivedInvoice {
           updatedAt: a.accountingMeta.updatedAt,
         }
       : undefined,
+    sourceChannel:
+      channel === "manual" || channel === "internet" || channel === "auto_bank"
+        ? channel
+        : undefined,
+    paymentEvidence: a.paymentEvidence || undefined,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
@@ -1020,6 +1046,8 @@ function receivedToBody(
     pn_akts: o.pnAkts ?? "",
     pn_akts_source: o.pnAktsSource ?? "",
     pn_akts_file_name: o.pnAktsFileName ?? "",
+    source_channel: o.sourceChannel ?? "manual",
+    payment_evidence: o.paymentEvidence ?? "",
     ...(o.accountingMeta && {
       accounting_meta: {
         category: o.accountingMeta.category,
@@ -1048,6 +1076,10 @@ function receivedPatchToBody(
     body.pn_akts_source = patch.pnAktsSource ?? "";
   if (patch.pnAktsFileName !== undefined)
     body.pn_akts_file_name = patch.pnAktsFileName;
+  if (patch.sourceChannel !== undefined)
+    body.source_channel = patch.sourceChannel;
+  if (patch.paymentEvidence !== undefined)
+    body.payment_evidence = patch.paymentEvidence ?? "";
   if (patch.accountingMeta !== undefined) {
     body.accounting_meta = patch.accountingMeta
       ? {
