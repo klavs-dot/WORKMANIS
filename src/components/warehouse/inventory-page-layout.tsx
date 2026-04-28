@@ -248,20 +248,38 @@ export function InventoryPageLayout({
         </div>
 
         {showCategoryTabs && (
-          <div className="px-3 pb-3 flex gap-1.5 overflow-x-auto">
+          <div className="px-3 pb-3 flex gap-1.5 overflow-x-auto items-center">
+            {/* 'Visas' chip — explicitly larger per user request,
+                no stock-alert ring (it shows everything, would
+                always be alarming if anything anywhere is low). */}
             <CategoryChip
               active={category === "all"}
               onClick={() => setCategory("all")}
+              size="lg"
             >
               Visas ({items.length})
             </CategoryChip>
             {WAREHOUSE_CATEGORIES.map((c) => {
-              const count = items.filter((i) => i.category === c.id).length;
+              const itemsInCat = items.filter((i) => i.category === c.id);
+              const count = itemsInCat.length;
+              // Compute the worst stock state in this category — that
+              // determines the chip's alert ring color. 'out' (any item
+              // at zero) wins over 'low' (any 1-2) wins over neither.
+              const hasZero = itemsInCat.some((i) => i.stock <= 0);
+              const hasLow = itemsInCat.some(
+                (i) => i.stock > 0 && i.stock <= 2
+              );
+              const alert: "out" | "low" | undefined = hasZero
+                ? "out"
+                : hasLow
+                  ? "low"
+                  : undefined;
               return (
                 <CategoryChip
                   key={c.id}
                   active={category === c.id}
                   onClick={() => setCategory(c.id)}
+                  alert={alert}
                 >
                   {c.emoji} {c.label} ({count})
                 </CategoryChip>
@@ -343,20 +361,51 @@ function CategoryChip({
   active,
   onClick,
   children,
+  size = "md",
+  alert,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  size?: "md" | "lg";
+  /** Surface a stock-alert ring on the chip:
+   *    'out' = at least one item in this category is at zero
+   *    'low' = at least one item is 1-2 (but none at zero) */
+  alert?: "out" | "low";
 }) {
+  // Build the border/ring style. Active state still wins on bg/text,
+  // but the alert ring stays visible so users can scan for trouble
+  // even on the chip they've selected.
+  const sizeClass =
+    size === "lg"
+      ? "px-5 py-2 text-[14px]"
+      : "px-3 py-1 text-[11.5px]";
+
+  let borderClass: string;
+  if (alert === "out") {
+    // Solid red ring + soft glow. Reads as 'something is missing'.
+    borderClass = active
+      ? "bg-graphite-900 text-white border-red-500 ring-2 ring-red-500/40"
+      : "bg-red-50 text-red-700 border-red-400 ring-2 ring-red-500/20 hover:border-red-500";
+  } else if (alert === "low") {
+    // Amber ring — same idea, lower urgency.
+    borderClass = active
+      ? "bg-graphite-900 text-white border-amber-500 ring-2 ring-amber-500/40"
+      : "bg-amber-50 text-amber-800 border-amber-400 ring-2 ring-amber-500/20 hover:border-amber-500";
+  } else {
+    borderClass = active
+      ? "bg-graphite-900 text-white border-graphite-900"
+      : "bg-white/60 text-graphite-700 border-graphite-200 hover:border-graphite-300";
+  }
+
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-full px-3 py-1 text-[11.5px] font-medium whitespace-nowrap transition-colors border",
-        active
-          ? "bg-graphite-900 text-white border-graphite-900"
-          : "bg-white/60 text-graphite-700 border-graphite-200 hover:border-graphite-300"
+        "rounded-full font-medium whitespace-nowrap transition-colors border",
+        sizeClass,
+        borderClass
       )}
     >
       {children}

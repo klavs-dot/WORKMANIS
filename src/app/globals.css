@@ -167,4 +167,43 @@
     border-color: rgb(16, 185, 129) !important;
     animation: emerald-pulse 2.2s ease-in-out infinite;
   }
+
+  /* Warehouse card pulses — out-of-stock and low-stock indicators.
+     Same shape as emerald-pulse but in red and amber, with slightly
+     different tempo so a wall of cards doesn't feel synchronized. */
+  @keyframes red-pulse {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 rgba(220, 38, 38, 0.4),
+        0 0 0 0 rgba(220, 38, 38, 0.1);
+    }
+    50% {
+      box-shadow:
+        0 0 0 4px rgba(220, 38, 38, 0.22),
+        0 0 0 12px rgba(220, 38, 38, 0);
+    }
+  }
+  .stock-out-pulse {
+    border-color: rgb(220, 38, 38) !important;
+    animation: red-pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes amber-pulse {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 0 rgba(245, 158, 11, 0.35),
+        0 0 0 0 rgba(245, 158, 11, 0.08);
+    }
+    50% {
+      box-shadow:
+        0 0 0 4px rgba(245, 158, 11, 0.2),
+        0 0 0 10px rgba(245, 158, 11, 0);
+    }
+  }
+  .stock-low-pulse {
+    border-color: rgb(245, 158, 11) !important;
+    animation: amber-pulse 2.4s ease-in-out infinite;
+  }
 }

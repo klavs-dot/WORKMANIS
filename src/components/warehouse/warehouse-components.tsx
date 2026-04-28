@@ -216,8 +216,23 @@ export function InventoryCard({
   onEdit: (item: InventoryItem) => void;
   onDelete: (item: InventoryItem) => void;
 }) {
+  // Stock-state pulse on the card border — red when out of stock,
+  // amber when low. No pulse for healthy stock — would be visual
+  // noise. Uses CSS keyframes defined in globals.css.
+  const pulseClass =
+    item.stock <= 0
+      ? "stock-out-pulse"
+      : item.stock <= 2
+        ? "stock-low-pulse"
+        : "";
+
   return (
-    <Card className="overflow-hidden bg-white/85 backdrop-blur-sm">
+    <Card
+      className={cn(
+        "overflow-hidden bg-white/85 backdrop-blur-sm border",
+        pulseClass
+      )}
+    >
       {/* Horizontal row layout — all fields visible inline like a
           spreadsheet. On narrow screens (<lg) the layout stacks
           vertically; on wide screens everything sits in one row.

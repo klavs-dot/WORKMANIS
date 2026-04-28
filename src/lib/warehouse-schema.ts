@@ -100,7 +100,7 @@ export const WAREHOUSE_TABS = [
 export const WAREHOUSE_CATEGORIES = [
   { id: "standarta", label: "Standarta komponentes", emoji: "🔩" },
   { id: "baterijas", label: "Baterijām", emoji: "🔋" },
-  { id: "aksesuari", label: "Aksesuāriem", emoji: "🎒" },
+  { id: "aksesuari", label: "Aksesuāriem", emoji: "🎒🚨" },
   { id: "riepas", label: "Riepas", emoji: "🛞" },
 ] as const;
 
