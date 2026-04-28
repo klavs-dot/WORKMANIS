@@ -465,7 +465,7 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
       if (!res.ok) throw new Error(`Create employee failed: ${res.status}`);
       const { item } = (await res.json()) as { item: Employee };
       setEmployees((prev) => [...prev, item]);
-      pushToastGlobally("success", "Darbinieks pievienots.", 3500);
+      pushToastGlobally("success", "Atbildīgais pievienots.", 3500);
     } catch (err) {
       console.error("Create employee failed:", err);
       pushToastGlobally("error", "Kļūda saglabājot datus.", 7000);
@@ -493,7 +493,7 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
       setEmployees((prev) => prev.map((e) => (e.id === id ? item : e)));
       pushToastGlobally(
         "success",
-        patch.password ? "Parole atjaunota." : "Darbinieks atjaunots.",
+        patch.password ? "Parole atjaunota." : "Atbildīgais atjaunots.",
         3500
       );
     } catch (err) {
@@ -510,7 +510,7 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
       });
       if (!res.ok) throw new Error(`Delete employee failed: ${res.status}`);
       setEmployees((prev) => prev.filter((e) => e.id !== id));
-      pushToastGlobally("success", "Darbinieks dzēsts.", 3500);
+      pushToastGlobally("success", "Atbildīgais dzēsts.", 3500);
     } catch (err) {
       console.error("Delete employee failed:", err);
       pushToastGlobally("error", "Kļūda saglabājot datus.", 7000);

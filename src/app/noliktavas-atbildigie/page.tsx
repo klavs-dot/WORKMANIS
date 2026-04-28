@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Noliktavas darbinieki — warehouse staff CRUD.
+ * Noliktavas atbildīgie — warehouse staff CRUD.
  *
  * Stores email + password + role + active status. NO authentication
  * is wired up yet — this is currently a record-keeping list only.
@@ -38,7 +38,7 @@ import {
 } from "@/components/warehouse/warehouse-components";
 
 const ROLES = [
-  "Noliktavas darbinieks",
+  "Noliktavas atbildīgais",
   "Noliktavas administrators",
 ] as const;
 
@@ -75,12 +75,12 @@ export default function NoliktavasDarbiniekiPage() {
       <WarehouseBackground />
 
       <PageHeader
-        title="Noliktavas darbinieki"
-        description="Pārvaldi noliktavas darbiniekus un viņu pieejas"
+        title="Noliktavas atbildīgie"
+        description="Pārvaldi noliktavas atbildīgos un viņu pieejas"
         actions={
           <Button size="sm" onClick={openNew}>
             <Plus className="h-3.5 w-3.5" />
-            Pievienot darbinieku
+            Pievienot atbildīgo
           </Button>
         }
       />
@@ -98,15 +98,15 @@ export default function NoliktavasDarbiniekiPage() {
               <Users className="h-5 w-5" strokeWidth={1.75} />
             </div>
             <h3 className="text-[15px] font-medium tracking-tight text-graphite-900">
-              Vēl nav pievienots neviens noliktavas darbinieks
+              Vēl nav pievienots neviens noliktavas atbildīgais
             </h3>
             <p className="mt-1 text-[13px] text-graphite-500 max-w-sm">
-              Pievieno darbiniekus, lai vēlāk piešķirtu viņiem pieeju
+              Pievieno atbildīgos, lai vēlāk piešķirtu viņiem pieeju
               noliktavas sadaļām
             </p>
             <Button size="sm" onClick={openNew} className="mt-4">
               <Plus className="h-3.5 w-3.5" />
-              Pievienot darbinieku
+              Pievienot atbildīgo
             </Button>
           </div>
         </Card>
@@ -240,7 +240,7 @@ function EmployeeFormModal({
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<string>("Noliktavas darbinieks");
+  const [role, setRole] = useState<string>("Noliktavas atbildīgais");
   const [active, setActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -255,7 +255,7 @@ function EmployeeFormModal({
     } else {
       setEmail("");
       setPassword("");
-      setRole("Noliktavas darbinieks");
+      setRole("Noliktavas atbildīgais");
       setActive(true);
     }
     setError(null);
@@ -296,12 +296,12 @@ function EmployeeFormModal({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {editing ? "Labot darbinieku" : "Pievienot darbinieku"}
+            {editing ? "Labot atbildīgo" : "Pievienot atbildīgo"}
           </DialogTitle>
           <DialogDescription>
             {editing
-              ? "Atjaunini darbinieka datus. Paroles maiņa — atstāj tukšu, lai paliek esošā."
-              : "Pievieno noliktavas darbinieku ar pieejas akreditāciju."}
+              ? "Atjaunini atbildīgā datus. Paroles maiņa — atstāj tukšu, lai paliek esošā."
+              : "Pievieno noliktavas atbildīgo ar pieejas akreditāciju."}
           </DialogDescription>
         </DialogHeader>
 

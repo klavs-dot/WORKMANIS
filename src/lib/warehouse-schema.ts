@@ -116,5 +116,5 @@ export type MovementAction =
 
 /** Warehouse employee roles. */
 export type WarehouseRole =
-  | "Noliktavas darbinieks"
+  | "Noliktavas atbildīgais"
   | "Noliktavas administrators";

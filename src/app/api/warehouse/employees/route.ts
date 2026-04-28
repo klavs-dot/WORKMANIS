@@ -40,7 +40,7 @@ function parseCreateBody(body: unknown): EmployeeRow | null {
   return {
     email: (b.email as string).trim().toLowerCase(),
     password: b.password as string,
-    role: typeof b.role === "string" ? b.role : "Noliktavas darbinieks",
+    role: typeof b.role === "string" ? b.role : "Noliktavas atbildīgais",
     active:
       typeof b.active === "boolean"
         ? b.active
@@ -55,7 +55,7 @@ function rowToApi(row: Record<string, unknown>): ApiEmployee {
     id: row.id as string,
     email: (row.email as string) ?? "",
     password: (row.password as string) ?? "",
-    role: (row.role as string) ?? "Noliktavas darbinieks",
+    role: (row.role as string) ?? "Noliktavas atbildīgais",
     active: row.active === "1" || row.active === "true",
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
