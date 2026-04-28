@@ -98,10 +98,10 @@ export const WAREHOUSE_TABS = [
 
 /** Categories for the main warehouse tab. */
 export const WAREHOUSE_CATEGORIES = [
-  { id: "standarta", label: "Standarta komponentes" },
-  { id: "baterijas", label: "Baterijām" },
-  { id: "aksesuari", label: "Aksesuāriem" },
-  { id: "riepas", label: "Riepas" },
+  { id: "standarta", label: "Standarta komponentes", emoji: "🔩" },
+  { id: "baterijas", label: "Baterijām", emoji: "🔋" },
+  { id: "aksesuari", label: "Aksesuāriem", emoji: "🎒" },
+  { id: "riepas", label: "Riepas", emoji: "🛞" },
 ] as const;
 
 export type WarehouseCategoryId = (typeof WAREHOUSE_CATEGORIES)[number]["id"];

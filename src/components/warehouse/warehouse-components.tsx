@@ -17,7 +17,7 @@
  *   - WarehouseBackground    (subtle warehouse photo backdrop)
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus,
   Minus,
@@ -28,6 +28,8 @@ import {
   AlertTriangle,
   Save,
   X,
+  Upload,
+  Loader2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -218,44 +220,45 @@ export function InventoryCard({
     <Card className="overflow-hidden bg-white/85 backdrop-blur-sm">
       {/* Horizontal row layout — all fields visible inline like a
           spreadsheet. On narrow screens (<lg) the layout stacks
-          vertically; on wide screens everything sits in one row. */}
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-4 p-3">
-        {/* Thumbnail — fixed width */}
+          vertically; on wide screens everything sits in one row.
+          Larger padding + thumbnail + bigger text per user request
+          (kept the action panel buttons compact). */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6 p-4">
+        {/* Thumbnail — fixed width, 2x previous size */}
         <ItemThumbnail src={item.imageUrl} />
 
         {/* Name + supplier — flexible, takes remaining horizontal space */}
-        <div className="flex-1 min-w-0 lg:max-w-[280px]">
-          <h3 className="text-[13.5px] font-semibold tracking-tight text-graphite-900 truncate">
+        <div className="flex-1 min-w-0 lg:max-w-[340px]">
+          <h3 className="text-[17px] font-semibold tracking-tight text-graphite-900 truncate">
             {item.name || "Bez nosaukuma"}
           </h3>
           {item.supplier && (
-            <p className="text-[11.5px] text-graphite-500 mt-0.5 truncate">
+            <p className="text-[13.5px] text-graphite-500 mt-1 truncate">
               {item.supplier}
             </p>
           )}
           {item.notes && (
-            <p className="text-[11px] text-graphite-500 mt-0.5 truncate italic">
+            <p className="text-[13px] text-graphite-500 mt-1 truncate italic">
               {item.notes}
             </p>
           )}
         </div>
 
         {/* Spreadsheet-style data columns: each cell has a tiny label
-            on top and the value below. Hidden labels on lg+ screens
-            are replaced by the column header in the table chrome. */}
-        <div className="grid grid-cols-3 lg:flex lg:items-center gap-3 lg:gap-5 lg:shrink-0">
+            on top and the value below. Bigger text per user request. */}
+        <div className="grid grid-cols-3 lg:flex lg:items-center gap-4 lg:gap-7 lg:shrink-0">
           <DataCell label="Vieta" value={item.location || "—"} />
           <DataCell
             label="Vienam gatavam"
             value={item.qtyPerUnit > 0 ? String(item.qtyPerUnit) : "—"}
             mono
           />
-          <div className="flex flex-col gap-0.5 lg:items-center">
-            <span className="text-[10px] uppercase tracking-wider text-graphite-400 font-medium">
+          <div className="flex flex-col gap-1 lg:items-center">
+            <span className="text-[11px] uppercase tracking-wider text-graphite-400 font-medium">
               Atlikums
             </span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[18px] font-semibold tabular text-graphite-900 leading-none">
+            <div className="flex items-center gap-2">
+              <span className="text-[26px] font-semibold tabular text-graphite-900 leading-none">
                 {item.stock}
               </span>
               <StockStatusBadge stock={item.stock} />
@@ -264,8 +267,9 @@ export function InventoryCard({
         </div>
 
         {/* Action panel — quick +/− buttons + manual input.
-            Compact horizontal version on lg+, full grid on mobile. */}
-        <div className="lg:shrink-0 lg:min-w-[280px] lg:border-l lg:border-graphite-200/70 lg:pl-4">
+            Kept compact per user instruction (only image + info
+            should grow, not the action controls). */}
+        <div className="lg:shrink-0 lg:min-w-[280px] lg:border-l lg:border-graphite-200/70 lg:pl-5">
           <InventoryActionPanel
             item={item}
             section={section}
@@ -312,13 +316,13 @@ function DataCell({
   mono?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      <span className="text-[10px] uppercase tracking-wider text-graphite-400 font-medium truncate">
+    <div className="flex flex-col gap-1 min-w-0">
+      <span className="text-[11px] uppercase tracking-wider text-graphite-400 font-medium truncate">
         {label}
       </span>
       <span
         className={cn(
-          "text-[12.5px] text-graphite-700 truncate",
+          "text-[15px] text-graphite-700 truncate",
           mono && "font-mono tabular"
         )}
       >
@@ -331,8 +335,8 @@ function DataCell({
 function ItemThumbnail({ src }: { src: string }) {
   if (!src) {
     return (
-      <div className="h-16 w-16 shrink-0 rounded-lg bg-graphite-100 flex items-center justify-center">
-        <ImageIcon className="h-5 w-5 text-graphite-400" />
+      <div className="h-32 w-32 shrink-0 rounded-lg bg-graphite-100 flex items-center justify-center">
+        <ImageIcon className="h-9 w-9 text-graphite-400" />
       </div>
     );
   }
@@ -341,7 +345,7 @@ function ItemThumbnail({ src }: { src: string }) {
     <img
       src={src}
       alt=""
-      className="h-16 w-16 shrink-0 rounded-lg object-cover bg-graphite-100"
+      className="h-32 w-32 shrink-0 rounded-lg object-cover bg-graphite-100"
       onError={(e) => {
         // If image fails to load, hide it; the layout will collapse
         (e.target as HTMLImageElement).style.display = "none";
@@ -385,6 +389,35 @@ export function InventoryFormModal({
   const [stock, setStock] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onFilePick = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/warehouse/images", {
+        method: "POST",
+        body: fd,
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `Upload failed: ${res.status}`);
+      }
+      const { imageUrl: url } = (await res.json()) as { imageUrl: string };
+      setImageUrl(url);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Attēla augšupielāde neizdevās"
+      );
+    } finally {
+      setUploading(false);
+      // Clear input so same file can be re-selected after a failure
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   // Reset form on open / when editing target changes
   useEffect(() => {
@@ -463,7 +496,7 @@ export function InventoryFormModal({
                           : "border-graphite-200 bg-white text-graphite-700 hover:border-graphite-300"
                       )}
                     >
-                      {c.label}
+                      {c.emoji} {c.label}
                     </button>
                   );
                 })}
@@ -482,13 +515,78 @@ export function InventoryFormModal({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Bilde (URL)</Label>
-            <Input
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://..."
-              className="font-mono text-[12px]"
-            />
+            <Label>Bilde</Label>
+            <div className="flex gap-2.5 items-start">
+              {/* Preview */}
+              <div className="h-20 w-20 rounded-lg bg-graphite-100 shrink-0 overflow-hidden flex items-center justify-center">
+                {imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.opacity = "0.3";
+                    }}
+                  />
+                ) : (
+                  <ImageIcon className="h-6 w-6 text-graphite-400" />
+                )}
+              </div>
+
+              {/* Upload + URL controls */}
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void onFilePick(f);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-full"
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Augšupielādē…
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-3.5 w-3.5" />
+                      {imageUrl ? "Aizvietot bildi" : "Augšupielādēt bildi"}
+                    </>
+                  )}
+                </Button>
+                <Input
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="vai ielīmē URL"
+                  className="font-mono text-[11.5px] h-8"
+                />
+                {imageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl("")}
+                    className="text-[11px] text-graphite-500 hover:text-red-600 transition-colors"
+                  >
+                    Noņemt bildi
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="text-[10.5px] text-graphite-400 leading-relaxed">
+              Bildes glabājas Drive mapē &ldquo;Workmanis_noliktava_attēli&rdquo;.
+              Atļauti: JPEG, PNG, WebP, HEIC. Max 5 MB.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

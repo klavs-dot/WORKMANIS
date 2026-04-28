@@ -263,7 +263,7 @@ export function InventoryPageLayout({
                   active={category === c.id}
                   onClick={() => setCategory(c.id)}
                 >
-                  {c.label} ({count})
+                  {c.emoji} {c.label} ({count})
                 </CategoryChip>
               );
             })}
