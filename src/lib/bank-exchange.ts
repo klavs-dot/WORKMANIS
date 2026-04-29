@@ -151,13 +151,34 @@ export interface ParsedTransaction {
  * looking at the header row — supports SEB, Swedbank, Citadele
  * and Luminor Latvian exports. Falls back to best-effort if
  * unknown format.
+ *
+ * Special handling:
+ *   - Strips UTF-8 BOM from start of file
+ *   - SEB Latvia exports a banner row first (account info + period),
+ *     then the real headers on row 2. We detect this by looking
+ *     for a header-like row in the first 5 lines.
+ *   - SEB has a 'DEBETS/ KREDĪTS' column (D/C marker) plus a
+ *     separate 'SUMMA KONTA VALŪTĀ' (account-currency amount).
+ *     When the marker says D, the amount is debited (we made a
+ *     payment → negative). When C, credited (we received → positive).
+ *   - SEB rows often have a trailing empty field (line ends with ';')
+ *     which we tolerate via length check.
  */
 export function parseBankStatementCSV(csvText: string): ParsedTransaction[] {
-  const rows = parseCSVRows(csvText);
-  if (rows.length < 2) return [];
+  // Strip UTF-8 BOM if present (SEB exports include it)
+  const text = csvText.replace(/^\uFEFF/, "").replace(/^\xEF\xBB\xBF/, "");
 
-  const header = rows[0].map((h) => h.trim().toLowerCase());
-  const dataRows = rows.slice(1).filter((r) => r.some((c) => c.trim() !== ""));
+  const allRows = parseCSVRows(text);
+  if (allRows.length < 2) return [];
+
+  // Find the header row — usually row 0, but SEB puts a banner first.
+  // The header is the first row with at least 4 non-empty cells AND
+  // a 'date'-like column name. Falls back to row 0 if nothing matches.
+  const headerRowIdx = findHeaderRowIndex(allRows);
+  const header = allRows[headerRowIdx].map((h) => h.trim().toLowerCase());
+  const dataRows = allRows
+    .slice(headerRowIdx + 1)
+    .filter((r) => r.some((c) => c.trim() !== ""));
 
   // Column index detection (shared across Baltic banks)
   const findCol = (candidates: string[]) =>
@@ -173,8 +194,9 @@ export function parseBankStatementCSV(csvText: string): ParsedTransaction[] {
     "grāmatošanas",
   ]);
   const counterpartyIdx = findCol([
-    "saņēmējs",
+    "partnera nosaukums", // SEB
     "saņēmējs / maksātājs",
+    "saņēmējs",
     "maksātājs",
     "beneficiary",
     "counterparty",
@@ -182,20 +204,46 @@ export function parseBankStatementCSV(csvText: string): ParsedTransaction[] {
     "nosaukums",
     "klienta nosaukums",
   ]);
-  const ibanIdx = findCol(["konts", "account", "iban"]);
-  const amountIdx = findCol(["summa", "amount"]);
-  // Credit/Debit split (Swedbank style)
+  const ibanIdx = findCol([
+    "partnera konts", // SEB
+    "konts",
+    "account",
+    "iban",
+  ]);
+  // SEB has BOTH 'maksājuma summa' (transaction-currency amount)
+  // AND 'summa konta valūtā' (account-currency = EUR equivalent).
+  // Prefer the account-currency one for matching against invoices,
+  // since invoices in this app are stored in EUR.
+  const accountCurrencyAmountIdx = findCol([
+    "summa konta val", // SEB 'SUMMA KONTA VALŪTĀ'
+  ]);
+  const amountIdx = findCol([
+    "maksājuma summa", // SEB
+    "summa",
+    "amount",
+  ]);
+  // Credit/Debit split (Swedbank style — separate columns)
   const creditIdx = findCol(["kredīts", "credit"]);
   const debitIdx = findCol(["debets", "debit"]);
+  // SEB single-column D/C marker ('debets/ kredīts' → "D" or "C")
+  const dcMarkerIdx = findCol([
+    "debets/ kredīts", // SEB
+    "debets/kredīts",
+    "d/c",
+  ]);
   const referenceIdx = findCol([
+    "maksājuma mērķis", // SEB
     "mērķis",
     "piezīmes",
     "details",
     "description",
     "reference",
-    "maksājuma mērķis",
   ]);
-  const currencyIdx = findCol(["valūta", "currency"]);
+  const currencyIdx = findCol([
+    "konta valūta", // SEB
+    "valūta",
+    "currency",
+  ]);
 
   return dataRows.map((row) => {
     const rawObj: Record<string, string> = {};
@@ -207,12 +255,32 @@ export function parseBankStatementCSV(csvText: string): ParsedTransaction[] {
     const reference = (referenceIdx >= 0 ? row[referenceIdx] : "").trim();
     const currency = (currencyIdx >= 0 ? row[currencyIdx] : "EUR").trim() || "EUR";
 
-    // Compute signed amount
+    // Compute signed amount.
+    // Order of preference:
+    //   1. SEB-style: D/C marker + account-currency amount
+    //   2. Swedbank-style: separate credit/debit columns
+    //   3. Generic: single signed 'amount' column
     let amount = 0;
-    if (creditIdx >= 0 && debitIdx >= 0) {
+    if (dcMarkerIdx >= 0 && accountCurrencyAmountIdx >= 0) {
+      const marker = (row[dcMarkerIdx] ?? "").trim().toUpperCase();
+      const value = parseNum(row[accountCurrencyAmountIdx] ?? "");
+      // D = debit (we paid out, money LEFT the account → positive
+      // for matching against received invoices we owe).
+      // C = credit (money came IN → negative in our convention,
+      // since this represents incoming, not outgoing payments).
+      amount = marker === "D" ? value : -value;
+    } else if (dcMarkerIdx >= 0 && amountIdx >= 0) {
+      // SEB without the account-currency split (rare): use the
+      // transaction-currency amount with the D/C marker
+      const marker = (row[dcMarkerIdx] ?? "").trim().toUpperCase();
+      const value = parseNum(row[amountIdx] ?? "");
+      amount = marker === "D" ? value : -value;
+    } else if (creditIdx >= 0 && debitIdx >= 0) {
       const cr = parseNum(row[creditIdx] ?? "");
       const db = parseNum(row[debitIdx] ?? "");
-      amount = cr - db; // issued positive, received negative
+      amount = db - cr; // debit positive (we owe / paid out)
+    } else if (accountCurrencyAmountIdx >= 0) {
+      amount = parseNum(row[accountCurrencyAmountIdx] ?? "");
     } else if (amountIdx >= 0) {
       amount = parseNum(row[amountIdx] ?? "");
     }
@@ -228,6 +296,28 @@ export function parseBankStatementCSV(csvText: string): ParsedTransaction[] {
       raw: rawObj,
     };
   });
+}
+
+/**
+ * Find the row index that contains the column headers. SEB and some
+ * other banks put a banner row first (account number + period). We
+ * skip such rows by looking for the first row that has at least 4
+ * cells AND contains a recognizable date column name.
+ *
+ * Falls back to row 0 if no header-like row is found in the first 5.
+ */
+function findHeaderRowIndex(rows: string[][]): number {
+  const dateKeywords = ["datums", "date"];
+  const maxCheck = Math.min(5, rows.length);
+  for (let i = 0; i < maxCheck; i++) {
+    const cells = rows[i].map((c) => c.trim().toLowerCase());
+    if (cells.length < 4) continue;
+    const hasDate = cells.some((c) =>
+      dateKeywords.some((kw) => c === kw || c.includes(kw))
+    );
+    if (hasDate) return i;
+  }
+  return 0;
 }
 
 // ============================================================
@@ -371,8 +461,44 @@ function parseCSVRows(text: string): string[][] {
 
 function parseNum(s: string): number {
   if (!s) return 0;
-  // Baltic banks often use comma decimal separator; strip thousand separators
-  const cleaned = s.trim().replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const trimmed = s.trim().replace(/\s/g, "");
+  if (!trimmed) return 0;
+
+  // Detect format. Number strings come in three flavors:
+  //   1. European with comma decimal: "1.234,56" or "30,00"
+  //      → period = thousands separator, comma = decimal
+  //   2. American/SEB style: "1,234.56" or "30.00"
+  //      → comma = thousands separator, period = decimal
+  //   3. Simple integer: "30" or "2486"
+  //
+  // Heuristic: if the LAST non-digit character in the string is
+  // a comma, treat it as decimal (European style). If the last is
+  // a period, treat it as decimal (American/SEB style). Strip the
+  // OTHER separator wherever it appears.
+  //
+  // Examples:
+  //   "30.00"      → last separator is '.', strip ',' → "30.00" → 30
+  //   "30,00"      → last separator is ',', strip '.' → "30.00" → 30
+  //   "2486.00"    → "2486.00" → 2486 (NOT 248600 like the old parser)
+  //   "1.234,56"   → strip '.', swap ',' → "1234.56" → 1234.56
+  //   "1,234.56"   → strip ',' → "1234.56" → 1234.56
+  //   "12345"      → no separators → 12345
+
+  const lastComma = trimmed.lastIndexOf(",");
+  const lastPeriod = trimmed.lastIndexOf(".");
+
+  let cleaned: string;
+  if (lastComma > lastPeriod) {
+    // Comma is the decimal — strip periods, swap comma to period
+    cleaned = trimmed.replace(/\./g, "").replace(",", ".");
+  } else if (lastPeriod > lastComma) {
+    // Period is the decimal — strip commas
+    cleaned = trimmed.replace(/,/g, "");
+  } else {
+    // No separators at all
+    cleaned = trimmed;
+  }
+
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
 }
