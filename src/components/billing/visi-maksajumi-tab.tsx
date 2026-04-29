@@ -115,17 +115,38 @@ export function VisiMaksajumiTab() {
     // invoice-side rows when dates tie. The 'missing invoice' flag
     // is set when a debit transaction has no matched_invoice_id —
     // those render in red.
+    //
+    // Re-classify each payment client-side rather than trusting the
+    // stored classified_section. This way classifier improvements
+    // (new POS chains, new online services) take effect immediately
+    // for ALL existing payments, without needing a re-import or
+    // server-side migration. The stored field is still used as a
+    // fallback for amount > 0 (incoming) where re-classification
+    // doesn't help.
     for (const p of bankPayments) {
-      const sectionKey = (p.classifiedSection || "izejosie") as
-        | PaymentSection
-        | "";
+      // Build a synthetic ParsedTransaction shape from the stored
+      // payment so the classifier can re-evaluate it. Sign convention:
+      // positive amount = outgoing (matches classifier expectation).
+      const reclassified = classifyTransaction({
+        rawDate: p.paymentDate,
+        date: p.paymentDate,
+        counterparty: p.counterparty,
+        counterpartyIban: p.counterpartyIban,
+        amount: p.amount, // already positive in storage
+        reference: p.bankReference || p.rawReference || "",
+        currency: "EUR",
+        raw: { TypeCode: p.rawReference || "" },
+      });
+
+      // For incoming payments (negative on storage isn't really
+      // possible since we store absolute, so we infer from
+      // direction or the original classification field) keep
+      // the stored ienakosie if that's what it was.
+      const storedSection = p.classifiedSection;
       const section: UnifiedRow["section"] =
-        sectionKey === "ienakosie" ||
-        sectionKey === "izejosie" ||
-        sectionKey === "automatiskie" ||
-        sectionKey === "fiziskie"
-          ? sectionKey
-          : "izejosie";
+        storedSection === "ienakosie"
+          ? "ienakosie"
+          : reclassified;
 
       // For OUTGOING transactions without a matched invoice → red row
       const isOutgoing =

@@ -26,36 +26,127 @@ export type PaymentSection =
   | "fiziskie";
 
 /**
- * Patterns matching POS terminal and ATM operations across Baltic
- * banks. Looked up against the reference text and any 'TypeCode'
- * field in the raw data.
+ * Patterns for PHYSICAL transactions:
+ *   - POS terminals at brick-and-mortar shops (card swipe in store)
+ *   - ATM withdrawals and deposits
+ *   - Cash transactions
  *
- * Adding a pattern: keep it lowercase, broad, and language-neutral
- * where possible. Bank-specific codes (e.g. SEB's 'PMNTCCRDTPOS')
- * also belong here.
+ * SEB FIDAVISTA codes:
+ *   PMNTCCRDTPOS — POS card payment (physical store terminal)
+ *   PMNTCWDLATM  — ATM withdrawal
+ *   PMNTCDPSATM  — ATM deposit
+ *   PMNTCCDPCSH  — Cash deposit at branch
+ *   PMNTCCDWCSH  — Cash withdrawal at branch
+ *
+ * Swedbank similar:
+ *   PURCHASE     — POS terminal
+ *   ATM CASH WITHDRAWAL / ATM CASH DEPOSIT
  */
 const PHYSICAL_PATTERNS: readonly RegExp[] = [
-  /\bpos\b/i,
-  /\bbankomāt/i,
+  // Specific bank type codes (most reliable)
+  /pmntccrdtpos/i,
+  /pmntcwdlatm/i,
+  /pmntcdpsatm/i,
+  /pmntccdpcsh/i,
+  /pmntccdwcsh/i,
+  // Generic ATM / cash patterns
   /\batm\b/i,
-  /\bcrdt\s*pos\b/i,
-  /\bcard\s+payment\b/i,
-  /\bkartes\s+(maks|izmaksa|iemaksa)/i,
+  /\bbankomāt/i,
   /\bskaidrās\s+naudas/i,
-  /\bcash\s+(withdrawal|deposit)\b/i,
-  /pmntccrdtpos/i, // SEB POS card payment type code
-  /pmntcwdlatm/i, // SEB ATM withdrawal type code
-  /pmntcdpsatm/i, // SEB ATM deposit type code
+  /\bcash\s+(withdrawal|deposit|advance)\b/i,
+  /\bcash\s+at\s+atm\b/i,
+  // POS terminal (in physical store)
+  /\bpos\s*term/i,
+  /\bpos-term/i,
+  /\bterminal/i,
+  /\bpurchase\s+at\b/i,
+  /\bcrdt\s*pos\b/i,
+  /\bkartes\s+(maks|izmaksa|iemaksa).*\b(veikalā|termināl|pos)/i,
 ];
 
 /**
- * Patterns matching well-known online services and subscriptions.
- * If the COUNTERPARTY name matches one of these, the payment goes
- * to the 'Automātiskie & Internetā' tab instead of plain outgoing.
+ * Latvian physical-store chain names. SEB lumps both online and
+ * in-store card payments under PMNTCCRDOTHR-Pirkums. To distinguish
+ * a POS payment at Maxima from an online payment at GoDaddy, we
+ * look for these chain names in the merchant string. If we find
+ * one, the payment is physical (fiziskie).
  *
- * The list is intentionally short — covers the obvious household
- * names. Extend as the user reports services that should be
- * recognized but aren't.
+ * Add common Latvian retail chains. Not exhaustive — the user's
+ * actual receipts will reveal what else needs to be on this list.
+ */
+const LATVIAN_PHYSICAL_STORES: readonly RegExp[] = [
+  /\bmaxima\b/i,
+  /\brimi\b/i,
+  /\blidl\b/i,
+  /\belvi\b/i,
+  /\btop!?\b/i,
+  /\baibe\b/i,
+  /\bmego\b/i,
+  /\bnarvesen\b/i,
+  /\bcircle\s*k\b/i,
+  /\bneste\b/i,
+  /\bvirši\b/i, // Virši-A
+  /\bgotika\b/i, // Gotika fuel
+  /\bdepo\b/i,
+  /\bk-?rauta\b/i, // K-rauta
+  /\bbauhaus\b/i,
+  /\bibericana\b/i,
+  /\beuroapotheka\b/i,
+  /\bmēness\s*aptieka\b/i,
+  /\bbenu\s*aptieka\b/i,
+  /\bapollo\b/i, // Apollo kino
+  /\bforum\s*cinemas\b/i,
+  /\bmcdonald'?s\b/i,
+  /\bhesburger\b/i,
+  /\bsubway\b/i,
+  /\bkfc\b/i,
+  /\bdrogas\b/i,
+  /\bsportland\b/i,
+  /\bjysk\b/i,
+  /\bikea\b/i,
+];
+
+/**
+ * Patterns for ONLINE / AUTOMATED transactions:
+ *   - Online card payments (e-commerce, subscriptions)
+ *   - Direct debits, recurring service charges
+ *   - Card-not-present transactions (CNP)
+ *
+ * SEB FIDAVISTA codes:
+ *   PMNTCCRDOTHR — generic card purchase (online OR in-store —
+ *                  needs counterparty disambiguation, see below)
+ *   PMNTCCRDTECT — outgoing instant card / e-commerce
+ *   PMNTCCRDTONL — online card payment
+ *   PMNTCCRDTCNP — card-not-present
+ *   PMNTRCDTDIRD — direct debit
+ *
+ * Plus brand-name detection for the household names.
+ */
+const ONLINE_CARD_TYPE_CODES: readonly RegExp[] = [
+  /pmntccrdtect\b/i, // Outgoing instant transfer / e-commerce
+  /pmntccrdtonl/i, // Online card
+  /pmntccrdtcnp/i, // Card-not-present
+  /pmntrcdtdird/i, // Direct debit
+  /pmntcidtsdd/i, // SEPA direct debit incoming variant
+  /\bcard\s+payment\s+(online|internet|web)/i,
+  /\binternet\s+(maks|payment|purchase)/i,
+  /\be-commerce\b/i,
+  /\bcnp\b/i, // Card-not-present
+];
+
+/**
+ * SEB's generic card purchase code. Could be either online OR
+ * in-store — must disambiguate by looking at the merchant name
+ * for Latvian physical retail chains. If a known chain is in the
+ * merchant text, it's physical; otherwise default to online.
+ */
+const SEB_GENERIC_CARD_PURCHASE = /pmntccrdothr/i;
+
+/**
+ * Patterns matching well-known online services and subscriptions
+ * by COUNTERPARTY NAME. If the merchant matches, classification is
+ * 'automatiskie' regardless of bank type code (some banks don't
+ * distinguish online vs in-store cards in the type field).
  */
 const ONLINE_SERVICE_PATTERNS: readonly RegExp[] = [
   /\bgoogle\b/i,
@@ -66,7 +157,7 @@ const ONLINE_SERVICE_PATTERNS: readonly RegExp[] = [
   /\bvercel\b/i,
   /\bcloudflare\b/i,
   /\baws\b/i,
-  /\bamazon\s+web\s+services\b/i,
+  /\bamazon\b/i,
   /\bmicrosoft\b/i,
   /\boffice\s*365\b/i,
   /\bnetflix\b/i,
@@ -86,6 +177,15 @@ const ONLINE_SERVICE_PATTERNS: readonly RegExp[] = [
   /\brevolut\b/i,
   /\bwise\b/i,
   /\bn26\b/i,
+  /\bbolt\b/i,
+  /\buber\b/i,
+  /\bbooking\.com/i,
+  /\bairbnb\b/i,
+  /\bebay\b/i,
+  /\baliexpress\b/i,
+  /\bgodaddy\b/i,
+  /\bnamesilo\b/i,
+  /\bdomains?\b/i,
 ];
 
 interface ClassificationContext {
@@ -99,20 +199,30 @@ interface ClassificationContext {
  * Classify a single transaction into a section.
  *
  * Decision tree (in order — first match wins):
+ *
  *   1. Amount is incoming (< 0)              → ienakosie
- *   2. POS terminal / ATM patterns matched   → fiziskie
- *   3. Counterparty matches online service   → automatiskie
- *   4. Counterparty IBAN matches a known     → izejosie
+ *   2. PHYSICAL patterns match (POS in       → fiziskie
+ *      store, ATM withdrawal/deposit,
+ *      cash at branch — explicit type
+ *      codes like PMNTCWDLATM)
+ *   3. SEB generic card purchase             → see sub-decision:
+ *      (PMNTCCRDOTHR-Pirkums)                  3a. Latvian retail
+ *                                                  chain in merchant
+ *                                                  name → fiziskie
+ *                                              3b. Otherwise →
+ *                                                  automatiskie
+ *   4. ONLINE_CARD_TYPE_CODES match           → automatiskie
+ *      (e-commerce, direct debit, CNP)
+ *   5. Counterparty matches a known           → automatiskie
+ *      online service brand
+ *   6. Counterparty IBAN matches a known      → izejosie
  *      supplier we have an invoice from
- *   5. Default outgoing                      → automatiskie
- *      (online services dominate the unknown
- *      outgoing flow for most small businesses;
- *      a missing supplier IBAN usually means
- *      either a one-off subscription OR a manual
- *      payment without a stored invoice — both
- *      best handled in the 'automatiskie' tab
- *      where the AI scan + missing-receipt flow
- *      lives)
+ *   7. Default outgoing                       → izejosie
+ *
+ * The PMNTCCRDOTHR special case is needed because SEB doesn't
+ * distinguish online vs in-store card payments in the type code
+ * — both come through as the same code. We have to look at the
+ * merchant name to figure out which it was.
  */
 export function classifyTransaction(
   tx: ParsedTransaction,
@@ -131,17 +241,35 @@ export function classifyTransaction(
     .filter((s): s is string => Boolean(s))
     .join(" ");
 
-  // 2. Physical (POS / ATM)
+  // 2. Explicit physical type codes (ATM, cash, POS)
   if (PHYSICAL_PATTERNS.some((re) => re.test(haystack))) {
     return "fiziskie";
   }
 
-  // 3. Online service
+  // 3. SEB generic card purchase — could be online OR in-store.
+  //    Disambiguate by Latvian retail chain detection.
+  if (SEB_GENERIC_CARD_PURCHASE.test(haystack)) {
+    if (LATVIAN_PHYSICAL_STORES.some((re) => re.test(haystack))) {
+      return "fiziskie";
+    }
+    // Default for unknown card purchase merchants is online —
+    // most of the user's transactions in this category will be
+    // online subscriptions and e-commerce, not unfamiliar
+    // physical stores.
+    return "automatiskie";
+  }
+
+  // 4. Explicit online card / e-commerce type code
+  if (ONLINE_CARD_TYPE_CODES.some((re) => re.test(haystack))) {
+    return "automatiskie";
+  }
+
+  // 5. Online service brand match (Stripe, Google, Apple, etc.)
   if (ONLINE_SERVICE_PATTERNS.some((re) => re.test(haystack))) {
     return "automatiskie";
   }
 
-  // 4. Match an existing supplier we have an invoice from
+  // 6. Match an existing supplier we have an invoice from
   if (
     tx.counterpartyIban &&
     ctx.knownSupplierIbans?.has(normalizeIban(tx.counterpartyIban))
@@ -149,9 +277,10 @@ export function classifyTransaction(
     return "izejosie";
   }
 
-  // 5. Default — treat unknown outgoing as 'automatiskie' so it
-  //    flows into the missing-receipt review UI
-  return "automatiskie";
+  // 7. Default — bank transfer to an unknown party. Goes to
+  //    izejosie (regular outgoing) where the user can attach an
+  //    invoice or re-classify if it was actually an online sub.
+  return "izejosie";
 }
 
 /**
