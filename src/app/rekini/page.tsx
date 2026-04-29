@@ -9,15 +9,19 @@ import {
   ShoppingBag,
   Users,
   Landmark,
+  Upload,
+  Download,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
+import { Button } from "@/components/ui/button";
 import { IzejosieTab } from "@/components/billing/izejosie-tab";
 import { IenakosieTab } from "@/components/billing/ienakosie-tab";
 import { AutomatiskieTab } from "@/components/billing/automatiskie-tab";
 import { VeikalaTab } from "@/components/billing/veikala-tab";
 import { AlgasTab } from "@/components/billing/algas-tab";
 import { NodokliTab } from "@/components/billing/nodokli-tab";
+import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { useNotifications } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +50,14 @@ export default function RekiniMaksajumiPage() {
   const [tab, setTab] = useState<TabKey>("izejosie");
   const notifications = useNotifications();
 
+  // Bank exchange panel — single source of truth at page level so the
+  // 'Uz banku' / 'No bankas' header buttons can open it from anywhere
+  // on the page without prop-drilling through tabs. The panel itself
+  // already supports both export (download XML) and import (upload
+  // CSV) flows, so a single open boolean is enough — user picks the
+  // action they want once the panel is open.
+  const [bankPanelOpen, setBankPanelOpen] = useState(false);
+
   // Map tab key → red dot count (exclude ienakosie per spec)
   const tabBadge = (key: TabKey): number => {
     switch (key) {
@@ -70,6 +82,25 @@ export default function RekiniMaksajumiPage() {
         <PageHeader
           title="Rēķini & Maksājumi"
           description="Visu rēķinu, maksājumu un nodokļu pārvaldība vienuviet"
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                size="default"
+                variant="secondary"
+                onClick={() => setBankPanelOpen(true)}
+              >
+                <Download className="h-4 w-4" />
+                No bankas
+              </Button>
+              <Button
+                size="default"
+                onClick={() => setBankPanelOpen(true)}
+              >
+                <Upload className="h-4 w-4" />
+                Uz banku
+              </Button>
+            </div>
+          }
         />
 
         {/* Segmented control */}
@@ -145,6 +176,17 @@ export default function RekiniMaksajumiPage() {
             {tab === "nodokli" && <NodokliTab />}
           </motion.div>
         </AnimatePresence>
+
+        {/* Bank exchange panel — opened by the page header buttons.
+            Mode is 'received' (incoming invoices). The Algas and
+            Nodokļi tabs still have their own context-specific Uz
+            banku buttons (which open the panel in 'salaries' /
+            'taxes' mode for those particular flows). */}
+        <BankExchangePanel
+          open={bankPanelOpen}
+          onOpenChange={setBankPanelOpen}
+          mode="received"
+        />
       </div>
     </AppShell>
   );

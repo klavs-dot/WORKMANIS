@@ -14,7 +14,6 @@ import {
   Sparkles,
   Save,
   Info,
-  Landmark,
   Download,
   Pencil,
   AlertTriangle,
@@ -70,7 +69,6 @@ import type {
 } from "@/lib/network-types";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
-import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { EditReceivedModal } from "@/components/billing/edit-received-modal";
 
 // ============================================================
@@ -260,7 +258,6 @@ export function IzejosieTab() {
   );
   const [metaEditing, setMetaEditing] = useState<ReceivedInvoice | null>(null);
   const [editing, setEditing] = useState<ReceivedInvoice | null>(null);
-  const [bankPanelOpen, setBankPanelOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // For "add new supplier" mini-modal when supplier isn't in
@@ -688,24 +685,13 @@ export function IzejosieTab() {
 
       {/* List of prepared payments */}
       <Card className="overflow-hidden">
-        <div className="p-5 border-b border-graphite-100 flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
-              Sagatavotie maksājumi
-            </h3>
-            <p className="mt-0.5 text-[12.5px] text-graphite-500">
-              Gaida apstiprinājumu bankā vai jau apmaksāti
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setBankPanelOpen(true)}
-            className="shrink-0"
-          >
-            <Landmark className="h-3.5 w-3.5" />
-            Uz banku
-          </Button>
+        <div className="p-5 border-b border-graphite-100">
+          <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
+            Sagatavotie maksājumi
+          </h3>
+          <p className="mt-0.5 text-[12.5px] text-graphite-500">
+            Gaida apstiprinājumu bankā vai jau apmaksāti
+          </p>
         </div>
         {received.length === 0 ? (
           <div className="p-12 text-center text-[13px] text-graphite-500">
@@ -897,11 +883,9 @@ export function IzejosieTab() {
         }}
       />
 
-      {/* Bank exchange side-panel */}
-      <BankExchangePanel
-        open={bankPanelOpen}
-        onOpenChange={setBankPanelOpen}
-      />
+      {/* Bank exchange panel is now mounted at the page level
+          (src/app/rekini/page.tsx) so the page header buttons can
+          open it. Removed from this tab to avoid a duplicate mount. */}
 
       {/* Edit received payment modal */}
       <EditReceivedModal
