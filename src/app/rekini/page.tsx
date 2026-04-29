@@ -54,13 +54,21 @@ export default function RekiniMaksajumiPage() {
   const [tab, setTab] = useState<TabKey>("visi");
   const notifications = useNotifications();
 
-  // Bank exchange panel — single source of truth at page level so the
-  // 'Uz banku' / 'No bankas' header buttons can open it from anywhere
-  // on the page without prop-drilling through tabs. The panel itself
-  // already supports both export (download XML) and import (upload
-  // CSV) flows, so a single open boolean is enough — user picks the
-  // action they want once the panel is open.
-  const [bankPanelOpen, setBankPanelOpen] = useState(false);
+  // Bank exchange panel — separate state for each header button so
+  // 'Uz banku' opens just the export view and 'No bankas' opens just
+  // the import view. We keep ONE panel mount and toggle the section
+  // prop based on which button was clicked.
+  const [bankPanel, setBankPanel] = useState<{
+    open: boolean;
+    section: "export" | "import";
+  }>({ open: false, section: "export" });
+
+  const openBankExport = () =>
+    setBankPanel({ open: true, section: "export" });
+  const openBankImport = () =>
+    setBankPanel({ open: true, section: "import" });
+  const closeBankPanel = () =>
+    setBankPanel((s) => ({ ...s, open: false }));
 
   // Map tab key → red dot count (exclude ienakosie per spec)
   const tabBadge = (key: TabKey): number => {
@@ -91,14 +99,14 @@ export default function RekiniMaksajumiPage() {
               <Button
                 size="default"
                 variant="secondary"
-                onClick={() => setBankPanelOpen(true)}
+                onClick={openBankImport}
               >
                 <Download className="h-4 w-4" />
                 No bankas
               </Button>
               <Button
                 size="default"
-                onClick={() => setBankPanelOpen(true)}
+                onClick={openBankExport}
               >
                 <Upload className="h-4 w-4" />
                 Uz banku
@@ -183,14 +191,17 @@ export default function RekiniMaksajumiPage() {
         </AnimatePresence>
 
         {/* Bank exchange panel — opened by the page header buttons.
-            Mode is 'received' (incoming invoices). The Algas and
-            Nodokļi tabs still have their own context-specific Uz
-            banku buttons (which open the panel in 'salaries' /
-            'taxes' mode for those particular flows). */}
+            Mode is 'received' (incoming invoices). Section toggles
+            between 'export' and 'import' depending on which header
+            button was clicked, so each button shows just its own
+            view. The Algas and Nodokļi tabs still have their own
+            context-specific Uz banku buttons (which open the panel
+            in 'salaries' / 'taxes' mode for those particular flows). */}
         <BankExchangePanel
-          open={bankPanelOpen}
-          onOpenChange={setBankPanelOpen}
+          open={bankPanel.open}
+          onOpenChange={(o) => (o ? null : closeBankPanel())}
           mode="received"
+          section={bankPanel.section}
         />
       </div>
     </AppShell>

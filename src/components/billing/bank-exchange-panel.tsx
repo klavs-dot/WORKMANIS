@@ -40,6 +40,16 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
 export type BankExchangeMode = "received" | "salaries" | "taxes";
 
+/**
+ * Which sections of the panel to show. Used to give the page-header
+ * 'Uz banku' / 'No bankas' buttons their own dedicated views, so
+ * each shows just the relevant flow instead of both. The legacy
+ * 'both' value preserves existing per-tab behavior (the Algas /
+ * Nodokļi tab buttons still open the panel showing both export
+ * and import together).
+ */
+export type BankExchangeSection = "export" | "import" | "both";
+
 const modeCopy: Record<
   BankExchangeMode,
   { heading: string; exportLabel: string; itemNoun: string }
@@ -61,14 +71,38 @@ const modeCopy: Record<
   },
 };
 
+/**
+ * Per-section heading + subtitle. When section='both' (legacy) we
+ * fall back to the old combined header.
+ */
+const sectionCopy: Record<
+  BankExchangeSection,
+  { heading: string; subtitle: string }
+> = {
+  export: {
+    heading: "Uz banku",
+    subtitle: "Sagatavo maksājumus un eksportē XML failu internetbankai",
+  },
+  import: {
+    heading: "No bankas",
+    subtitle: "Importē FIDAVISTA XML izrakstu un automātiski sadali maksājumus",
+  },
+  both: {
+    heading: "Uz banku",
+    subtitle: "Sagatavo maksājumus un importē bankas izrakstu",
+  },
+};
+
 export function BankExchangePanel({
   open,
   onOpenChange,
   mode = "received",
+  section = "both",
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   mode?: BankExchangeMode;
+  section?: BankExchangeSection;
 }) {
   const { received, salaries, taxes, markReceivedPaid, updateSalary, updateTax } =
     useBilling();
@@ -214,6 +248,50 @@ export function BankExchangePanel({
   //
   // No more manual review step — the file IS the source of truth.
   // Wrong matches can still be undone in the underlying tab.
+
+  /**
+   * Pre-flight check before reading the file content. Catches the
+   * easy 'wrong file type' cases (.pdf, .png, etc.) without spending
+   * the I/O cost of actually loading the file. Real format validation
+   * (FIDAVISTA vs CSV vs unknown XML) still happens inside
+   * onFilePicked once we have the bytes — that catches things like
+   * 'this is XML but not a bank statement'.
+   */
+  const validateAndPickFile = (file: File) => {
+    const name = file.name.toLowerCase();
+    const allowedExt = [".xml", ".csv", ".txt"];
+    const hasAllowedExt = allowedExt.some((ext) => name.endsWith(ext));
+
+    if (!hasAllowedExt) {
+      pushToastGlobally(
+        "error",
+        `Nepareizs faila tips. Pieņemam: ${allowedExt.join(", ")} (FIDAVISTA / camt.053 XML vai CSV).`,
+        9000
+      );
+      return;
+    }
+
+    // Empty file would parse to nothing — catch it here so the
+    // user gets a meaningful error instead of 'no transactions'
+    if (file.size === 0) {
+      pushToastGlobally("error", "Fails ir tukšs.", 6000);
+      return;
+    }
+
+    // Sanity cap: bank statements over 50 MB are almost certainly
+    // not statements (probably a wrong file). Real monthly
+    // statements are <2 MB, year-long exports <20 MB.
+    if (file.size > 50 * 1024 * 1024) {
+      pushToastGlobally(
+        "error",
+        `Fails par lielu (${Math.round(file.size / 1024 / 1024)} MB). Maksimums: 50 MB.`,
+        7000
+      );
+      return;
+    }
+
+    void onFilePicked(file);
+  };
 
   const onFilePicked = async (file: File) => {
     let text: string;
@@ -372,6 +450,7 @@ export function BankExchangePanel({
   const [parsedTxs, setParsedTxs] = useState<ParsedTransaction[]>([]);
   const [matches, setMatches] = useState<InvoiceMatch[]>([]);
   const [importStage, setImportStage] = useState<"idle" | "review">("idle");
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const applyMatches = () => {
     let applied = 0;
@@ -422,10 +501,10 @@ export function BankExchangePanel({
                 </div>
                 <div>
                   <h2 className="text-[16px] font-semibold tracking-tight text-graphite-900">
-                    Uz banku
+                    {sectionCopy[section].heading}
                   </h2>
                   <p className="text-[12px] text-graphite-500 mt-0.5">
-                    Sagatavo maksājumus un importē bankas izrakstu
+                    {sectionCopy[section].subtitle}
                   </p>
                 </div>
               </div>
@@ -441,6 +520,7 @@ export function BankExchangePanel({
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto">
               {/* ─── Section 1: Export ─── */}
+              {(section === "export" || section === "both") && (
               <section className="px-6 py-5 border-b border-graphite-100">
                 <div className="flex items-center gap-2 mb-3">
                   <ArrowUpFromLine className="h-3.5 w-3.5 text-emerald-600" />
@@ -544,9 +624,10 @@ export function BankExchangePanel({
                   </Button>
                 </div>
               </section>
+              )}
 
               {/* ─── Section 2: Import (received mode only — matching happens against unpaid supplier invoices) ─── */}
-              {mode === "received" && (
+              {mode === "received" && (section === "import" || section === "both") && (
               <section className="px-6 py-5">
                 <div className="flex items-center gap-2 mb-3">
                   <ArrowDownToLine className="h-3.5 w-3.5 text-sky-600" />
@@ -565,11 +646,65 @@ export function BankExchangePanel({
                   <>
                     <div
                       onClick={() => fileInputRef.current?.click()}
-                      className="rounded-lg border-2 border-dashed border-graphite-200 bg-graphite-50/40 p-6 text-center cursor-pointer hover:border-graphite-300 hover:bg-graphite-50 transition-colors"
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsDraggingOver(true);
+                      }}
+                      onDragOver={(e) => {
+                        // Both dragenter AND dragover need
+                        // preventDefault for the drop event to fire
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // dataTransfer.dropEffect controls the cursor
+                        // shown to the user during drag
+                        e.dataTransfer.dropEffect = "copy";
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Only un-highlight when leaving the zone
+                        // entirely (not when moving over a child).
+                        // currentTarget.contains(relatedTarget) is
+                        // false when the cursor truly exits.
+                        if (
+                          !e.currentTarget.contains(
+                            e.relatedTarget as Node | null
+                          )
+                        ) {
+                          setIsDraggingOver(false);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsDraggingOver(false);
+                        const files = Array.from(
+                          e.dataTransfer.files ?? []
+                        );
+                        if (files.length === 0) return;
+                        if (files.length > 1) {
+                          pushToastGlobally(
+                            "error",
+                            "Lūdzu ievelc tikai vienu failu uzreiz.",
+                            6000
+                          );
+                          return;
+                        }
+                        validateAndPickFile(files[0]);
+                      }}
+                      className={cn(
+                        "rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
+                        isDraggingOver
+                          ? "border-graphite-900 bg-graphite-100"
+                          : "border-graphite-200 bg-graphite-50/40 hover:border-graphite-300 hover:bg-graphite-50"
+                      )}
                     >
                       <Upload className="h-5 w-5 text-graphite-400 mx-auto mb-2" />
                       <p className="text-[12.5px] font-medium text-graphite-900">
-                        Ievelc XML failu vai spied izvēlēties
+                        {isDraggingOver
+                          ? "Atlaid failu šeit"
+                          : "Ievelc XML failu vai spied izvēlēties"}
                       </p>
                       <p className="text-[10.5px] text-graphite-500 mt-0.5">
                         FIDAVISTA · camt.053 · CSV · SEB · Swedbank · Citadele · Luminor
@@ -581,7 +716,10 @@ export function BankExchangePanel({
                         className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
-                          if (f) onFilePicked(f);
+                          if (f) validateAndPickFile(f);
+                          // Reset input so the same file can be
+                          // re-selected after a validation failure
+                          e.target.value = "";
                         }}
                       />
                     </div>
