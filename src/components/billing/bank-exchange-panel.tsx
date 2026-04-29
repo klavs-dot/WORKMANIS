@@ -306,28 +306,50 @@ export function BankExchangePanel({
     // path because it's standardized across Latvian banks. CSV is
     // a fallback that works but needs per-bank parser tweaks.
     let txs: ParsedTransaction[];
+    let detectedFormat: string;
     try {
       if (isBankStatementXML(text)) {
+        detectedFormat = text.toLowerCase().includes("camt.053")
+          ? "camt.053 XML"
+          : "FIDAVISTA XML";
+        // Surface progress to the user so they know parsing is
+        // happening — useful when files are big or networks are slow
+        pushToastGlobally(
+          "info",
+          `Atpazīts: ${detectedFormat}. Parsēju…`,
+          3000
+        );
         txs = parseBankStatementXML(text);
       } else {
+        detectedFormat = "CSV";
+        pushToastGlobally("info", `Atpazīts: CSV. Parsēju…`, 3000);
         txs = parseBankStatementCSV(text);
       }
     } catch (err) {
+      console.error("Parser failed:", err);
       pushToastGlobally(
         "error",
         err instanceof Error
-          ? err.message
+          ? `Parsēšanas kļūda: ${err.message}`
           : "Neatpazīts faila formāts.",
-        7000
+        9000
       );
       return;
     }
 
+    // Log to console for debugging in case the user reports
+    // unexpected results — gives us something to look at without
+    // needing access to the file
+    console.log(
+      `[bank-import] format=${detectedFormat} txs=${txs.length} firstFew=`,
+      txs.slice(0, 3)
+    );
+
     if (txs.length === 0) {
       pushToastGlobally(
         "error",
-        "Failā nav atrasta neviena transakcija.",
-        7000
+        `${detectedFormat} fails ielādēts, bet nav atrasta neviena transakcija. Iespējams, fails tukšs vai neatbilst formātam.`,
+        10000
       );
       return;
     }

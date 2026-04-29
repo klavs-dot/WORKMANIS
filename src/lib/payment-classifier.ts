@@ -88,6 +88,7 @@ const LATVIAN_PHYSICAL_STORES: readonly RegExp[] = [
   /\bvirši\b/i, // Virši-A
   /\bgotika\b/i, // Gotika fuel
   /\bdepo\b/i,
+  /\bdepo-veikals\b/i,
   /\bk-?rauta\b/i, // K-rauta
   /\bbauhaus\b/i,
   /\bibericana\b/i,
@@ -104,6 +105,53 @@ const LATVIAN_PHYSICAL_STORES: readonly RegExp[] = [
   /\bsportland\b/i,
   /\bjysk\b/i,
   /\bikea\b/i,
+  // Auto parts and DIY chains common in LV
+  /\bwurth\b/i,
+  /\borlen\s+stacja/i, // Polish/Baltic fuel chain
+  /\borlen\b/i,
+  /\bbrink'?s\s+atm/i, // ATM operator
+  /\bdus\b/i, // Degvielas Uzpildes Stacija
+  /\bhydroscand\b/i,
+  /\bveikals[-\s]/i, // 'VEIKALS-' / 'VEIKALS ' = generic 'shop' prefix
+];
+
+/**
+ * Latvian city names. When a card transaction merchant string
+ * contains one of these alongside no clear online indicator (no
+ * asterisk prefix, no domain suffix), it's almost certainly a
+ * physical POS purchase at a local Latvian shop.
+ *
+ * The reasoning: SEB embeds the merchant location in PmtInfo
+ * like 'WURTH, LIEPAJA' or 'DELVE 2, LIEPAJA'. Online merchants
+ * embed country codes ('Berlin/DEU', 'Luxembourg/LUX') or domain
+ * names ('lemona.lv'). The LV city signature is highly correlated
+ * with physical commerce.
+ */
+const LATVIAN_CITIES: readonly RegExp[] = [
+  /\bliepaja\b/i,
+  /\bliepāja\b/i,
+  /\briga\b/i,
+  /\brīga\b/i,
+  /\bventspils\b/i,
+  /\bdaugavpils\b/i,
+  /\bjelgava\b/i,
+  /\bjurmala\b/i,
+  /\bjūrmala\b/i,
+  /\brezekne\b/i,
+  /\brēzekne\b/i,
+  /\bvalmiera\b/i,
+  /\bogre\b/i,
+  /\bcesis\b/i,
+  /\bcēsis\b/i,
+  /\btukums\b/i,
+  /\bsalaspils\b/i,
+  /\bbauska\b/i,
+  /\bdobele\b/i,
+  /\bsigulda\b/i,
+  /\bkuldiga\b/i,
+  /\bkuldīga\b/i,
+  /\bsaldus\b/i,
+  /\baizkraukle\b/i,
 ];
 
 /**
@@ -152,6 +200,7 @@ const ONLINE_SERVICE_PATTERNS: readonly RegExp[] = [
   /\bgoogle\b/i,
   /\bgoogle\s+(workspace|cloud|ireland|llc)/i,
   /\bapple\b/i,
+  /\bapple\.com\b/i,
   /\bicloud\b/i,
   /\bstripe\b/i,
   /\bvercel\b/i,
@@ -169,6 +218,7 @@ const ONLINE_SERVICE_PATTERNS: readonly RegExp[] = [
   /\bgithub\b/i,
   /\bopenai\b/i,
   /\banthropic\b/i,
+  /\bclaude\.ai\b/i,
   /\bfigma\b/i,
   /\bmeta\s+platforms\b/i,
   /\bfacebook\b/i,
@@ -186,6 +236,19 @@ const ONLINE_SERVICE_PATTERNS: readonly RegExp[] = [
   /\bgodaddy\b/i,
   /\bnamesilo\b/i,
   /\bdomains?\b/i,
+  // Additional services that show up in real LV business statements
+  /\bwix\b/i,
+  /\bwix\.com\b/i,
+  /\bcalendly\b/i,
+  /\basana\.com\b/i,
+  /\basana\b/i,
+  /\bcapcut\b/i,
+  /\bepidemic\s+sound\b/i,
+  /\binsta360\b/i,
+  /\bfiverr\b/i,
+  /\bupwork\b/i,
+  /\bcanva\b/i,
+  /\badobe\b/i,
 ];
 
 interface ClassificationContext {
@@ -249,13 +312,52 @@ export function classifyTransaction(
   // 3. SEB generic card purchase — could be online OR in-store.
   //    Disambiguate by Latvian retail chain detection.
   if (SEB_GENERIC_CARD_PURCHASE.test(haystack)) {
+    // 3a. Known LV retail chain in the merchant text → physical
     if (LATVIAN_PHYSICAL_STORES.some((re) => re.test(haystack))) {
       return "fiziskie";
     }
-    // Default for unknown card purchase merchants is online —
-    // most of the user's transactions in this category will be
-    // online subscriptions and e-commerce, not unfamiliar
-    // physical stores.
+
+    // 3b. Online payment processor signature: '*' prefix with
+    //     no spaces around it (DNH*GODADDY, EVP*lemona.lv,
+    //     MKK*kafijasdraugs.lv, PADDLE*XYZ). These are payment-
+    //     processor markers, never appear in physical POS strings.
+    if (/\b[A-Z]{2,4}\*[A-Za-z0-9]/.test(haystack)) {
+      return "automatiskie";
+    }
+
+    // 3c. Domain name in the merchant text (.com, .lv, .de etc.)
+    //     — strong online indicator.
+    if (/\.(com|lv|de|uk|net|io|org|co|ru|fr|it|es|nl)\b/i.test(haystack)) {
+      return "automatiskie";
+    }
+
+    // 3d. Foreign country code in the merchant location string
+    //     ('/Berlin/DEU', '/Luxembourg/LUX', '/SAN FRANCISCO/USA').
+    //     Foreign location = online ordering from abroad. Latvian
+    //     country code (LVA) doesn't mean physical though — could
+    //     still be a LV-based online merchant — so we don't use
+    //     LVA as a signal here.
+    if (
+      /\/(DEU|LUX|USA|GBR|EST|LTU|POL|FIN|SWE|NOR|DNK|IRL|NLD|FRA|ESP|ITA|CZE|AUT|RUS|UKR|CHN|JPN)\b/i.test(
+        haystack
+      )
+    ) {
+      return "automatiskie";
+    }
+
+    // 3e. Latvian city name in the merchant text without any
+    //     online indicators (handled above) → strong physical
+    //     signal. SEB embeds the merchant city directly in
+    //     PmtInfo for in-store transactions.
+    if (LATVIAN_CITIES.some((re) => re.test(haystack))) {
+      return "fiziskie";
+    }
+
+    // 3f. Default for ambiguous PMNTCCRDOTHR — slightly biased
+    //     toward online since most unrecognized merchants in our
+    //     user data are online services. This is a regex
+    //     fallback; the AI classifier (background pass) will
+    //     refine it for the genuinely ambiguous cases.
     return "automatiskie";
   }
 

@@ -79,64 +79,92 @@ export function isBankStatementXML(text: string): boolean {
 /**
  * Parse FIDAVISTA XML. Format spec: https://www.fid.lv/
  *
- * Structure (simplified):
- *   <FIDAVISTA>
+ * Real-world structure (verified against SEB output April 2026):
+ *   <FIDAVISTA xmlns="http://www.bankasoc.lv/fidavista/...">
+ *     <Header>...</Header>
  *     <Statement>
+ *       <Period>...</Period>
  *       <AccountSet>
- *         <CcyStmt>                  ← one per currency
- *           <Account>LV74...</Account>
+ *         <IBAN>LV74...</IBAN>
+ *         <CcyStmt>
  *           <Ccy>EUR</Ccy>
- *           <TrxSet>
- *             <Trx>                  ← one per transaction
- *               <BookDate>2026-04-15</BookDate>
- *               <ValueDate>2026-04-15</ValueDate>
- *               <BankRef>RD12345</BankRef>
- *               <DocNo>...</DocNo>
- *               <CorD>D</CorD>      ← 'D' debit (we paid),
- *                                     'C' credit (we received)
- *               <AccAmt>123.45</AccAmt>  ← in account currency
- *               <Amt Ccy="EUR">123.45</Amt>  ← in original ccy
- *               <PmtInfo>Reference text</PmtInfo>
- *               <CPartySet>
- *                 <Name>SIA Partner Name</Name>
- *                 <AccHolder>...</AccHolder>
- *                 <AccNo>LV12HABA...</AccNo>
- *                 <BankCode>HABALV22</BankCode>
- *               </CPartySet>
- *               <TypeCode>...</TypeCode>  ← bank-specific type
- *             </Trx>
- *             ...
+ *           <OpenBal>...</OpenBal>
+ *           <CloseBal>...</CloseBal>
+ *           <TrxSet>                       ← one per transaction (NOT
+ *                                            <Trx> as the older spec
+ *                                            suggested — SEB and other
+ *                                            LV banks use <TrxSet>)
+ *             <TypeCode>MEMD</TypeCode>    ← short 4-letter SEB code
+ *                                            (MEMD/OUTP/INP/CHIN)
+ *             <TypeName>PMNTCCRDOTHR-      ← THIS is the ISO-20022-ish
+ *                Pirkums</TypeName>          code we classify against
+ *             <RegDate>2026-04-01</RegDate>
+ *             <BookDate>2026-04-01</BookDate>
+ *             <BankRef>RO19...</BankRef>
+ *             <DocNo>CLR8...</DocNo>
+ *             <CorD>D</CorD>               ← D = debit (we paid),
+ *                                            C = credit (we received)
+ *             <AccAmt>326.99</AccAmt>
+ *             <PmtInfo>31/03/2026 08:49
+ *                karte...658798 Insta360/
+ *                Berlin/DEU #538964</PmtInfo>
+ *             <CPartySet>
+ *               <AccNo>LV12HABA...</AccNo> ← only present for
+ *                                            transfers; card
+ *                                            purchases skip this
+ *               <AccHolder>
+ *                 <Name>Insta360</Name>    ← merchant name nested
+ *                                            ONE LEVEL DEEPER than
+ *                                            the older spec
+ *               </AccHolder>
+ *               <BankCode>UNLALV2X</BankCode>
+ *               <BankName>SEB BANKA</BankName>
+ *               <Amt>326.99</Amt>
+ *             </CPartySet>
  *           </TrxSet>
+ *           ...
  *         </CcyStmt>
  *       </AccountSet>
  *     </Statement>
  *   </FIDAVISTA>
  *
- * We extract one ParsedTransaction per <Trx>, regardless of how many
- * <CcyStmt> blocks the file has. Sign convention matches CSV path:
- * D → positive (we paid), C → negative (we received).
+ * Sign convention matches CSV path: D → positive (we paid),
+ * C → negative (we received).
  */
 function parseFidavista(xml: string): ParsedTransaction[] {
   const out: ParsedTransaction[] = [];
 
-  // Find every <Trx>...</Trx> block. Tolerant to namespace prefixes
-  // and arbitrary attributes on the open tag.
-  const trxRegex = /<(?:[\w-]+:)?Trx\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?Trx>/gi;
+  // Match <TrxSet>...</TrxSet> blocks. Tolerant to namespace
+  // prefixes and arbitrary attributes on the open tag. The older
+  // FIDAVISTA spec said <Trx> but actual bank output uses <TrxSet>
+  // — we accept both.
+  const trxRegex =
+    /<(?:[\w-]+:)?(?:TrxSet|Trx)\b[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?(?:TrxSet|Trx)>/gi;
+
   let match: RegExpExecArray | null;
   while ((match = trxRegex.exec(xml)) !== null) {
     const block = match[1];
 
     const bookDate = extractTag(block, "BookDate");
     const valueDate = extractTag(block, "ValueDate");
+    const regDate = extractTag(block, "RegDate");
     const corD = (extractTag(block, "CorD") || "").toUpperCase();
     const accAmtStr = extractTag(block, "AccAmt");
     const amtStr = extractTag(block, "Amt");
     const amtCcy = extractAttribute(block, "Amt", "Ccy");
     const pmtInfo = extractTag(block, "PmtInfo");
+    // Name is nested: CPartySet > AccHolder > Name. extractTag
+    // grabs the first <Name> in the block which is correct since
+    // Name only appears once per TrxSet.
     const partyName = extractTag(block, "Name");
     const partyAccNo = extractTag(block, "AccNo");
+    // TypeName carries the ISO-20022-ish code (PMNTCCRDOTHR-Pirkums
+    // etc.). TypeCode is just a 4-letter SEB internal label that
+    // doesn't match what the classifier looks for.
+    const typeName = extractTag(block, "TypeName");
+    const typeCode = extractTag(block, "TypeCode");
 
-    const rawDate = bookDate || valueDate || "";
+    const rawDate = bookDate || valueDate || regDate || "";
     const numericAmount = parseFloat(accAmtStr || amtStr || "0");
     if (isNaN(numericAmount)) continue;
 
@@ -155,13 +183,20 @@ function parseFidavista(xml: string): ParsedTransaction[] {
       raw: {
         BookDate: bookDate,
         ValueDate: valueDate,
+        RegDate: regDate,
         CorD: corD,
         AccAmt: accAmtStr,
         Amt: amtStr,
         PmtInfo: pmtInfo,
         CPartyName: partyName,
         CPartyAcc: partyAccNo,
-        TypeCode: extractTag(block, "TypeCode"),
+        // Save the FULL TypeName (PMNTCCRDOTHR-Pirkums) as the
+        // classifier's haystack source — it's what payment-
+        // classifier.ts pattern-matches against. The 4-letter
+        // TypeCode is kept separately for debug.
+        TypeCode: typeName || typeCode,
+        TypeCodeShort: typeCode,
+        TypeName: typeName,
       },
     });
   }
