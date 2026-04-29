@@ -108,7 +108,7 @@ export function BankExchangePanel({
     useBilling();
   const { activeCompany } = useCompany();
   const { employees } = useEmployees();
-  const { bulkCreate: bulkCreatePayments } = usePayments();
+  const { bulkCreate: bulkCreatePayments, aiClassifyPending } = usePayments();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const copy = modeCopy[mode];
@@ -394,18 +394,30 @@ export function BankExchangePanel({
         };
       });
 
-      // Fire-and-forget the bulk insert. We don't await it before
-      // closing the panel — the user gets immediate feedback via
-      // toast, and the table refreshes when payments-store finishes
-      // its writes. Failures are surfaced via the store's own
-      // error handling.
-      void bulkCreatePayments(toCreate).then((saved) => {
-        if (saved < toCreate.length) {
+      // Fire-and-forget the bulk insert + AI classification chain.
+      //
+      // Step 1: persist all parsed transactions to the Sheet
+      // Step 2: kick off Claude AI classification on the just-
+      //         created card transactions to refine the regex result
+      //
+      // Both steps run in the background — the panel closes
+      // immediately and the user sees progress via toasts. The
+      // AI step is a best-effort enhancement; if it fails, the
+      // user is still left with the regex classification.
+      void bulkCreatePayments(toCreate).then(({ succeeded, ids }) => {
+        if (succeeded < toCreate.length) {
           pushToastGlobally(
             "error",
-            `Saglabāti ${saved} no ${toCreate.length} maksājumiem. Pārējie neizdevās — pārbaudi shēmu /iestatijumi.`,
+            `Saglabāti ${succeeded} no ${toCreate.length} maksājumiem. Pārējie neizdevās — pārbaudi shēmu /iestatijumi.`,
             10000
           );
+        }
+
+        // Trigger AI classification. The store filters down to
+        // PMNTCCRDOTHR-Pirkums style card purchases internally —
+        // we just hand it the full set of new IDs.
+        if (ids.length > 0) {
+          void aiClassifyPending(ids);
         }
       });
     }
@@ -434,6 +446,24 @@ export function BankExchangePanel({
       parts.join(" · ");
 
     pushToastGlobally("success", summary, 9000);
+
+    // If there are card-purchase transactions in this batch,
+    // tell the user AI is working on them. The aiClassifyPending
+    // call above runs in parallel; this toast is just the heads-up.
+    const cardCount = txs.filter((tx) => {
+      const code = (tx.raw?.TypeCode || "").toLowerCase();
+      const ref = (tx.reference || "").toLowerCase();
+      return (
+        code.includes("pmntccrdothr") || ref.includes("pmntccrdothr")
+      );
+    }).length;
+    if (cardCount > 0 && mode === "received") {
+      pushToastGlobally(
+        "info",
+        `AI klasificē ${cardCount} kartes pirkumus fonā…`,
+        6000
+      );
+    }
 
     // Auto-close immediately. Reset internal state so a future open
     // starts fresh.
