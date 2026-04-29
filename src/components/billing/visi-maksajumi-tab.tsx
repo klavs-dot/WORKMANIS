@@ -26,6 +26,7 @@ import {
   Users,
   Landmark,
   Inbox,
+  AlertCircle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
@@ -37,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBilling, type ReceivedInvoice } from "@/lib/billing-store";
+import { usePayments } from "@/lib/payments-store";
 import { formatCurrency, cn } from "@/lib/utils";
 import type { PaymentSection } from "@/lib/payment-classifier";
 import { classifyTransaction } from "@/lib/payment-classifier";
@@ -52,6 +54,9 @@ interface UnifiedRow {
   /** Original status string, for display */
   status: string;
   reference: string;
+  /** True when this is a bank transaction with no matching invoice
+   *  (the user needs to attach a receipt). Renders the row in red. */
+  isMissingInvoice?: boolean;
 }
 
 const SECTION_META: Record<
@@ -101,15 +106,58 @@ const SECTION_META: Record<
 
 export function VisiMaksajumiTab() {
   const { received, issued, salaries, taxes, loading } = useBilling();
+  const { payments: bankPayments, loading: paymentsLoading } = usePayments();
 
   const rows = useMemo<UnifiedRow[]>(() => {
     const all: UnifiedRow[] = [];
 
-    // Received invoices (we owe). Each one classifies into the same
-    // bucket as the bank import would put a matching transaction.
+    // Bank-imported transactions FIRST so they appear above the
+    // invoice-side rows when dates tie. The 'missing invoice' flag
+    // is set when a debit transaction has no matched_invoice_id —
+    // those render in red.
+    for (const p of bankPayments) {
+      const sectionKey = (p.classifiedSection || "izejosie") as
+        | PaymentSection
+        | "";
+      const section: UnifiedRow["section"] =
+        sectionKey === "ienakosie" ||
+        sectionKey === "izejosie" ||
+        sectionKey === "automatiskie" ||
+        sectionKey === "fiziskie"
+          ? sectionKey
+          : "izejosie";
+
+      // For OUTGOING transactions without a matched invoice → red row
+      const isOutgoing =
+        section === "izejosie" ||
+        section === "automatiskie" ||
+        section === "fiziskie";
+      const isMissingInvoice = isOutgoing && !p.matchedInvoiceId;
+
+      all.push({
+        id: `pay:${p.id}`,
+        date: p.paymentDate,
+        counterparty: p.counterparty,
+        amount: section === "ienakosie" ? Math.abs(p.amount) : -p.amount,
+        section,
+        status: p.matchedInvoiceId ? "matched" : "no_invoice",
+        reference: p.bankReference || p.rawReference || "",
+        isMissingInvoice,
+      });
+    }
+
+    // Received invoices (we owe). Only include rows that are NOT
+    // already represented by a bank payment with a matched_invoice_id
+    // (avoids duplicate display: 'we paid X' shown both as the bank
+    // tx AND as the original invoice).
+    const matchedInvoiceIds = new Set(
+      bankPayments
+        .map((p) => p.matchedInvoiceId)
+        .filter((s): s is string => Boolean(s))
+    );
     for (const r of received) {
-      // Re-derive section from the source channel field if set,
-      // otherwise treat as plain izejosie.
+      if (matchedInvoiceIds.has(r.id)) continue;
+
       const section: UnifiedRow["section"] =
         r.sourceChannel === "internet"
           ? "automatiskie"
@@ -121,22 +169,21 @@ export function VisiMaksajumiTab() {
         id: `recv:${r.id}`,
         date: r.dueDate || r.createdAt.slice(0, 10),
         counterparty: r.supplier,
-        amount: -Math.abs(r.amount), // outgoing → negative for sort + sign display
+        amount: -Math.abs(r.amount),
         section,
         status: r.status,
         reference: r.invoiceNumber,
       });
     }
 
-    // Issued invoices (clients owe us). Show only those marked paid
-    // — unpaid ones are 'expected income', not 'payments yet'.
+    // Issued invoices marked paid (clients paid us)
     for (const i of issued) {
       if (i.status !== "apmaksats") continue;
       all.push({
         id: `iss:${i.id}`,
         date: i.date,
         counterparty: i.client,
-        amount: Math.abs(i.amount), // incoming → positive
+        amount: Math.abs(i.amount),
         section: "ienakosie",
         status: i.status,
         reference: i.number,
@@ -156,9 +203,7 @@ export function VisiMaksajumiTab() {
       });
     }
 
-    // Taxes — outgoing payments to the state. Tax has no 'period'
-    // field on the type, only dueDate; show the due date as the
-    // displayed date and reference.
+    // Taxes — outgoing payments to the state.
     for (const t of taxes) {
       all.push({
         id: `tax:${t.id}`,
@@ -173,7 +218,7 @@ export function VisiMaksajumiTab() {
 
     // Newest first
     return all.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [received, issued, salaries, taxes]);
+  }, [received, issued, salaries, taxes, bankPayments]);
 
   const totalIn = useMemo(
     () =>
@@ -189,11 +234,17 @@ export function VisiMaksajumiTab() {
         .reduce((sum, r) => sum + Math.abs(r.amount), 0),
     [rows]
   );
+  const missingReceiptsCount = useMemo(
+    () => rows.filter((r) => r.isMissingInvoice).length,
+    [rows]
+  );
+
+  const isLoading = loading || paymentsLoading;
 
   return (
     <div className="space-y-4">
-      {/* Top-line summary: total in / out / count */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Top-line summary: total in / out / count + missing-receipts warning */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <SummaryTile
           label="Kopā ienākošie"
           value={formatCurrency(totalIn)}
@@ -209,6 +260,11 @@ export function VisiMaksajumiTab() {
           value={String(rows.length)}
           tone="graphite"
         />
+        <SummaryTile
+          label="Nepiesaistīti rēķini"
+          value={String(missingReceiptsCount)}
+          tone={missingReceiptsCount > 0 ? "alert" : "graphite"}
+        />
       </div>
 
       {/* Unified table */}
@@ -219,11 +275,12 @@ export function VisiMaksajumiTab() {
           </h3>
           <p className="mt-0.5 text-[12.5px] text-graphite-500">
             Visu rēķinu, algu un nodokļu maksājumi vienkopus —
-            jaunākie augšā
+            jaunākie augšā. Sarkanās rindas ir bankas maksājumi bez
+            piesaistīta rēķina.
           </p>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="p-12 text-center text-[13px] text-graphite-500">
             Ielādē…
           </div>
@@ -245,23 +302,50 @@ export function VisiMaksajumiTab() {
                 const meta = SECTION_META[r.section];
                 const Icon = meta.icon;
                 return (
-                  <TableRow key={r.id}>
+                  <TableRow
+                    key={r.id}
+                    className={cn(
+                      r.isMissingInvoice &&
+                        "bg-red-50/60 hover:bg-red-50 border-l-2 border-l-red-400"
+                    )}
+                  >
                     <TableCell className="text-[12.5px] text-graphite-700 tabular whitespace-nowrap">
                       {formatDate(r.date)}
                     </TableCell>
                     <TableCell>
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium",
-                          meta.cls
+                      <div className="flex items-center gap-1.5">
+                        {r.isMissingInvoice && (
+                          <AlertCircle
+                            className="h-3.5 w-3.5 text-red-600 shrink-0"
+                            strokeWidth={2.25}
+                          />
                         )}
-                      >
-                        <Icon className="h-3 w-3" strokeWidth={2} />
-                        {meta.label}
-                      </span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium",
+                            meta.cls
+                          )}
+                        >
+                          <Icon className="h-3 w-3" strokeWidth={2} />
+                          {meta.label}
+                        </span>
+                      </div>
                     </TableCell>
-                    <TableCell className="text-[13px] font-medium text-graphite-900">
+                    <TableCell
+                      className={cn(
+                        "text-[13px] font-medium",
+                        r.isMissingInvoice
+                          ? "text-red-900"
+                          : "text-graphite-900"
+                      )}
+                    >
                       {r.counterparty || "—"}
+                      {r.isMissingInvoice && (
+                        <div className="text-[10.5px] text-red-700 font-normal mt-0.5">
+                          Trūkst rēķina — pievieno tabā &ldquo;
+                          {meta.label}&rdquo;
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-[12px] text-graphite-500 tabular">
                       {r.reference || "—"}
@@ -269,7 +353,11 @@ export function VisiMaksajumiTab() {
                     <TableCell
                       className={cn(
                         "text-right font-mono tabular text-[13px] font-semibold whitespace-nowrap",
-                        r.amount > 0 ? "text-emerald-700" : "text-graphite-900"
+                        r.isMissingInvoice
+                          ? "text-red-700"
+                          : r.amount > 0
+                            ? "text-emerald-700"
+                            : "text-graphite-900"
                       )}
                     >
                       {r.amount > 0 ? "+" : ""}
@@ -293,16 +381,20 @@ function SummaryTile({
 }: {
   label: string;
   value: string;
-  tone: "emerald" | "rose" | "graphite";
+  tone: "emerald" | "rose" | "graphite" | "alert";
 }) {
   const toneClass =
     tone === "emerald"
       ? "text-emerald-700"
       : tone === "rose"
         ? "text-rose-700"
-        : "text-graphite-900";
+        : tone === "alert"
+          ? "text-red-700"
+          : "text-graphite-900";
+  const cardClass =
+    tone === "alert" ? "p-4 border-red-300 bg-red-50/50" : "p-4";
   return (
-    <Card className="p-4">
+    <Card className={cardClass}>
       <div className="text-[11px] uppercase tracking-wider text-graphite-400 font-medium">
         {label}
       </div>

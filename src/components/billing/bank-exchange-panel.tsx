@@ -34,6 +34,7 @@ import {
   groupBySection,
   type PaymentSection,
 } from "@/lib/payment-classifier";
+import { usePayments } from "@/lib/payments-store";
 import { pushToastGlobally } from "@/lib/toast-context";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
@@ -73,6 +74,7 @@ export function BankExchangePanel({
     useBilling();
   const { activeCompany } = useCompany();
   const { employees } = useEmployees();
+  const { bulkCreate: bulkCreatePayments } = usePayments();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const copy = modeCopy[mode];
@@ -273,6 +275,62 @@ export function BankExchangePanel({
       .filter((s): s is string => Boolean(s));
     const classified = classifyAll(txs, knownSupplierIbans);
     const grouped = groupBySection(classified);
+
+    // Build a lookup: counterparty IBAN → received invoice ID for
+    // attaching matched_invoice_id during persistence. Falls back
+    // to amount+date matching when IBAN doesn't help.
+    const ibanToInvoiceId = new Map<string, string>();
+    for (const r of received) {
+      if (r.iban) {
+        ibanToInvoiceId.set(
+          r.iban.replace(/\s+/g, "").toUpperCase(),
+          r.id
+        );
+      }
+    }
+
+    // Persist each transaction to the 35_payments tab. The store
+    // handles the API roundtrips; this gives us a permanent record
+    // for the per-tab red 'missing receipt' warning UI.
+    if (mode === "received") {
+      const toCreate = classified.map(({ tx, section }) => {
+        const matchedIban = tx.counterpartyIban
+          ? ibanToInvoiceId.get(
+              tx.counterpartyIban.replace(/\s+/g, "").toUpperCase()
+            )
+          : undefined;
+        return {
+          direction: tx.amount >= 0 ? "out" : "in",
+          category: section,
+          counterparty: tx.counterparty || "Nezināms saņēmējs",
+          counterpartyIban: tx.counterpartyIban,
+          amount: Math.abs(tx.amount),
+          paymentDate: tx.date ?? "",
+          bankAccountIban: undefined,
+          bankReference: tx.reference || undefined,
+          source: "fidavista_import",
+          importedFromFilename: file.name,
+          classifiedSection: section,
+          matchedInvoiceId: matchedIban,
+          rawReference: tx.reference || "",
+        };
+      });
+
+      // Fire-and-forget the bulk insert. We don't await it before
+      // closing the panel — the user gets immediate feedback via
+      // toast, and the table refreshes when payments-store finishes
+      // its writes. Failures are surfaced via the store's own
+      // error handling.
+      void bulkCreatePayments(toCreate).then((saved) => {
+        if (saved < toCreate.length) {
+          pushToastGlobally(
+            "error",
+            `Saglabāti ${saved} no ${toCreate.length} maksājumiem. Pārējie neizdevās — pārbaudi shēmu /iestatijumi.`,
+            10000
+          );
+        }
+      });
+    }
 
     // Build human-readable toast summary
     const sectionLabels: Record<PaymentSection, string> = {

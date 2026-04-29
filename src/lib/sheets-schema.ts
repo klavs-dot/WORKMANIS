@@ -309,6 +309,25 @@ export const COMPANY_TABS = [
     ],
   },
   {
+    // Bank-imported transactions ledger.
+    //
+    // Originally designed as a generic 'payments' table; repurposed
+    // for the FIDAVISTA / camt.053 import flow where every parsed
+    // transaction is persisted here. Three reasons to persist:
+    //   1. So unmatched transactions don't disappear when the import
+    //      panel closes — user needs to attach receipts to them later
+    //   2. So we can show 'this bank tx → this invoice' relationships
+    //      in the UI without re-running matching every load
+    //   3. So duplicate imports are detectable (bank_reference is
+    //      unique-ish per bank)
+    //
+    // 'classified_section' holds the auto-classification result
+    // (ienakosie / izejosie / automatiskie / fiziskie) so each tab
+    // can filter directly without re-classifying on every render.
+    //
+    // 'matched_invoice_id' is the local invoice-in/invoice-out ID
+    // when the importer found an exact match; empty when no match.
+    // Empty + outgoing = the red 'missing receipt' warning row.
     name: "35_payments",
     idPrefix: "pay",
     cols: [
@@ -326,6 +345,10 @@ export const COMPANY_TABS = [
       "bank_reference",
       "source",
       "imported_from_csv_filename",
+      // Added 2026-04 for the FIDAVISTA import + classification flow:
+      "classified_section",
+      "matched_invoice_id",
+      "raw_reference",
     ],
   },
   {
