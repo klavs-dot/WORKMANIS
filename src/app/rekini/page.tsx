@@ -11,10 +11,12 @@ import {
   Landmark,
   Upload,
   Download,
+  LayoutGrid,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
 import { Button } from "@/components/ui/button";
+import { VisiMaksajumiTab } from "@/components/billing/visi-maksajumi-tab";
 import { IzejosieTab } from "@/components/billing/izejosie-tab";
 import { IenakosieTab } from "@/components/billing/ienakosie-tab";
 import { AutomatiskieTab } from "@/components/billing/automatiskie-tab";
@@ -26,6 +28,7 @@ import { useNotifications } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
 type TabKey =
+  | "visi"
   | "izejosie"
   | "ienakosie"
   | "automatiskie"
@@ -38,6 +41,7 @@ const tabs: {
   label: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
 }[] = [
+  { key: "visi", label: "Visi maksājumi", icon: LayoutGrid },
   { key: "izejosie", label: "Izejošie", icon: ArrowUpFromLine },
   { key: "ienakosie", label: "Ienākošie", icon: ArrowDownToLine },
   { key: "automatiskie", label: "Automātiskie & Internetā", icon: Globe },
@@ -47,7 +51,7 @@ const tabs: {
 ];
 
 export default function RekiniMaksajumiPage() {
-  const [tab, setTab] = useState<TabKey>("izejosie");
+  const [tab, setTab] = useState<TabKey>("visi");
   const notifications = useNotifications();
 
   // Bank exchange panel — single source of truth at page level so the
@@ -168,6 +172,7 @@ export default function RekiniMaksajumiPage() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
+            {tab === "visi" && <VisiMaksajumiTab />}
             {tab === "izejosie" && <IzejosieTab />}
             {tab === "ienakosie" && <IenakosieTab />}
             {tab === "automatiskie" && <AutomatiskieTab />}

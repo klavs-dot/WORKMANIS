@@ -25,6 +25,16 @@ import {
   type ParsedTransaction,
   type InvoiceMatch,
 } from "@/lib/bank-exchange";
+import {
+  parseBankStatementXML,
+  isBankStatementXML,
+} from "@/lib/bank-statement-xml";
+import {
+  classifyAll,
+  groupBySection,
+  type PaymentSection,
+} from "@/lib/payment-classifier";
+import { pushToastGlobally } from "@/lib/toast-context";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 
 export type BankExchangeMode = "received" | "salaries" | "taxes";
@@ -189,22 +199,121 @@ export function BankExchangePanel({
     setTimeout(() => setExportState("idle"), 2400);
   };
 
-  // ─── Import: parse uploaded CSV and match (received mode only) ───
-  const [parsedTxs, setParsedTxs] = useState<ParsedTransaction[]>([]);
-  const [matches, setMatches] = useState<InvoiceMatch[]>([]);
-  const [importStage, setImportStage] = useState<"idle" | "review">("idle");
+  // ─── Import: parse uploaded XML or CSV, classify, auto-apply ───
+  //
+  // The flow used to be 'parse CSV → show review screen → user clicks
+  // apply → mark matched invoices paid'. Per user request, we now:
+  //   1. Auto-detect FIDAVISTA / camt.053 / CSV from file content
+  //   2. Match all transactions against existing received invoices
+  //   3. Auto-mark exact matches as paid
+  //   4. Classify the rest into ienakosie/izejosie/automatiskie/
+  //      fiziskie buckets (the 4 tabs)
+  //   5. Close the panel immediately and show a toast summary
+  //
+  // No more manual review step — the file IS the source of truth.
+  // Wrong matches can still be undone in the underlying tab.
 
   const onFilePicked = async (file: File) => {
-    const text = await file.text();
-    const txs = parseBankStatementCSV(text);
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      pushToastGlobally("error", "Neizdevās nolasīt failu.", 7000);
+      return;
+    }
+
+    // Detect format. XML (FIDAVISTA / camt.053) is the preferred
+    // path because it's standardized across Latvian banks. CSV is
+    // a fallback that works but needs per-bank parser tweaks.
+    let txs: ParsedTransaction[];
+    try {
+      if (isBankStatementXML(text)) {
+        txs = parseBankStatementXML(text);
+      } else {
+        txs = parseBankStatementCSV(text);
+      }
+    } catch (err) {
+      pushToastGlobally(
+        "error",
+        err instanceof Error
+          ? err.message
+          : "Neatpazīts faila formāts.",
+        7000
+      );
+      return;
+    }
+
+    if (txs.length === 0) {
+      pushToastGlobally(
+        "error",
+        "Failā nav atrasta neviena transakcija.",
+        7000
+      );
+      return;
+    }
+
+    // Match against unpaid received invoices and auto-mark exact hits
     const m = matchTransactionsToInvoices(
       txs,
       received.filter((p) => p.status !== "apmaksats")
     );
-    setParsedTxs(txs);
-    setMatches(m);
-    setImportStage("review");
+    let appliedCount = 0;
+    for (const match of m) {
+      if (match.invoiceId && match.confidence === "exact") {
+        markReceivedPaid(match.invoiceId);
+        appliedCount++;
+      }
+    }
+
+    // Classify all transactions for the summary toast. Section
+    // counts let the user know what landed where without needing
+    // to navigate every tab to verify.
+    const knownSupplierIbans = received
+      .map((r) => r.iban)
+      .filter((s): s is string => Boolean(s));
+    const classified = classifyAll(txs, knownSupplierIbans);
+    const grouped = groupBySection(classified);
+
+    // Build human-readable toast summary
+    const sectionLabels: Record<PaymentSection, string> = {
+      ienakosie: "Ienākošie",
+      izejosie: "Izejošie",
+      automatiskie: "Automātiskie",
+      fiziskie: "Fiziskie",
+    };
+    const parts: string[] = [];
+    for (const [section, list] of Object.entries(grouped)) {
+      if (list.length > 0) {
+        parts.push(
+          `${sectionLabels[section as PaymentSection]}: ${list.length}`
+        );
+      }
+    }
+
+    const summary =
+      `Importēti ${txs.length} maksājumi. ` +
+      (appliedCount > 0
+        ? `Automātiski apstiprināti: ${appliedCount}. `
+        : "") +
+      parts.join(" · ");
+
+    pushToastGlobally("success", summary, 9000);
+
+    // Auto-close immediately. Reset internal state so a future open
+    // starts fresh.
+    setParsedTxs([]);
+    setMatches([]);
+    setImportStage("idle");
+    onOpenChange(false);
   };
+
+  // Legacy review-stage state, retained for the CSV path that some
+  // users may still use (when XML isn't available from their bank).
+  // Kept declared but no longer set by onFilePicked above — review
+  // mode is unreachable in the new flow.
+  const [parsedTxs, setParsedTxs] = useState<ParsedTransaction[]>([]);
+  const [matches, setMatches] = useState<InvoiceMatch[]>([]);
+  const [importStage, setImportStage] = useState<"idle" | "review">("idle");
 
   const applyMatches = () => {
     let applied = 0;
@@ -214,10 +323,15 @@ export function BankExchangePanel({
         applied++;
       }
     });
-    alert(`Atzīmēti kā apmaksāti: ${applied} rēķini`);
+    pushToastGlobally(
+      "success",
+      `Atzīmēti kā apmaksāti: ${applied} rēķini`,
+      6000
+    );
     setParsedTxs([]);
     setMatches([]);
     setImportStage("idle");
+    onOpenChange(false);
   };
 
   const exactCount = matches.filter((m) => m.confidence === "exact").length;
@@ -383,8 +497,10 @@ export function BankExchangePanel({
                   </h3>
                 </div>
                 <p className="text-[11.5px] text-graphite-500 mb-3 leading-relaxed">
-                  Lejupielādē CSV izrakstu no savas internetbankas un augšupielādē
-                  to šeit. Sistēma automātiski atrod, kuri rēķini tika apmaksāti.
+                  Lejupielādē <strong>FIDAVISTA XML</strong> izrakstu no savas
+                  internetbankas un augšupielādē to šeit. Sistēma automātiski
+                  apstiprinās apmaksātos rēķinus un sadalīs maksājumus pa
+                  sadaļām (Ienākošie, Izejošie, Automātiskie, Fiziskie).
                 </p>
 
                 {importStage === "idle" && (
@@ -395,15 +511,15 @@ export function BankExchangePanel({
                     >
                       <Upload className="h-5 w-5 text-graphite-400 mx-auto mb-2" />
                       <p className="text-[12.5px] font-medium text-graphite-900">
-                        Ievelc CSV failu vai spied izvēlēties
+                        Ievelc XML failu vai spied izvēlēties
                       </p>
                       <p className="text-[10.5px] text-graphite-500 mt-0.5">
-                        SEB · Swedbank · Citadele · Luminor
+                        FIDAVISTA · camt.053 · CSV · SEB · Swedbank · Citadele · Luminor
                       </p>
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".csv,text/csv"
+                        accept=".xml,.csv,application/xml,text/xml,text/csv"
                         className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
