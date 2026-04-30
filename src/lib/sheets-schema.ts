@@ -236,6 +236,13 @@ export const COMPANY_TABS = [
       "pn_akts",
       "pn_akts_source",
       "pn_akts_file_name",
+      // 2026-04 — added Drive file IDs for the per-card download/view
+      // feature. file_drive_id holds the invoice PDF; pn_akts_drive_id
+      // holds the PN akts PDF; delivery_note_drive_id holds the
+      // pavadzīme PDF. Empty string means no file uploaded yet.
+      "file_drive_id",
+      "pn_akts_drive_id",
+      "delivery_note_drive_id",
     ],
   },
   // 31_invoices_in: invoices you RECEIVE from suppliers (money
@@ -267,6 +274,11 @@ export const COMPANY_TABS = [
       // listed payment actually went through).
       "source_channel",
       "payment_evidence",
+      // 2026-04 — Drive file IDs for per-card download/view feature.
+      // file_drive_id holds the supplier invoice PDF; pn_akts_drive_id
+      // holds an associated PN akts PDF. Empty = no file uploaded.
+      "file_drive_id",
+      "pn_akts_drive_id",
     ],
   },
   {

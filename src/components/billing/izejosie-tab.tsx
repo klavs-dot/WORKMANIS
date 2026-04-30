@@ -70,6 +70,7 @@ import type {
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { EditReceivedModal } from "@/components/billing/edit-received-modal";
+import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
 
 // ============================================================
 // Helpers for matching parsed-invoice data against known parties
@@ -764,11 +765,27 @@ export function IzejosieTab() {
                           <Sparkles className="h-3 w-3" />
                           {hasMeta ? "Labot skaidrojumu" : "Skaidrojums"}
                         </Button>
+                        <InvoiceFileActions
+                          fileDriveId={p.fileDriveId}
+                          fileName={p.fileName}
+                          direction="received"
+                          invoiceDate={p.dueDate}
+                          size="icon"
+                          onFileUploaded={(driveFileId, originalName) => {
+                            // Persist the new Drive ID + original
+                            // filename to the invoice row so the
+                            // file shows up on subsequent loads
+                            updateReceived(p.id, {
+                              fileDriveId: driveFileId,
+                              fileName: originalName,
+                            });
+                          }}
+                        />
                         <Button
                           variant="ghost"
                           size="icon-sm"
                           onClick={() => setOpenedInvoice(p)}
-                          title="Apskatīt"
+                          title="Apskatīt detaļas"
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
@@ -844,16 +861,25 @@ export function IzejosieTab() {
 
               {/* Action bar */}
               <div className="flex flex-wrap justify-end gap-2 pt-4 mt-4 border-t border-graphite-100">
-                <Button variant="ghost" size="sm">
-                  <Download className="h-3.5 w-3.5" />
-                  Lejupielādēt rēķinu
-                </Button>
-                {openedInvoice.pnAkts && (
-                  <Button variant="ghost" size="sm">
-                    <Download className="h-3.5 w-3.5" />
-                    Lejupielādēt PN aktu
-                  </Button>
-                )}
+                <InvoiceFileActions
+                  fileDriveId={openedInvoice.fileDriveId}
+                  fileName={openedInvoice.fileName}
+                  direction="received"
+                  invoiceDate={openedInvoice.dueDate}
+                  onFileUploaded={(driveFileId, originalName) => {
+                    updateReceived(openedInvoice.id, {
+                      fileDriveId: driveFileId,
+                      fileName: originalName,
+                    });
+                    // Reflect locally so the modal updates without
+                    // waiting for the store roundtrip
+                    setOpenedInvoice({
+                      ...openedInvoice,
+                      fileDriveId: driveFileId,
+                      fileName: originalName,
+                    });
+                  }}
+                />
                 <Button
                   variant="secondary"
                   size="sm"

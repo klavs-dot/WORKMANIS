@@ -86,10 +86,18 @@ export interface ReceivedInvoice {
   dueDate: string;
   status: ReceivedInvoiceStatus;
   fileName?: string;
+  /** Drive file ID of the supplier invoice PDF. When set, the
+   *  invoice card UI shows working 'View' and 'Download' buttons.
+   *  When empty, those buttons are disabled with a tooltip
+   *  explaining no file has been uploaded yet. */
+  fileDriveId?: string;
   accountingMeta?: ReceivedInvoiceAccountingMeta;
   pnAkts?: string;
   pnAktsSource?: "generated" | "uploaded";
   pnAktsFileName?: string;
+  /** Drive file ID of the associated PN akts PDF (when uploaded
+   *  rather than generated). */
+  pnAktsDriveId?: string;
   /** How this invoice came into the system. Defaults to 'manual'
    *  for legacy records that pre-date this field. */
   sourceChannel?: InvoiceSourceChannel;
@@ -114,9 +122,16 @@ export interface IssuedInvoice {
   dueDate: string;
   status: IssuedInvoiceStatus;
   deliveryNote?: string;
+  /** Drive file ID of the issued invoice PDF (the document we
+   *  generated and sent to the client). */
+  fileDriveId?: string;
+  /** Drive file ID of the pavadzīme PDF, when one is attached. */
+  deliveryNoteDriveId?: string;
   pnAkts?: string;
   pnAktsSource?: "generated" | "uploaded";
   pnAktsFileName?: string;
+  /** Drive file ID of an uploaded PN akts PDF. */
+  pnAktsDriveId?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -239,6 +254,9 @@ interface ApiInvoiceOut {
   pnAkts: string | undefined;
   pnAktsSource: string | undefined;
   pnAktsFileName: string | undefined;
+  fileDriveId: string | undefined;
+  pnAktsDriveId: string | undefined;
+  deliveryNoteDriveId: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -266,6 +284,8 @@ interface ApiInvoiceIn {
     | undefined;
   sourceChannel: string | undefined;
   paymentEvidence: string | undefined;
+  fileDriveId: string | undefined;
+  pnAktsDriveId: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -311,6 +331,9 @@ function apiToIssued(a: ApiInvoiceOut): IssuedInvoice {
         ? a.pnAktsSource
         : undefined,
     pnAktsFileName: a.pnAktsFileName,
+    fileDriveId: a.fileDriveId,
+    deliveryNoteDriveId: a.deliveryNoteDriveId,
+    pnAktsDriveId: a.pnAktsDriveId,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
@@ -348,6 +371,8 @@ function apiToReceived(a: ApiInvoiceIn): ReceivedInvoice {
         ? channel
         : undefined,
     paymentEvidence: a.paymentEvidence || undefined,
+    fileDriveId: a.fileDriveId,
+    pnAktsDriveId: a.pnAktsDriveId,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
@@ -1043,9 +1068,11 @@ function receivedToBody(
     due_date: o.dueDate,
     status: "apstiprinat_banka",
     file_name: o.fileName ?? "",
+    file_drive_id: o.fileDriveId ?? "",
     pn_akts: o.pnAkts ?? "",
     pn_akts_source: o.pnAktsSource ?? "",
     pn_akts_file_name: o.pnAktsFileName ?? "",
+    pn_akts_drive_id: o.pnAktsDriveId ?? "",
     source_channel: o.sourceChannel ?? "manual",
     payment_evidence: o.paymentEvidence ?? "",
     ...(o.accountingMeta && {
@@ -1071,11 +1098,14 @@ function receivedPatchToBody(
   if (patch.dueDate !== undefined) body.due_date = patch.dueDate;
   if (patch.status !== undefined) body.status = patch.status;
   if (patch.fileName !== undefined) body.file_name = patch.fileName;
+  if (patch.fileDriveId !== undefined) body.file_drive_id = patch.fileDriveId;
   if (patch.pnAkts !== undefined) body.pn_akts = patch.pnAkts;
   if (patch.pnAktsSource !== undefined)
     body.pn_akts_source = patch.pnAktsSource ?? "";
   if (patch.pnAktsFileName !== undefined)
     body.pn_akts_file_name = patch.pnAktsFileName;
+  if (patch.pnAktsDriveId !== undefined)
+    body.pn_akts_drive_id = patch.pnAktsDriveId;
   if (patch.sourceChannel !== undefined)
     body.source_channel = patch.sourceChannel;
   if (patch.paymentEvidence !== undefined)
@@ -1109,6 +1139,9 @@ function issuedToBody(
     pn_akts: i.pnAkts ?? "",
     pn_akts_source: i.pnAktsSource ?? "",
     pn_akts_file_name: i.pnAktsFileName ?? "",
+    file_drive_id: i.fileDriveId ?? "",
+    delivery_note_drive_id: i.deliveryNoteDriveId ?? "",
+    pn_akts_drive_id: i.pnAktsDriveId ?? "",
   };
 }
 
@@ -1131,6 +1164,12 @@ function issuedPatchToBody(
     body.pn_akts_source = patch.pnAktsSource ?? "";
   if (patch.pnAktsFileName !== undefined)
     body.pn_akts_file_name = patch.pnAktsFileName;
+  if (patch.fileDriveId !== undefined)
+    body.file_drive_id = patch.fileDriveId;
+  if (patch.deliveryNoteDriveId !== undefined)
+    body.delivery_note_drive_id = patch.deliveryNoteDriveId;
+  if (patch.pnAktsDriveId !== undefined)
+    body.pn_akts_drive_id = patch.pnAktsDriveId;
   return body;
 }
 

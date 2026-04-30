@@ -29,6 +29,8 @@ interface ApiInvoiceIn {
     | undefined;
   sourceChannel: string | undefined;
   paymentEvidence: string | undefined;
+  fileDriveId: string | undefined;
+  pnAktsDriveId: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +61,8 @@ function parseUpdateBody(
     "pn_akts_file_name",
     "source_channel",
     "payment_evidence",
+    "file_drive_id",
+    "pn_akts_drive_id",
   ] as const;
   for (const key of stringFields) {
     const v = b[key];
@@ -134,6 +138,10 @@ function rowToApi(row: Record<string, unknown>): ApiInvoiceIn {
       ((row.source_channel as string) || undefined) as string | undefined,
     paymentEvidence:
       ((row.payment_evidence as string) || undefined) as string | undefined,
+    fileDriveId:
+      ((row.file_drive_id as string) || undefined) as string | undefined,
+    pnAktsDriveId:
+      ((row.pn_akts_drive_id as string) || undefined) as string | undefined,
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

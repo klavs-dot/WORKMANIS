@@ -50,6 +50,7 @@ import {
   deliveryNumberLabel,
 } from "@/lib/number-generator";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
+import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
 
 // ============================================================
 // FUTURE: Google Sheets integration
@@ -200,6 +201,22 @@ export function IenakosieTab() {
                             Pavadzīme
                           </span>
                         )}
+                        <InvoiceFileActions
+                          fileDriveId={inv.fileDriveId}
+                          fileName={`${inv.number}.pdf`}
+                          direction="issued"
+                          invoiceDate={inv.date}
+                          size="icon"
+                          onFileUploaded={(driveFileId, originalName) => {
+                            // Issued invoices we generate ourselves,
+                            // but the user can upload an alternative
+                            // PDF (e.g. signed copy from client) here
+                            updateIssued(inv.id, {
+                              fileDriveId: driveFileId,
+                            });
+                            void originalName;
+                          }}
+                        />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon-sm">
@@ -207,17 +224,6 @@ export function IenakosieTab() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="min-w-[200px]">
-                            <DropdownMenuItem>
-                              <FileText className="h-3.5 w-3.5 text-graphite-500" />
-                              Lejupielādēt rēķinu
-                            </DropdownMenuItem>
-                            {inv.deliveryNote && (
-                              <DropdownMenuItem>
-                                <Receipt className="h-3.5 w-3.5 text-emerald-600" />
-                                Lejupielādēt pavadzīmi
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={() => openEditInvoice(inv)}>
                               <Pencil className="h-3.5 w-3.5 text-graphite-500" />
                               Labot

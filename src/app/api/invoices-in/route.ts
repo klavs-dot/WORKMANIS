@@ -31,6 +31,8 @@ interface InvoiceInRow extends Record<string, string> {
   accounting_updated_at: string;
   source_channel: string;
   payment_evidence: string;
+  file_drive_id: string;
+  pn_akts_drive_id: string;
 }
 
 interface ApiInvoiceIn {
@@ -56,6 +58,8 @@ interface ApiInvoiceIn {
     | undefined;
   sourceChannel: string | undefined;
   paymentEvidence: string | undefined;
+  fileDriveId: string | undefined;
+  pnAktsDriveId: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +103,10 @@ function parseCreateBody(body: unknown): InvoiceInRow | null {
       typeof b.source_channel === "string" ? b.source_channel : "manual",
     payment_evidence:
       typeof b.payment_evidence === "string" ? b.payment_evidence : "",
+    file_drive_id:
+      typeof b.file_drive_id === "string" ? b.file_drive_id : "",
+    pn_akts_drive_id:
+      typeof b.pn_akts_drive_id === "string" ? b.pn_akts_drive_id : "",
   };
 }
 
@@ -139,6 +147,10 @@ function rowToApi(row: Record<string, unknown>): ApiInvoiceIn {
       ((row.source_channel as string) || undefined) as string | undefined,
     paymentEvidence:
       ((row.payment_evidence as string) || undefined) as string | undefined,
+    fileDriveId:
+      ((row.file_drive_id as string) || undefined) as string | undefined,
+    pnAktsDriveId:
+      ((row.pn_akts_drive_id as string) || undefined) as string | undefined,
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };
