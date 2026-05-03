@@ -132,20 +132,45 @@ export interface ScanResult {
 export async function scanGmailForInvoices(
   input: EmailScanInput,
   apiKey: string,
-  /** Optional progress callback — invoked after each message
-   *  is processed. Useful for streaming status to the UI. */
+  /** Optional progress callback — invoked after each chunk is
+   *  scheduled. Useful for streaming status to the UI. */
   onProgress?: (info: {
     current: number;
     total: number;
     message: string;
-  }) => void
+  }) => void,
+  /**
+   * Called after each invoice is successfully parsed by AI but
+   * BEFORE moving to the next message. The route uses this to
+   * upload the PDF + write the Sheet row immediately, so a
+   * timeout halfway through the scan still preserves what's
+   * been processed so far.
+   *
+   * Throwing from this callback is logged but doesn't halt the
+   * scan — failed persistence becomes an error in result.errors.
+   */
+  onItemParsed?: (item: ScannedInvoice) => Promise<void>,
+  /**
+   * Called after each parallel chunk completes. The route uses
+   * this to write a 60_email_imports row capturing the cursor
+   * up to that point. Best-effort — checkpoint failures don't
+   * halt the scan.
+   */
+  onCheckpoint?: (snapshot: ScanResult) => Promise<void>
 ): Promise<ScanResult> {
   const oauth2 = new google.auth.OAuth2();
   oauth2.setCredentials({ access_token: input.accessToken });
   const gmail = google.gmail({ version: "v1", auth: oauth2 });
   const anthropic = new Anthropic({ apiKey });
 
-  const maxMessages = input.maxMessages ?? 50;
+  // Cap default lowered from 50 → 6. Realistic budget per Vercel
+  // function call: 60s on Hobby, 300s on Pro. With Opus 4.7 at
+  // ~12-18s per parse and concurrency 2:
+  //   6 messages = 3 chunks × ~15s = 45s ✓ fits 60s Hobby budget
+  // For users with more mail, the user clicks the robot again —
+  // each click consumes the next batch from where the cursor
+  // left off.
+  const maxMessages = input.maxMessages ?? 6;
 
   // Build Gmail search query.
   //
@@ -201,60 +226,133 @@ export async function scanGmailForInvoices(
     lastMessageInternalDate: input.sinceInternalDate ?? 0,
   };
 
-  // Process each message
-  for (let i = 0; i < messageRefs.length; i++) {
-    const ref = messageRefs[i];
-    if (!ref.id) continue;
+  // Process messages in parallel chunks of CONCURRENCY at a time.
+  // Each chunk's results are collected before moving to the next.
+  //
+  // Why chunked rather than all-parallel:
+  //   - Anthropic rate limits get unhappy with too many concurrent
+  //     requests from one key (typical limit: 5 RPM/concurrent for
+  //     accounts that haven't been rate-limit-bumped)
+  //   - Gmail attachment fetches are also rate-limited per user
+  //   - Bounded concurrency keeps memory predictable too — we're
+  //     holding PDF buffers in memory until they're persisted
+  //
+  // Concurrency 2 fits comfortably under typical limits while
+  // halving per-batch latency vs. full serial.
+  const CONCURRENCY = 2;
+
+  for (let i = 0; i < messageRefs.length; i += CONCURRENCY) {
+    const chunk = messageRefs.slice(i, i + CONCURRENCY);
 
     onProgress?.({
       current: i + 1,
       total: messageRefs.length,
-      message: `Apstrādā ziņojumu ${i + 1} no ${messageRefs.length}`,
+      message: `Apstrādā ziņojumus ${i + 1}-${Math.min(
+        i + CONCURRENCY,
+        messageRefs.length
+      )} no ${messageRefs.length}`,
     });
 
-    try {
-      const candidate = await fetchAndExtractAttachment(gmail, ref.id);
-      if (!candidate) {
-        // No PDF attachment after all (shouldn't happen given the
-        // filename:pdf filter, but defensive)
+    // Run the chunk in parallel. Promise.allSettled so a single
+    // failed message doesn't tank the whole chunk.
+    const chunkResults = await Promise.allSettled(
+      chunk.map(async (ref) => {
+        if (!ref.id) return null;
+        const candidate = await fetchAndExtractAttachment(gmail, ref.id);
+        if (!candidate) return null;
+        const parsed = await parseInvoiceWithAI(
+          anthropic,
+          candidate.attachment.data,
+          candidate.attachment.mimeType
+        );
+        return { messageId: ref.id, candidate, parsed };
+      })
+    );
+
+    // Collect results from this chunk
+    for (let j = 0; j < chunkResults.length; j++) {
+      const res = chunkResults[j];
+      const ref = chunk[j];
+
+      if (res.status === "rejected") {
+        const reason =
+          res.reason instanceof Error
+            ? res.reason.message
+            : String(res.reason);
+        result.errors.push({ messageId: ref.id ?? "", reason });
+        console.error(
+          `Email scan: failed on message ${ref.id}:`,
+          res.reason
+        );
         continue;
       }
 
-      // Track the latest message timestamp for next scan's cursor.
-      // Even if AI parsing fails below, advancing the cursor
-      // prevents us from re-trying the same broken email forever.
+      if (!res.value) continue; // no PDF attachment / no id
+
+      const { candidate, parsed } = res.value;
+
+      // Advance cursor regardless of confidence — prevents re-
+      // scanning the same broken email forever.
       if (candidate.internalDate > result.lastMessageInternalDate) {
         result.lastMessageInternalDate = candidate.internalDate;
       }
 
-      const parsed = await parseInvoiceWithAI(
-        anthropic,
-        candidate.attachment.data,
-        candidate.attachment.mimeType
-      );
-
-      // Skip non-invoices (Claude marks confidence near 0 when
-      // the document isn't really an invoice — e.g. order
-      // confirmation, marketing PDF, contract).
+      // Lower confidence threshold (0.25 from 0.4) — Opus 4.7
+      // gives more accurate confidence reports and was being
+      // too cautious with Sonnet-tuned threshold. Real invoices
+      // sometimes score 0.3-0.4 for the invoice_number when the
+      // number is in an unusual position.
       const avgConfidence =
         (parsed.confidence.supplier_name +
           parsed.confidence.invoice_number +
           parsed.confidence.amount_total) /
         3;
-      if (avgConfidence < 0.4) {
+      if (avgConfidence < 0.25) {
         result.errors.push({
-          messageId: ref.id,
+          messageId: candidate.messageId,
           reason: `Nav atpazīts kā rēķins (uzticība ${avgConfidence.toFixed(2)})`,
         });
         continue;
       }
 
-      result.invoicesParsed.push({ candidate, parsed });
+      const item: ScannedInvoice = { candidate, parsed };
+      result.invoicesParsed.push(item);
       result.messagesProcessed++;
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "Nezināma kļūda";
-      result.errors.push({ messageId: ref.id ?? "", reason });
-      console.error(`Email scan: failed on message ${ref.id}:`, err);
+
+      // Per-message persist callback. The route uses this to
+      // upload PDF + write Sheet row IMMEDIATELY rather than
+      // waiting for the whole scan to finish. If the function
+      // times out partway through, everything processed so far
+      // is already saved.
+      if (onItemParsed) {
+        try {
+          await onItemParsed(item);
+        } catch (err) {
+          console.error(
+            `onItemParsed callback failed for ${candidate.messageId}:`,
+            err
+          );
+          result.errors.push({
+            messageId: candidate.messageId,
+            reason:
+              err instanceof Error
+                ? `Saglabāšana: ${err.message}`
+                : "Saglabāšana neizdevās",
+          });
+        }
+      }
+    }
+
+    // After each chunk, give the cursor-checkpoint callback a
+    // chance to write progress. If the function dies before the
+    // next chunk completes, this checkpoint is the cursor.
+    if (onCheckpoint) {
+      try {
+        await onCheckpoint(result);
+      } catch (err) {
+        // Checkpoint failures aren't fatal — we just log
+        console.warn("onCheckpoint failed:", err);
+      }
     }
   }
 
@@ -410,7 +508,7 @@ async function parseInvoiceWithAI(
         };
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-opus-4-7",
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],

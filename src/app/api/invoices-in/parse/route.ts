@@ -172,7 +172,7 @@ export async function POST(request: Request) {
   let response: Anthropic.Messages.Message;
   try {
     response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-opus-4-7",
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],

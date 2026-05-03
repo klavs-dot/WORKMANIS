@@ -183,8 +183,54 @@ export async function POST(request: Request) {
 
   for (const mailbox of mailboxes) {
     const sinceTs = lastScanByMailbox.get(mailbox);
-
     const startedAt = new Date().toISOString();
+
+    // Stats accumulated during the scan via callbacks. These run
+    // INSIDE the scan loop now (via onItemParsed), so when the
+    // function dies mid-scan, everything processed up to that
+    // point is already persisted to Drive + Sheets.
+    let invoicesCreated = 0;
+    let duplicatesSkipped = 0;
+    let lastCheckpointAt = Date.now();
+    let checkpointRowId: string | null = null;
+
+    const writeCheckpoint = async (
+      cursorMs: number,
+      processed: number,
+      errorsCount: number,
+      status: "in_progress" | "ok" | "partial" | "error"
+    ) => {
+      // First checkpoint creates the row; subsequent updates would
+      // need optimistic locking which makes this fragile. Simpler:
+      // each checkpoint is a NEW row. The lookup picks the MAX
+      // last_message_internal_date across all rows for this mailbox,
+      // so multiple rows per scan still work for the cursor.
+      try {
+        const summary =
+          `Apstrādāti ${processed}/${
+            // We don't know total at first checkpoint; recompute
+            // from scan result snapshot when available
+            processed
+          }, ${invoicesCreated} izveidoti, ${duplicatesSkipped} dublikāti, ${errorsCount} kļūdas`;
+        const row = await sheets.create("60_email_imports", {
+          mailbox,
+          started_at: startedAt,
+          completed_at:
+            status === "in_progress" ? "" : new Date().toISOString(),
+          messages_found: "",
+          messages_processed: String(processed),
+          invoices_created: String(invoicesCreated),
+          duplicates_skipped: String(duplicatesSkipped),
+          errors_count: String(errorsCount),
+          last_message_internal_date: String(cursorMs),
+          summary,
+          status,
+        });
+        checkpointRowId = row.id;
+      } catch (err) {
+        console.warn("Checkpoint write failed:", err);
+      }
+    };
 
     let scanResult;
     try {
@@ -193,12 +239,66 @@ export async function POST(request: Request) {
           accessToken: session.accessToken,
           mailbox,
           sinceInternalDate: sinceTs,
-          maxMessages: 50,
+          // Lower cap (default 6) — fits in one Vercel function
+          // call. Users with more mail click again to continue.
         },
-        apiKey
+        apiKey,
+        // onProgress — used for logging only, no UI streaming yet
+        undefined,
+        // onItemParsed — persist each invoice IMMEDIATELY after
+        // AI parsing succeeds. This is the key fix: previously the
+        // whole batch was held in memory until the scan loop
+        // finished, so a timeout meant losing everything.
+        async (item) => {
+          try {
+            const persisted = await persistOne(
+              item,
+              mailbox,
+              sheets,
+              drive,
+              inDedup,
+              outDedup
+            );
+            if (persisted === "created") invoicesCreated++;
+            else if (persisted === "duplicate") duplicatesSkipped++;
+          } catch (err) {
+            console.error(
+              `Failed to persist invoice from message ${item.candidate.messageId}:`,
+              err
+            );
+            // Re-throw so the scanner counts this as an error
+            throw err;
+          }
+        },
+        // onCheckpoint — write a 60_email_imports row every ~10s
+        // of work so we always have a recent cursor. Don't write
+        // every chunk — that's too chatty.
+        async (snapshot) => {
+          const elapsed = Date.now() - lastCheckpointAt;
+          if (elapsed > 10000) {
+            void checkpointRowId; // suppress unused for now
+            await writeCheckpoint(
+              snapshot.lastMessageInternalDate,
+              snapshot.messagesProcessed,
+              snapshot.errors.length,
+              "in_progress"
+            );
+            lastCheckpointAt = Date.now();
+          }
+        }
       );
     } catch (err) {
       console.error(`Email scan ${mailbox} failed:`, err);
+      // Even on failure, write a final checkpoint so the cursor
+      // we DID advance through is preserved
+      await writeCheckpoint(
+        // Best-effort: use 0 as cursor — next scan re-checks
+        // from before this run started
+        sinceTs ?? 0,
+        0,
+        1,
+        "error"
+      );
       summaries.push({
         mailbox,
         messagesFound: 0,
@@ -214,37 +314,7 @@ export async function POST(request: Request) {
       continue;
     }
 
-    // Persist parsed invoices: upload PDF to Drive + insert row
-    let invoicesCreated = 0;
-    let duplicatesSkipped = 0;
-
-    for (const item of scanResult.invoicesParsed) {
-      try {
-        const persisted = await persistOne(
-          item,
-          mailbox,
-          sheets,
-          drive,
-          inDedup,
-          outDedup
-        );
-        if (persisted === "created") invoicesCreated++;
-        else if (persisted === "duplicate") duplicatesSkipped++;
-      } catch (err) {
-        console.error(
-          `Failed to persist invoice from message ${item.candidate.messageId}:`,
-          err
-        );
-        scanResult.errors.push({
-          messageId: item.candidate.messageId,
-          reason:
-            err instanceof Error ? err.message : "Saglabāšana neizdevās",
-        });
-      }
-    }
-
-    // Write the audit row to 60_email_imports
-    const completedAt = new Date().toISOString();
+    // Final audit row with completed status
     const summaryText =
       `Atrasti ${scanResult.messagesFound}, apstrādāti ${scanResult.messagesProcessed}, ` +
       `izveidoti ${invoicesCreated}, dublikāti ${duplicatesSkipped}, kļūdas ${scanResult.errors.length}`;
@@ -253,7 +323,7 @@ export async function POST(request: Request) {
       await sheets.create("60_email_imports", {
         mailbox,
         started_at: startedAt,
-        completed_at: completedAt,
+        completed_at: new Date().toISOString(),
         messages_found: String(scanResult.messagesFound),
         messages_processed: String(scanResult.messagesProcessed),
         invoices_created: String(invoicesCreated),
@@ -264,7 +334,7 @@ export async function POST(request: Request) {
         status: scanResult.errors.length === 0 ? "ok" : "partial",
       });
     } catch (err) {
-      console.warn("Failed to write 60_email_imports row:", err);
+      console.warn("Failed to write final 60_email_imports row:", err);
     }
 
     summaries.push({

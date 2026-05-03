@@ -118,6 +118,20 @@ export function EmailImportRobotButton({
       const totalDup =
         (inbox?.duplicatesSkipped ?? 0) + (sent?.duplicatesSkipped ?? 0);
       const totalErrors = (inbox?.errors ?? 0) + (sent?.errors ?? 0);
+      const totalFound =
+        (inbox?.messagesFound ?? 0) + (sent?.messagesFound ?? 0);
+      const totalProcessed =
+        (inbox?.messagesProcessed ?? 0) + (sent?.messagesProcessed ?? 0);
+
+      // The scan caps each click at 6 messages per mailbox. If
+      // Gmail returned exactly the cap for a mailbox, there are
+      // probably more emails behind. Tell the user to click again.
+      const SCAN_CAP_PER_MAILBOX = 6;
+      const inboxCapped =
+        (inbox?.messagesFound ?? 0) >= SCAN_CAP_PER_MAILBOX;
+      const sentCapped =
+        (sent?.messagesFound ?? 0) >= SCAN_CAP_PER_MAILBOX;
+      const moreAvailable = inboxCapped || sentCapped;
 
       const parts: string[] = [];
       if (inbox && inbox.messagesFound > 0) {
@@ -129,17 +143,23 @@ export function EmailImportRobotButton({
       if (totalDup > 0) parts.push(`dublikāti: ${totalDup}`);
 
       let toastMessage: string;
-      if (totalCreated === 0 && totalDup === 0) {
+      if (totalFound === 0) {
         toastMessage = "Nav jaunu rēķinu e-pastā kopš pēdējās skenēšanas.";
+      } else if (totalCreated === 0 && totalDup === 0) {
+        toastMessage = `Atrasti ${totalFound} ziņojumi, bet neviens nebija atpazīts kā rēķins.`;
       } else {
         toastMessage = `Pievienoti ${totalCreated} rēķini${parts.length ? ` (${parts.join(", ")})` : ""}.`;
+        if (moreAvailable) {
+          toastMessage += " Spied robotu vēlreiz, lai turpinātu ar nākamajiem.";
+        }
       }
 
       pushToastGlobally(
         totalErrors > 0 ? "info" : "success",
         toastMessage,
-        9000
+        moreAvailable ? 12000 : 9000
       );
+      void totalProcessed; // currently unused but kept for future logging
       onComplete?.();
     } catch (err) {
       const msg =
