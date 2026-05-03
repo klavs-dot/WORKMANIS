@@ -24,6 +24,9 @@ import { VeikalaTab } from "@/components/billing/veikala-tab";
 import { AlgasTab } from "@/components/billing/algas-tab";
 import { NodokliTab } from "@/components/billing/nodokli-tab";
 import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
+import { EmailImportRobotButton } from "@/components/billing/email-import-robot-button";
+import { useBilling } from "@/lib/billing-store";
+import { usePayments } from "@/lib/payments-store";
 import { useNotifications } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +56,16 @@ const tabs: {
 export default function RekiniMaksajumiPage() {
   const [tab, setTab] = useState<TabKey>("visi");
   const notifications = useNotifications();
+  // Refresh hooks for the email-import button — when the scan
+  // finishes we need to re-fetch invoices + payments so the new
+  // rows show up without a manual page reload.
+  const { refresh: refreshBilling } = useBilling();
+  const { refresh: refreshPayments } = usePayments();
+
+  const handleEmailImportComplete = () => {
+    void refreshBilling();
+    void refreshPayments();
+  };
 
   // Bank exchange panel — separate state for each header button so
   // 'Uz banku' opens just the export view and 'No bankas' opens just
@@ -114,6 +127,23 @@ export default function RekiniMaksajumiPage() {
             </div>
           }
         />
+
+        {/* Email-import robot — sits between the page header and the
+            tab control. Its own row so the square card has room to
+            breathe; left-aligned. The tap target is large (140×140)
+            because this is THE primary 'pull stuff in' affordance
+            for the page and we want users to notice it. */}
+        <div className="flex items-start gap-4">
+          <EmailImportRobotButton onComplete={handleEmailImportComplete} />
+          <div className="flex-1 pt-1">
+            <p className="text-[12.5px] text-graphite-600 leading-relaxed max-w-md">
+              Spied robotu, lai AI ievelktu rēķinus no tava Gmail —
+              gan saņemtos (Iesūtne), gan tavus izsūtītos (Nosūtītie).
+              Pirmajā reizē ielādēs pēdējā mēneša rēķinus. Nākamreiz
+              tikai jaunos kopš pēdējās skenēšanas.
+            </p>
+          </div>
+        </div>
 
         {/* Segmented control */}
         <div className="overflow-x-auto -mx-1 px-1">

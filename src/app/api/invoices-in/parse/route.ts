@@ -67,7 +67,7 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 // asking-for-JSON because tool use guarantees the response shape
 // matches the schema — Claude can't accidentally include prose
 // or markdown around the JSON.
-const EXTRACT_TOOL = {
+export const EXTRACT_TOOL = {
   name: "save_invoice_data",
   description:
     "Save the structured invoice data extracted from the document. Call this exactly once with the extracted fields.",
@@ -244,7 +244,7 @@ const EXTRACT_TOOL = {
   },
 };
 
-const SYSTEM_PROMPT = `You are an expert at extracting structured data from Latvian invoices (rēķini).
+export const SYSTEM_PROMPT = `You are an expert at extracting structured data from Latvian invoices (rēķini).
 
 You'll be given an invoice as a PDF or image. Your job is to extract specific fields and call the save_invoice_data tool with the results.
 
@@ -266,7 +266,7 @@ If a field is genuinely missing from the document, use an empty string (or 0 for
 
 Be precise on amounts — invoice amounts are legally significant. If you can't read a digit clearly, mark amount_total confidence low.`;
 
-interface ParsedInvoice {
+export interface ParsedInvoice {
   supplier_name: string;
   supplier_reg_number: string;
   recipient_name: string;

@@ -443,6 +443,43 @@ export const COMPANY_TABS = [
     ],
   },
 
+  // 60 — email import sync state
+  //
+  // Tracks each Gmail scan run so we know:
+  //   - WHEN we last scanned (so the next scan only fetches
+  //     emails newer than this — we never re-scan the same period)
+  //   - WHICH mailbox (INBOX or SENT) — they're scanned
+  //     independently with different invoice direction defaults
+  //   - HOW many emails were found and how many actually became
+  //     invoice records (the gap is rejected non-invoice emails,
+  //     duplicates, etc.)
+  //
+  // One row per scan run. The last_message_internal_date column
+  // holds the largest Gmail internalDate (epoch millis as string)
+  // we processed in this run — the next run uses
+  // 'after:<seconds>' query to fetch only newer messages.
+  //
+  // First scan with no previous row → defaults to fetching the
+  // last 31 days. After that, every subsequent scan reads only
+  // since the previous run's last_message_internal_date.
+  {
+    name: "60_email_imports",
+    idPrefix: "emi",
+    cols: [
+      "mailbox",
+      "started_at",
+      "completed_at",
+      "messages_found",
+      "messages_processed",
+      "invoices_created",
+      "duplicates_skipped",
+      "errors_count",
+      "last_message_internal_date",
+      "summary",
+      "status",
+    ],
+  },
+
   // 99 — audit log
   {
     name: "99_audit_log",

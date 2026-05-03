@@ -204,6 +204,12 @@ interface BillingStore {
   addTax: (t: Omit<Tax, "id">) => void;
   updateTax: (id: string, patch: Partial<Tax>) => void;
 
+  /** Force re-fetch of all data from the API. Used after operations
+   *  that bulk-create rows server-side (e.g. email import) so the
+   *  UI immediately reflects the new state without waiting for a
+   *  page refresh. */
+  refresh: () => Promise<void>;
+
   loading: boolean;
 }
 
@@ -1038,6 +1044,13 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 
     addTax,
     updateTax,
+
+    refresh: async () => {
+      const id = activeCompany?.id;
+      if (id) {
+        await fetchAll(id);
+      }
+    },
 
     loading,
   };
