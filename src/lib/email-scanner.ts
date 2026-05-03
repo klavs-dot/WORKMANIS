@@ -47,7 +47,7 @@ import {
   EXTRACT_TOOL,
   SYSTEM_PROMPT,
   type ParsedInvoice,
-} from "@/app/api/invoices-in/parse/route";
+} from "@/lib/invoice-extraction";
 
 // ============================================================
 // Types
