@@ -23,6 +23,7 @@ import {
   formatRequisites,
   hasRequisites,
 } from "@/lib/company-requisites";
+import { buildDriveFileUrl } from "@/lib/drive-files";
 import { cn } from "@/lib/utils";
 import type { Company, CopyFormat } from "@/lib/types";
 
@@ -31,7 +32,6 @@ export default function UznemumiPage() {
     companies,
     activeCompany,
     setActiveCompany,
-    updateCompany,
     upsertCompany,
   } = useCompany();
   const [editing, setEditing] = useState<Company | null>(null);
@@ -51,11 +51,6 @@ export default function UznemumiPage() {
     } catch {
       showToast("Kopēšana neizdevās");
     }
-  };
-
-  const handleSave = (patch: Partial<Company>) => {
-    if (!editing) return;
-    updateCompany(editing.id, patch);
   };
 
   const handleSelectActive = (company: Company) => {
@@ -97,7 +92,6 @@ export default function UznemumiPage() {
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}
         company={editing}
-        onSave={handleSave}
       />
 
       {/* Add new company modal */}
@@ -184,7 +178,18 @@ function CompanyRow({
       >
         {/* ============ LEFT COLUMN: logo + name ============ */}
         <div className="flex items-center gap-3.5 min-w-0">
-          {company.logoUrl ? (
+          {company.logoDriveId ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={buildDriveFileUrl(
+                company.logoDriveId,
+                company.id,
+                "view"
+              )}
+              alt={company.name}
+              className="h-11 w-11 shrink-0 rounded-xl object-cover bg-white border border-graphite-200"
+            />
+          ) : company.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={company.logoUrl}

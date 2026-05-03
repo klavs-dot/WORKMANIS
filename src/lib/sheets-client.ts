@@ -195,6 +195,58 @@ export class SheetsClient {
   }
 
   /**
+   * Insert a new row WITH A SPECIFIC ID rather than auto-generating
+   * one. Used for singleton tabs where there's a known fixed id
+   * (e.g. 01_requisites where there's only ever one row per
+   * company and the id is always 'req-001').
+   *
+   * Doesn't check for duplicates — caller is expected to verify
+   * the id doesn't already exist before calling. Use update() for
+   * the existing-row case.
+   */
+  async createWithFixedId<T = Record<string, unknown>>(
+    table: TableName,
+    id: string,
+    data: CreateInput<T>
+  ): Promise<Row<T>> {
+    const schema = getTableSchema(table);
+    const now = new Date().toISOString();
+
+    const row: Row<T> = {
+      id,
+      created_at: now,
+      updated_at: now,
+      deleted_at: "",
+      ...data,
+    } as Row<T>;
+
+    const allCols = ["id", "created_at", "updated_at", "deleted_at", ...schema.cols];
+    const values = [
+      allCols.map((col) => {
+        const v = (row as Record<string, unknown>)[col];
+        return v === undefined ? "" : String(v);
+      }),
+    ];
+
+    await this.sheets.spreadsheets.values.append({
+      spreadsheetId: this.config.spreadsheetId,
+      range: `${table}!A:Z`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values },
+    });
+
+    await this.writeAuditLog({
+      action: "create",
+      entity_table: table,
+      entity_id: id,
+      changes_json: JSON.stringify(row),
+    });
+
+    return row;
+  }
+
+  /**
    * Update fields on an existing row. Requires expected_updated_at
    * for optimistic locking — if the row was modified after the
    * caller read it, the update is rejected.

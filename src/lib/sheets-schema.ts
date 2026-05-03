@@ -27,6 +27,23 @@ export interface TableSchema {
 
 export const COMPANY_TABS = [
   // 01 — company core
+  //
+  // Single-row tab holding the active company's full requisites
+  // (legal name, registration numbers, addresses, contact details,
+  // bank info, logo). One row per company; the row is upserted on
+  // edit. The id is always 'req-001' so we always know which row
+  // to update.
+  //
+  // The fields here are the SOURCE OF TRUTH for the company's
+  // identity. Anything that displays company info (invoice PDFs,
+  // PN akts headers, dashboard sidebar, copy-requisites buttons)
+  // reads from this row, NOT from the account-master 01_companies
+  // tab — that one only has the minimum needed to find this sheet
+  // (id, slug, sheet_id, folder_id).
+  //
+  // logo_drive_id stores the file ID of the uploaded logo (PNG/
+  // SVG) under the company root folder's logos/ subdirectory.
+  // The img src renders via /api/drive/files/[id]?company_id=X.
   {
     name: "01_requisites",
     idPrefix: "req",
@@ -35,11 +52,14 @@ export const COMPANY_TABS = [
       "legal_name",
       "reg_number",
       "vat_number",
-      "address",
+      "legal_address",
+      "delivery_address",
+      "contact_email",
+      "invoice_email",
       "iban",
-      "bic",
+      "bank_name",
+      "swift",
       "phone",
-      "email",
       "website",
       "logo_drive_id",
       "director_name",

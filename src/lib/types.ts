@@ -36,6 +36,11 @@ export interface Company extends CompanyRequisites {
   name: string;
   color?: string; // tailwind class suffix for subtle identification
   logoUrl?: string;
+  /** Drive file ID of the uploaded logo (PNG/SVG). When set, the
+   *  UI renders the logo via /api/drive/files/{id}?company_id=X
+   *  rather than via logoUrl. logoUrl is kept for legacy/external
+   *  hosting; logoDriveId is the preferred path going forward. */
+  logoDriveId?: string;
   activeInvoices?: number;
   subscriptions?: number;
   monthlySpend?: number;

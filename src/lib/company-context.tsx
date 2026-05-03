@@ -32,7 +32,36 @@ interface CompanyContextValue {
   activeCompany: Company | null;
   setActiveCompany: (id: string) => void;
   clearActiveCompany: () => void;
+  /**
+   * Update the LOCAL company state. Does NOT persist to Sheets —
+   * use saveRequisites for that.
+   *
+   * Use this only for local-only fields like sidebar metadata
+   * that don't need to round-trip through the backend, OR after
+   * a successful saveRequisites call to reflect the new data
+   * locally without re-fetching.
+   */
   updateCompany: (id: string, patch: Partial<Company>) => void;
+  /**
+   * Persist requisites (legal name, addresses, bank info, logo)
+   * to the company's 01_requisites sheet AND update local state
+   * on success. Returns true on success, throws on error.
+   *
+   * This is the function the requisites modal Save button should
+   * call — it does both the API write and the local update.
+   */
+  saveRequisites: (
+    id: string,
+    patch: Partial<Company>
+  ) => Promise<void>;
+  /**
+   * Load full requisites for a company from its 01_requisites
+   * sheet. Used by the modal on open to pre-populate fields with
+   * the latest persisted values (rather than relying on the
+   * sparse list-route data which only has name / legalName /
+   * regNumber / vatNumber).
+   */
+  loadRequisites: (id: string) => Promise<Partial<Company>>;
   /** Replace/add a company in local state (called after successful API create) */
   upsertCompany: (company: Company) => void;
   /** Force re-fetch from Sheets */
@@ -163,6 +192,125 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /**
+   * Persist requisites to the company's 01_requisites sheet, then
+   * update local state on success. The two-step (API → local) is
+   * deliberate: if the API call fails, we don't want stale-but-
+   * unsynced data in localStorage that the user thinks is saved.
+   */
+  const saveRequisites = async (
+    id: string,
+    patch: Partial<Company>
+  ): Promise<void> => {
+    // Pick out the fields the requisites endpoint accepts.
+    // Filter out undefined so we don't accidentally clear fields
+    // that the caller didn't change.
+    const body: Record<string, unknown> = {};
+    const fields: Array<keyof Company> = [
+      "name",
+      "legalName",
+      "regNumber",
+      "vatNumber",
+      "legalAddress",
+      "deliveryAddress",
+      "contactEmail",
+      "invoiceEmail",
+      "iban",
+      "bankName",
+      "swift",
+      "phone",
+      "website",
+      "logoDriveId",
+    ];
+    for (const f of fields) {
+      const v = patch[f];
+      if (v !== undefined) body[f] = v;
+    }
+
+    const res = await fetch(
+      `/api/companies/requisites?company_id=${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!res.ok) {
+      const errBody = await res
+        .json()
+        .catch(() => ({ error: `HTTP ${res.status}` }));
+      const message =
+        typeof errBody?.error === "string"
+          ? errBody.error
+          : `Saglabāšana neizdevās (${res.status})`;
+      throw new Error(message);
+    }
+
+    // Reflect locally only after successful API write
+    updateCompany(id, patch);
+  };
+
+  /**
+   * Fetch the full requisites for a company. Returns a partial
+   * Company patch ready to merge into local state. Empty object
+   * if the company has no requisites yet (first-time visit).
+   */
+  const loadRequisites = async (id: string): Promise<Partial<Company>> => {
+    const res = await fetch(
+      `/api/companies/requisites?company_id=${encodeURIComponent(id)}`,
+      { method: "GET", cache: "no-store" }
+    );
+    if (!res.ok) {
+      // Don't throw on read errors — modal can still open with
+      // whatever data is already in local state. Just log.
+      console.warn(`Load requisites failed: ${res.status}`);
+      return {};
+    }
+    const data = (await res.json()) as {
+      requisites: {
+        name: string;
+        legalName: string;
+        regNumber: string;
+        vatNumber: string;
+        legalAddress: string;
+        deliveryAddress: string;
+        contactEmail: string;
+        invoiceEmail: string;
+        iban: string;
+        bankName: string;
+        swift: string;
+        phone: string;
+        website: string;
+        logoDriveId: string;
+      };
+    };
+    const r = data.requisites;
+    // Convert empty strings to undefined so the type's optional
+    // fields stay clean
+    const patch: Partial<Company> = {};
+    if (r.name) patch.name = r.name;
+    if (r.legalName) patch.legalName = r.legalName;
+    if (r.regNumber) patch.regNumber = r.regNumber;
+    if (r.vatNumber) patch.vatNumber = r.vatNumber;
+    if (r.legalAddress) patch.legalAddress = r.legalAddress;
+    if (r.deliveryAddress) patch.deliveryAddress = r.deliveryAddress;
+    if (r.contactEmail) patch.contactEmail = r.contactEmail;
+    if (r.invoiceEmail) patch.invoiceEmail = r.invoiceEmail;
+    if (r.iban) patch.iban = r.iban;
+    if (r.bankName) patch.bankName = r.bankName;
+    if (r.swift) patch.swift = r.swift;
+    if (r.phone) patch.phone = r.phone;
+    if (r.website) patch.website = r.website;
+    if (r.logoDriveId) patch.logoDriveId = r.logoDriveId;
+
+    // Reflect into local state so the next render sees the data
+    if (Object.keys(patch).length > 0) {
+      updateCompany(id, patch);
+    }
+    return patch;
+  };
+
   const upsertCompany = (company: Company) => {
     setCompanies((prev) => {
       const existingIdx = prev.findIndex((c) => c.id === company.id);
@@ -188,6 +336,8 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         setActiveCompany,
         clearActiveCompany,
         updateCompany,
+        saveRequisites,
+        loadRequisites,
         upsertCompany,
         refresh,
         hydrated,

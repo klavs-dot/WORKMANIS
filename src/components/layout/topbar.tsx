@@ -11,6 +11,38 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCompany } from "@/lib/company-context";
+import { buildDriveFileUrl } from "@/lib/drive-files";
+
+/**
+ * CompanyAvatar — square 5x5 avatar showing logo if uploaded,
+ * initials fallback otherwise. Used both in the active-company
+ * trigger and in the dropdown list.
+ */
+function CompanyAvatar({
+  name,
+  logoDriveId,
+  companyId,
+}: {
+  name: string;
+  logoDriveId?: string;
+  companyId: string;
+}) {
+  if (logoDriveId) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={buildDriveFileUrl(logoDriveId, companyId, "view")}
+        alt={name}
+        className="h-5 w-5 rounded-md object-cover"
+      />
+    );
+  }
+  return (
+    <div className="flex h-5 w-5 items-center justify-center rounded-md bg-graphite-900 text-white text-[9px] font-semibold">
+      {name.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
 
 export function Topbar() {
   const { companies, activeCompany, setActiveCompany } = useCompany();
@@ -31,9 +63,11 @@ export function Topbar() {
           {activeCompany && (
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-2 h-9 px-3 rounded-lg border border-graphite-200 bg-white text-[12.5px] font-medium text-graphite-700 hover:border-graphite-300 transition-colors focus:outline-none">
-                <div className="flex h-5 w-5 items-center justify-center rounded-md bg-graphite-900 text-white text-[9px] font-semibold">
-                  {activeCompany.name.slice(0, 2).toUpperCase()}
-                </div>
+                <CompanyAvatar
+                  name={activeCompany.name}
+                  logoDriveId={activeCompany.logoDriveId}
+                  companyId={activeCompany.id}
+                />
                 <span className="truncate max-w-[160px]">
                   {activeCompany.name}
                 </span>
@@ -47,9 +81,11 @@ export function Topbar() {
                     key={c.id}
                     onSelect={() => setActiveCompany(c.id)}
                   >
-                    <div className="flex h-5 w-5 items-center justify-center rounded-md bg-graphite-900 text-white text-[9px] font-semibold">
-                      {c.name.slice(0, 2).toUpperCase()}
-                    </div>
+                    <CompanyAvatar
+                      name={c.name}
+                      logoDriveId={c.logoDriveId}
+                      companyId={c.id}
+                    />
                     <span className="flex-1 truncate">{c.name}</span>
                     {activeCompany.id === c.id && (
                       <Check className="h-3.5 w-3.5" />
