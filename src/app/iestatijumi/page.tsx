@@ -54,6 +54,64 @@ const sections = [
   { id: "email", label: "E-pasta importēšana", icon: Mail },
 ];
 
+/**
+ * Safely parse a fetch Response as JSON, with helpful error
+ * messages for the common server-side failure modes.
+ *
+ * Why a wrapper instead of plain res.json():
+ *   - Vercel function timeouts return an EMPTY body (not JSON).
+ *     Plain res.json() throws 'Unexpected end of JSON input'
+ *     which is opaque — the user sees that and can't tell that
+ *     the actual problem was a timeout.
+ *   - 502/504 gateway errors sometimes return HTML error pages
+ *     instead of JSON, same problem.
+ *   - We want a single clean error message the caller can show.
+ *
+ * Returns the parsed JSON on success. Throws Error with a
+ * human-readable message on any failure, including:
+ *   - empty body         → 'Serveris atbildēja tukšu (iespējams, timeout)'
+ *   - non-JSON body      → 'Servera kļūda (HTTP {status})'
+ *   - 4xx/5xx with JSON  → uses the body's .error field
+ */
+async function safeJsonResponse<T = Record<string, unknown>>(
+  res: Response
+): Promise<T> {
+  // Read as text first so we can detect empty / non-JSON bodies
+  const text = await res.text();
+
+  if (!text) {
+    if (res.status === 504 || res.status === 408) {
+      throw new Error(
+        "Pieprasījums pārsniedza laika limitu. Pamēģini vēlreiz vai atver Google Sheets manuāli."
+      );
+    }
+    throw new Error(
+      `Serveris atbildēja tukšu (HTTP ${res.status}). Iespējams, funkcija pārsniedza laika limitu — pamēģini vēlreiz.`
+    );
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // Server returned HTML or plain text (e.g. Vercel error page)
+    if (!res.ok) {
+      throw new Error(`Servera kļūda (HTTP ${res.status})`);
+    }
+    throw new Error("Servera atbilde nav JSON");
+  }
+
+  if (!res.ok) {
+    const err =
+      data && typeof data === "object" && "error" in data
+        ? String((data as { error: unknown }).error)
+        : `HTTP ${res.status}`;
+    throw new Error(err);
+  }
+
+  return data as T;
+}
+
 export default function IestatijumiPage() {
   const [active, setActive] = useState("general");
 
@@ -400,10 +458,7 @@ function DataManagementSettings() {
         `/api/companies/repair?company_id=${encodeURIComponent(activeCompany.id)}`,
         { method: "POST" }
       );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Neparedzēta kļūda");
-      }
+      const data = await safeJsonResponse<{ message?: string }>(res);
       setRepairState({
         kind: "success",
         message: data.message ?? "Shēma atjaunināta",
@@ -432,11 +487,8 @@ function DataManagementSettings() {
         `/api/health?company_id=${encodeURIComponent(activeCompany.id)}`,
         { cache: "no-store" }
       );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Neparedzēta kļūda");
-      }
-      setHealthState({ kind: "success", report: data as HealthReport });
+      const data = await safeJsonResponse<HealthReport>(res);
+      setHealthState({ kind: "success", report: data });
     } catch (err) {
       setHealthState({
         kind: "error",
@@ -459,11 +511,8 @@ function DataManagementSettings() {
         `/api/audit-log?company_id=${encodeURIComponent(activeCompany.id)}&limit=50`,
         { cache: "no-store" }
       );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Neparedzēta kļūda");
-      }
-      setAuditState({ kind: "success", report: data as AuditReport });
+      const data = await safeJsonResponse<AuditReport>(res);
+      setAuditState({ kind: "success", report: data });
     } catch (err) {
       setAuditState({
         kind: "error",

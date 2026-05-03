@@ -29,7 +29,10 @@ import { resolveCompany } from "@/lib/resolve-company";
 import { createSheetsClient } from "@/lib/sheets-client";
 import { COMPANY_TABS } from "@/lib/sheets-schema";
 
-export const maxDuration = 30;
+// 60s — health check reads ~25 tabs in parallel, but if any tab
+// has thousands of rows the per-tab read can take 2-3s. Was 30s
+// which was tight; bumped after seeing timeout errors in prod.
+export const maxDuration = 60;
 
 interface TabReport {
   tab: string;

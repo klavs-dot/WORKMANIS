@@ -36,7 +36,16 @@ import { COMPANY_TABS } from "@/lib/sheets-schema";
 
 import { reconcileSchemaForSheet } from "@/lib/provisioning";
 
-export const maxDuration = 60;
+// 300s — schema repair iterates through ~25 tabs, each requiring
+// 1-3 Sheets API calls. On a fresh company sheet (Path A — write
+// fresh headers + styling) it's ~25 × 2s = 50s. On an old sheet
+// undergoing migration (Path B — insert missing columns) it's
+// closer to 25 × 4-6s = 100-150s because each missing column needs
+// an insertDimension batchUpdate per tab. The previous 60s was too
+// tight and was failing on production with empty responses
+// (Vercel-killed mid-request) — those surfaced as "Unexpected end
+// of JSON input" errors in the client.
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const session = await auth();
