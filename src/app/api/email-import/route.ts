@@ -319,6 +319,11 @@ export async function POST(request: Request) {
       `Atrasti ${scanResult.messagesFound}, apstrādāti ${scanResult.messagesProcessed}, ` +
       `izveidoti ${invoicesCreated}, dublikāti ${duplicatesSkipped}, kļūdas ${scanResult.errors.length}`;
 
+    console.log(
+      `[email-import] FINAL mailbox=${mailbox} ${summaryText}. ` +
+        `Errors: ${scanResult.errors.map((e) => e.reason).join("; ")}`
+    );
+
     try {
       await sheets.create("60_email_imports", {
         mailbox,

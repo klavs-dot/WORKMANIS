@@ -223,6 +223,10 @@ export async function scanGmailForInvoices(
   // List matching message IDs. Single page only — we cap at
   // maxMessages anyway, and pagination would make progress
   // tracking awkward for the UI.
+  console.log(
+    `[email-scan] mailbox=${input.mailbox} query="${q}" maxMessages=${maxMessages}`
+  );
+
   const listRes = await gmail.users.messages.list({
     userId: "me",
     q,
@@ -230,6 +234,10 @@ export async function scanGmailForInvoices(
   });
 
   const messageRefs = listRes.data.messages ?? [];
+  console.log(
+    `[email-scan] mailbox=${input.mailbox} Gmail returned ${messageRefs.length} messages`
+  );
+
   const result: ScanResult = {
     mailbox: input.mailbox,
     messagesFound: messageRefs.length,
@@ -311,18 +319,42 @@ export async function scanGmailForInvoices(
         continue;
       }
       if (!res.value) continue;
-      const { triage } = res.value;
-      // Accept invoices and payment confirmations. Skip
-      // 'reminder' (just a notification, not a new invoice) and
-      // 'other' (not financially relevant).
+      const { triage, fetched } = res.value;
+
+      // Log every triage decision so we can see from Vercel logs
+      // why emails are being included or excluded.
+      console.log(
+        `[email-triage] subject="${fetched.subject.slice(0, 60)}" type=${triage.type} conf=${triage.confidence.toFixed(2)} reason="${triage.reasoning?.slice(0, 80) ?? ""}"`
+      );
+
+      // Accept invoices, payment confirmations, AND reminders.
+      // The original logic skipped reminders, but in practice
+      // many "reminder" emails actually contain the full invoice
+      // info inline (e.g. monthly subscription "your invoice is
+      // ready" emails) and are worth ingesting. Better to
+      // dedupe later than to miss data.
+      //
+      // Confidence threshold lowered to 0.4 — Haiku's confidence
+      // is well-calibrated and 0.5 was rejecting borderline
+      // cases unnecessarily.
       if (
-        (triage.type === "invoice" || triage.type === "payment_confirmation") &&
-        triage.confidence >= 0.5
+        (triage.type === "invoice" ||
+          triage.type === "payment_confirmation" ||
+          triage.type === "reminder") &&
+        triage.confidence >= 0.4
       ) {
         triaged.push(res.value);
+      } else {
+        console.log(
+          `[email-triage] SKIPPED type=${triage.type} conf=${triage.confidence.toFixed(2)}`
+        );
       }
     }
   }
+
+  console.log(
+    `[email-scan] mailbox=${input.mailbox} triaged ${triaged.length}/${messageRefs.length} emails as financially relevant`
+  );
 
   // ───── STAGE 2: full extraction on triage-flagged emails ─────
   for (let i = 0; i < triaged.length; i += EXTRACT_CONCURRENCY) {
@@ -419,17 +451,33 @@ export async function scanGmailForInvoices(
 
       const { candidate, parsed } = res.value;
 
-      // Lower confidence threshold (0.25 from 0.4) — Opus 4.7
-      // gives more accurate confidence reports and was being
-      // too cautious with Sonnet-tuned threshold. Real invoices
-      // sometimes score 0.3-0.4 for the invoice_number when the
-      // number is in an unusual position.
+      // Defensive: confidence object might be missing from a
+      // schema-violating tool response. Fall back to 0.
+      const conf = parsed.confidence ?? {
+        supplier_name: 0,
+        invoice_number: 0,
+        amount_total: 0,
+      };
       const avgConfidence =
-        (parsed.confidence.supplier_name +
-          parsed.confidence.invoice_number +
-          parsed.confidence.amount_total) /
+        ((conf.supplier_name ?? 0) +
+          (conf.invoice_number ?? 0) +
+          (conf.amount_total ?? 0)) /
         3;
-      if (avgConfidence < 0.25) {
+
+      // Log what AI extracted so we can debug from Vercel logs
+      console.log(
+        `[email-scan] msg=${candidate.messageId} subject="${candidate.subject.slice(0, 60)}" supplier="${parsed.supplier_name ?? "?"}" amount=${parsed.amount_total ?? 0} conf=${avgConfidence.toFixed(2)}`
+      );
+
+      // Lowered threshold from 0.25 → 0.15. We already gate by
+      // Haiku triage (which only flags actual invoices), so the
+      // extraction-stage threshold can be looser. Many real
+      // Latvian invoices have unusual layouts that score 0.2-0.3
+      // on individual fields even when correctly extracted.
+      if (avgConfidence < 0.15) {
+        console.warn(
+          `[email-scan] REJECTED msg=${candidate.messageId} confidence too low: ${avgConfidence.toFixed(2)}`
+        );
         result.errors.push({
           messageId: candidate.messageId,
           reason: `Nav atpazīts kā rēķins (uzticība ${avgConfidence.toFixed(2)})`,
@@ -915,7 +963,7 @@ async function parseInvoiceFromText(
       : "This is an invoice in email body text. Extract the standard invoice fields.";
 
   const response = await anthropic.messages.create({
-    model: "claude-opus-4-7",
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],
@@ -933,7 +981,15 @@ async function parseInvoiceFromText(
       block.type === "tool_use" && block.name === "save_invoice_data"
   );
   if (!toolUse) {
-    throw new Error("AI neatgrieza strukturētus datus");
+    // Log the actual response for debugging — when this fires it
+    // usually means the model returned text instead of tool_use,
+    // which happens with adaptive-thinking models that ignore
+    // forced tool_choice.
+    console.error(
+      "parseInvoiceFromText: AI did not use tool. Response content blocks:",
+      response.content.map((b) => b.type)
+    );
+    throw new Error("AI neatgrieza strukturētus datus (text)");
   }
   return toolUse.input as ParsedInvoice;
 }
@@ -969,7 +1025,7 @@ async function parseInvoiceWithAI(
         };
 
   const response = await anthropic.messages.create({
-    model: "claude-opus-4-7",
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],
@@ -994,7 +1050,14 @@ async function parseInvoiceWithAI(
   );
 
   if (!toolUse) {
-    throw new Error("AI neatgrieza strukturētus datus");
+    // Log the response shape for debugging
+    console.error(
+      "parseInvoiceWithAI: AI did not use tool. Response content blocks:",
+      response.content.map((b) => b.type),
+      "stop_reason:",
+      response.stop_reason
+    );
+    throw new Error("AI neatgrieza strukturētus datus (PDF/image)");
   }
   return toolUse.input as ParsedInvoice;
 }

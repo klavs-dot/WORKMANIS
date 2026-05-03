@@ -157,11 +157,18 @@ export function EmailImportRobotButton({
 
       let toastMessage: string;
       if (totalFound === 0) {
-        toastMessage = "Nav jaunu rēķinu e-pastā kopš pēdējās skenēšanas.";
+        toastMessage =
+          "Nav jaunu vēstuļu e-pastā kopš pēdējās skenēšanas. Mēģini iztīrīt 60_email_imports tabulu, ja gribi atkārtoti skenēt visu.";
       } else if (totalCreated === 0 && totalDup === 0) {
-        toastMessage = `Atrasti ${totalFound} ziņojumi, bet neviens nebija atpazīts kā rēķins.`;
+        // Common case when triage is too aggressive or AI fails
+        // to extract — be specific so the user knows it's not
+        // their fault and can check Vercel logs / contact us.
+        toastMessage = `Atradu ${totalFound} vēstules, bet AI nevarēja izvilkt rēķinu datus no nevienas. Iespējams, vēstules nav rēķini, vai AI klasifikators noraidīja kā 'cita info'. Pārbaudi Vercel function logus, lai redzētu detaļas.`;
       } else {
-        toastMessage = `Pievienoti ${totalCreated} rēķini${parts.length ? ` (${parts.join(", ")})` : ""}.`;
+        toastMessage = `Pievienoti ${totalCreated} rēķini no ${totalFound} vēstulēm${parts.length ? ` (${parts.join(", ")})` : ""}.`;
+        if (totalErrors > 0) {
+          toastMessage += ` ${totalErrors} ar kļūdām (skatīt logus).`;
+        }
         if (moreAvailable) {
           toastMessage += " Spied robotu vēlreiz, lai turpinātu ar nākamajiem.";
         }
