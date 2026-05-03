@@ -156,7 +156,6 @@ export class SheetsClient {
     table: TableName,
     data: CreateInput<T>
   ): Promise<Row<T>> {
-    const schema = getTableSchema(table);
     const id = await this.generateId(table);
     const now = new Date().toISOString();
 
@@ -168,9 +167,13 @@ export class SheetsClient {
       ...data,
     } as Row<T>;
 
-    const allCols = ["id", "created_at", "updated_at", "deleted_at", ...schema.cols];
+    // Align to the ACTUAL Sheet header. If the sheet is missing
+    // columns the schema added (user hasn't run schema repair),
+    // those fields are silently dropped — better than corrupting
+    // existing rows by writing into the wrong column positions.
+    const header = await this.readHeader(table);
     const values = [
-      allCols.map((col) => {
+      header.map((col) => {
         const v = (row as Record<string, unknown>)[col];
         return v === undefined ? "" : String(v);
       }),
@@ -209,7 +212,6 @@ export class SheetsClient {
     id: string,
     data: CreateInput<T>
   ): Promise<Row<T>> {
-    const schema = getTableSchema(table);
     const now = new Date().toISOString();
 
     const row: Row<T> = {
@@ -220,9 +222,9 @@ export class SheetsClient {
       ...data,
     } as Row<T>;
 
-    const allCols = ["id", "created_at", "updated_at", "deleted_at", ...schema.cols];
+    const header = await this.readHeader(table);
     const values = [
-      allCols.map((col) => {
+      header.map((col) => {
         const v = (row as Record<string, unknown>)[col];
         return v === undefined ? "" : String(v);
       }),
@@ -279,10 +281,9 @@ export class SheetsClient {
       updated_at: now,
     } as Row<T>;
 
-    const schema = getTableSchema(table);
-    const allCols = ["id", "created_at", "updated_at", "deleted_at", ...schema.cols];
+    const header = await this.readHeader(table);
     const values = [
-      allCols.map((col) => {
+      header.map((col) => {
         const v = (updated as Record<string, unknown>)[col];
         return v === undefined ? "" : String(v);
       }),
@@ -294,7 +295,7 @@ export class SheetsClient {
 
     await this.sheets.spreadsheets.values.update({
       spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!A${sheetRowNumber}:${columnLetter(allCols.length)}${sheetRowNumber}`,
+      range: `${table}!A${sheetRowNumber}:${columnLetter(header.length)}${sheetRowNumber}`,
       valueInputOption: "RAW",
       requestBody: { values },
     });
@@ -416,22 +417,48 @@ export class SheetsClient {
   private async readAllRowsWithIndex(
     table: TableName
   ): Promise<{ index: number; row: Row }[]> {
-    const schema = getTableSchema(table);
-    const allCols = ["id", "created_at", "updated_at", "deleted_at", ...schema.cols];
-
+    // Read the ACTUAL header row from the sheet rather than
+    // assuming it matches schema.cols. Header order is the source
+    // of truth — if it's out of sync with schema (e.g. user hasn't
+    // run schema repair after a column was added), reading by
+    // schema.cols would put values in the wrong fields.
+    //
+    // We read A1:Z to capture both header and data in one round
+    // trip. Row 1 is header, rows 2+ are data.
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!A2:${columnLetter(allCols.length)}`,
+      range: `${table}!A1:Z`,
     });
 
-    const values = response.data.values ?? [];
-    return values.map((rowValues, index) => {
+    const allValues = response.data.values ?? [];
+    if (allValues.length === 0) return [];
+
+    const header = (allValues[0] ?? []) as string[];
+    const dataRows = allValues.slice(1);
+
+    return dataRows.map((rowValues, index) => {
       const row: Record<string, unknown> = {};
-      allCols.forEach((col, i) => {
-        row[col] = rowValues[i] ?? "";
+      header.forEach((col, i) => {
+        if (col) row[col] = rowValues[i] ?? "";
       });
       return { index, row: row as Row };
     });
+  }
+
+  /**
+   * Read just the sheet header row (column names in order).
+   * Used by writers to align data positions to the actual
+   * Sheet layout rather than the TS schema (which may be ahead
+   * of what's in the sheet if schema repair hasn't run yet).
+   */
+  private async readHeader(table: TableName): Promise<string[]> {
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.config.spreadsheetId,
+      range: `${table}!A1:Z1`,
+    });
+    return ((response.data.values?.[0] ?? []) as string[]).filter(
+      (h) => !!h
+    );
   }
 
   /**

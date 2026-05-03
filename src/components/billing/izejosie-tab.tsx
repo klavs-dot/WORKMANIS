@@ -245,7 +245,7 @@ function saveDrafts(companyId: string, drafts: QueueItem[]) {
 }
 
 export function IzejosieTab() {
-  const { received, addReceived, updateReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
+  const { received, addReceived, updateReceived, deleteReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
     useBilling();
   const { activeCompany } = useCompany();
   const { pushSuccess } = useToast();
@@ -799,6 +799,36 @@ export function IzejosieTab() {
                             <Check className="h-3.5 w-3.5" />
                           </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={async () => {
+                            // Delete confirmation. Native confirm
+                            // is fine here — destructive action,
+                            // user actively triggered, and a styled
+                            // dialog would be overkill for what's
+                            // primarily a cleanup action for bad
+                            // imports.
+                            const ok = window.confirm(
+                              `Dzēst rēķinu no ${p.supplier || "(bez piegādātāja)"}? Šo darbību nevar atsaukt.`
+                            );
+                            if (!ok) return;
+                            try {
+                              await deleteReceived(p.id);
+                              pushSuccess("Rēķins dzēsts");
+                            } catch (err) {
+                              const msg =
+                                err instanceof Error
+                                  ? err.message
+                                  : "Dzēšana neizdevās";
+                              window.alert(msg);
+                            }
+                          }}
+                          title="Dzēst rēķinu"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

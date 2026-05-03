@@ -176,6 +176,11 @@ interface BillingStore {
 
   addReceived: (p: Omit<ReceivedInvoice, "id" | "createdAt" | "status">) => void;
   updateReceived: (id: string, patch: Partial<ReceivedInvoice>) => void;
+  /**
+   * Soft-delete a received invoice. Same purpose as deleteIssued —
+   * clean up rows that were ingested incorrectly.
+   */
+  deleteReceived: (id: string) => Promise<void>;
   markReceivedPaid: (id: string) => void;
   setReceivedMeta: (id: string, meta: ReceivedInvoiceAccountingMeta) => void;
   clearReceivedMeta: (id: string) => void;
@@ -189,6 +194,14 @@ interface BillingStore {
 
   addIssued: (i: Omit<IssuedInvoice, "id" | "createdAt">) => void;
   updateIssued: (id: string, patch: Partial<IssuedInvoice>) => void;
+  /**
+   * Soft-delete an issued invoice. Sets deleted_at on the row in
+   * 30_invoices_out and removes it from local state immediately.
+   * Used to clean up rows that were ingested incorrectly (e.g.
+   * by an early version of the email-import where schema mismatch
+   * corrupted the data).
+   */
+  deleteIssued: (id: string) => Promise<void>;
   attachDeliveryNote: (id: string, note: string) => void;
   attachIssuedPN: (
     id: string,
@@ -320,18 +333,47 @@ interface ApiTax {
 }
 
 function apiToIssued(a: ApiInvoiceOut): IssuedInvoice {
+  // Defensive coercions — when schema mismatch (e.g. user hasn't
+  // run schema repair after a backend change) puts garbage in
+  // unexpected fields, we don't want the UI to crash. Coerce
+  // numerics to numbers, fall back to 0 / empty string for
+  // anything that doesn't parse.
+  const safeNumber = (v: unknown): number => {
+    if (typeof v === "number" && !isNaN(v)) return v;
+    if (typeof v === "string") {
+      const n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  };
+  const safeString = (v: unknown): string => {
+    if (typeof v === "string") return v;
+    if (v === null || v === undefined) return "";
+    return String(v);
+  };
+  // Date strings should be ISO YYYY-MM-DD. If we got something
+  // else (a number from a misaligned column, an Excel serial,
+  // etc.), drop it rather than try to display garbage.
+  const safeISODate = (v: unknown): string => {
+    const s = safeString(v);
+    if (!s) return "";
+    // Accept YYYY-MM-DD or YYYY-MM-DDTHH...
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
+    return "";
+  };
+
   return {
     id: a.id,
-    number: a.number,
-    client: a.client,
-    description: a.description,
-    amount: a.amount,
-    vat: a.vat,
-    date: a.date,
-    dueDate: a.dueDate,
+    number: safeString(a.number),
+    client: safeString(a.client),
+    description: safeString(a.description),
+    amount: safeNumber(a.amount),
+    vat: safeNumber(a.vat),
+    date: safeISODate(a.date),
+    dueDate: safeISODate(a.dueDate),
     status: a.status as IssuedInvoiceStatus,
-    deliveryNote: a.deliveryNote,
-    pnAkts: a.pnAkts,
+    deliveryNote: a.deliveryNote ? safeString(a.deliveryNote) : undefined,
+    pnAkts: a.pnAkts ? safeString(a.pnAkts) : undefined,
     pnAktsSource:
       a.pnAktsSource === "generated" || a.pnAktsSource === "uploaded"
         ? a.pnAktsSource
@@ -340,23 +382,44 @@ function apiToIssued(a: ApiInvoiceOut): IssuedInvoice {
     fileDriveId: a.fileDriveId,
     deliveryNoteDriveId: a.deliveryNoteDriveId,
     pnAktsDriveId: a.pnAktsDriveId,
-    createdAt: a.createdAt,
-    updatedAt: a.updatedAt,
+    createdAt: safeString(a.createdAt),
+    updatedAt: safeString(a.updatedAt),
   };
 }
 
 function apiToReceived(a: ApiInvoiceIn): ReceivedInvoice {
+  // Defensive coercions — same reasoning as apiToIssued.
+  const safeNumber = (v: unknown): number => {
+    if (typeof v === "number" && !isNaN(v)) return v;
+    if (typeof v === "string") {
+      const n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  };
+  const safeString = (v: unknown): string => {
+    if (typeof v === "string") return v;
+    if (v === null || v === undefined) return "";
+    return String(v);
+  };
+  const safeISODate = (v: unknown): string => {
+    const s = safeString(v);
+    if (!s) return "";
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
+    return "";
+  };
+
   const channel = a.sourceChannel;
   return {
     id: a.id,
-    supplier: a.supplier,
-    invoiceNumber: a.invoiceNumber,
-    amount: a.amount,
-    iban: a.iban,
-    dueDate: a.dueDate,
+    supplier: safeString(a.supplier),
+    invoiceNumber: safeString(a.invoiceNumber),
+    amount: safeNumber(a.amount),
+    iban: safeString(a.iban),
+    dueDate: safeISODate(a.dueDate),
     status: a.status as ReceivedInvoiceStatus,
     fileName: a.fileName,
-    pnAkts: a.pnAkts,
+    pnAkts: a.pnAkts ? safeString(a.pnAkts) : undefined,
     pnAktsSource:
       a.pnAktsSource === "generated" || a.pnAktsSource === "uploaded"
         ? a.pnAktsSource
@@ -379,8 +442,8 @@ function apiToReceived(a: ApiInvoiceIn): ReceivedInvoice {
     paymentEvidence: a.paymentEvidence || undefined,
     fileDriveId: a.fileDriveId,
     pnAktsDriveId: a.pnAktsDriveId,
-    createdAt: a.createdAt,
-    updatedAt: a.updatedAt,
+    createdAt: safeString(a.createdAt),
+    updatedAt: safeString(a.updatedAt),
   };
 }
 
@@ -716,6 +779,56 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   const setReceivedMeta: BillingStore["setReceivedMeta"] = (id, meta) =>
     applyReceivedPatch(id, { accountingMeta: meta });
 
+  /**
+   * Soft-delete a received invoice. Used to clean up rows that
+   * were ingested incorrectly — removes from local state right
+   * away (optimistic) and DELETEs server-side. If the server
+   * call fails, restores the row locally and surfaces the error
+   * via thrown Error so the caller's catch block can toast it.
+   */
+  const deleteReceived: BillingStore["deleteReceived"] = async (id) => {
+    const companyId = activeCompany?.id;
+    if (!companyId) return;
+
+    let removed: ReceivedInvoice | undefined;
+    setReceived((prev) => {
+      removed = prev.find((p) => p.id === id);
+      const next = prev.filter((p) => p.id !== id);
+      writeCache(CACHE_RECEIVED, companyId, next);
+      return next;
+    });
+
+    // Don't hit the API for never-persisted optimistic rows
+    if (id.startsWith("tmp-")) return;
+
+    try {
+      const res = await fetch(
+        `/api/invoices-in/${encodeURIComponent(id)}?company_id=${encodeURIComponent(companyId)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const errBody = await res
+          .json()
+          .catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(
+          typeof errBody?.error === "string"
+            ? errBody.error
+            : `Dzēšana neizdevās (${res.status})`
+        );
+      }
+    } catch (err) {
+      // Roll back: put the row back where we removed it
+      if (removed) {
+        setReceived((prev) => {
+          const next = [removed!, ...prev];
+          writeCache(CACHE_RECEIVED, companyId, next);
+          return next;
+        });
+      }
+      throw err;
+    }
+  };
+
   const clearReceivedMeta: BillingStore["clearReceivedMeta"] = (id) => {
     const companyId = activeCompany?.id;
     if (!companyId) return;
@@ -860,6 +973,51 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 
   const updateIssued: BillingStore["updateIssued"] = (id, patch) =>
     applyIssuedPatch(id, patch);
+
+  /**
+   * Soft-delete an issued invoice. Same shape as deleteReceived —
+   * optimistic remove + DELETE on server + rollback on failure.
+   */
+  const deleteIssued: BillingStore["deleteIssued"] = async (id) => {
+    const companyId = activeCompany?.id;
+    if (!companyId) return;
+
+    let removed: IssuedInvoice | undefined;
+    setIssued((prev) => {
+      removed = prev.find((i) => i.id === id);
+      const next = prev.filter((i) => i.id !== id);
+      writeCache(CACHE_ISSUED, companyId, next);
+      return next;
+    });
+
+    if (id.startsWith("tmp-")) return;
+
+    try {
+      const res = await fetch(
+        `/api/invoices-out/${encodeURIComponent(id)}?company_id=${encodeURIComponent(companyId)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const errBody = await res
+          .json()
+          .catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(
+          typeof errBody?.error === "string"
+            ? errBody.error
+            : `Dzēšana neizdevās (${res.status})`
+        );
+      }
+    } catch (err) {
+      if (removed) {
+        setIssued((prev) => {
+          const next = [removed!, ...prev];
+          writeCache(CACHE_ISSUED, companyId, next);
+          return next;
+        });
+      }
+      throw err;
+    }
+  };
 
   const attachDeliveryNote: BillingStore["attachDeliveryNote"] = (id, note) =>
     applyIssuedPatch(id, { deliveryNote: note });
@@ -1027,6 +1185,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 
     addReceived,
     updateReceived,
+    deleteReceived,
     markReceivedPaid,
     setReceivedMeta,
     clearReceivedMeta,
@@ -1035,6 +1194,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 
     addIssued,
     updateIssued,
+    deleteIssued,
     attachDeliveryNote,
     attachIssuedPN,
     detachIssuedPN,

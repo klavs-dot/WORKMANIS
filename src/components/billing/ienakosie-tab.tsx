@@ -60,7 +60,7 @@ import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
 // ============================================================
 
 export function IenakosieTab() {
-  const { issued, attachDeliveryNote, attachIssuedPN, detachIssuedPN, updateIssued } =
+  const { issued, attachDeliveryNote, attachIssuedPN, detachIssuedPN, updateIssued, deleteIssued } =
     useBilling();
 
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
@@ -239,7 +239,24 @@ export function IenakosieTab() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-red-600 focus:text-red-700">
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-700"
+                              onSelect={async () => {
+                                const ok = window.confirm(
+                                  `Dzēst rēķinu Nr. ${inv.number || "(bez numura)"} klientam ${inv.client || "(nezināms)"}? Šo darbību nevar atsaukt.`
+                                );
+                                if (!ok) return;
+                                try {
+                                  await deleteIssued(inv.id);
+                                } catch (err) {
+                                  const msg =
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Dzēšana neizdevās";
+                                  window.alert(msg);
+                                }
+                              }}
+                            >
                               <Trash2 className="h-3.5 w-3.5" />
                               Dzēst
                             </DropdownMenuItem>
