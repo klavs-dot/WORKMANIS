@@ -43,30 +43,43 @@ interface TabReport {
 }
 
 export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
-    return NextResponse.json(
-      { error: "Not authenticated" },
-      { status: 401 }
-    );
-  }
-
-  const url = new URL(request.url);
-  const companyId = url.searchParams.get("company_id");
-  if (!companyId) {
-    return NextResponse.json({ error: "Missing company_id" }, { status: 400 });
-  }
-
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
+  // Wrap EVERYTHING in try/catch so the user always gets a
+  // proper JSON error response instead of a Vercel-generated
+  // empty 500 page. Previously auth() and resolveCompany() ran
+  // outside the catch — when those threw (e.g. on Drive API
+  // rate limit during resolveCompany's 5 lookups), the user saw
+  // 'Serveris atbildēja tukšu (HTTP 500)' which gave them no
+  // diagnostic info.
   try {
+    const session = await auth();
+    if (!session?.user?.email || !session.accessToken) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const url = new URL(request.url);
+    const companyId = url.searchParams.get("company_id");
+    if (!companyId) {
+      return NextResponse.json(
+        { error: "Missing company_id" },
+        { status: 400 }
+      );
+    }
+
+    const company = await resolveCompany(
+      session.accessToken,
+      session.user.email,
+      companyId
+    );
+    if (!company) {
+      return NextResponse.json(
+        { error: "Company not found" },
+        { status: 404 }
+      );
+    }
+
     const client = createSheetsClient({
       accessToken: session.accessToken,
       spreadsheetId: company.sheetId,

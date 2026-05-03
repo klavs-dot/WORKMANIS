@@ -48,30 +48,41 @@ import { reconcileSchemaForSheet } from "@/lib/provisioning";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const url = new URL(request.url);
-  const companyId = url.searchParams.get("company_id");
-  if (!companyId) {
-    return NextResponse.json(
-      { error: "Missing company_id" },
-      { status: 400 }
-    );
-  }
-
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
+  // Wrap everything in try/catch so the user always gets JSON
+  // even if auth() or resolveCompany() throws (Drive rate limit,
+  // network blip). Without this they'd see a Vercel-generated
+  // empty 500 with the cryptic 'Unexpected end of JSON input'
+  // error in the client.
   try {
+    const session = await auth();
+    if (!session?.user?.email || !session.accessToken) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const url = new URL(request.url);
+    const companyId = url.searchParams.get("company_id");
+    if (!companyId) {
+      return NextResponse.json(
+        { error: "Missing company_id" },
+        { status: 400 }
+      );
+    }
+
+    const company = await resolveCompany(
+      session.accessToken,
+      session.user.email,
+      companyId
+    );
+    if (!company) {
+      return NextResponse.json(
+        { error: "Company not found" },
+        { status: 404 }
+      );
+    }
+
     const oauth2 = new google.auth.OAuth2();
     oauth2.setCredentials({ access_token: session.accessToken });
     const sheets = google.sheets({ version: "v4", auth: oauth2 });

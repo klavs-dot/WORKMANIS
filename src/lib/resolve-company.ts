@@ -23,9 +23,18 @@
  * write to is one registered in the user's own account-master.
  * Even if client code sent a spoofed company_id, this function
  * would return null because that ID isn't in the user's registry.
+ *
+ * Caching: resolveCompany is called on EVERY API request that
+ * touches a company sheet. Doing 5 Drive lookups + 1 Sheets read
+ * per request adds up fast — under load this alone can saturate
+ * the Drive API quota. We cache resolved companies per (user,
+ * companyId) pair for a short window, since the underlying
+ * registry data changes only when the user creates / renames /
+ * deletes companies.
  */
 
 import { google } from "googleapis";
+import { withRetry } from "./sheets-client";
 
 const ROOT_FOLDER_NAME = "WORKMANIS";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -41,6 +50,23 @@ export interface ResolvedCompany {
 }
 
 /**
+ * Module-level cache. Lives across requests within a single
+ * Vercel function instance (warm starts share state). Keyed by
+ * "{userEmail}:{companyId}" so different users / companies
+ * don't collide.
+ *
+ * TTL: 5 minutes. The underlying data (company registry in
+ * account-master.gsheet) only changes when the user creates,
+ * renames, or deletes a company — events that the user
+ * initiated and can wait 5 min to see propagate.
+ */
+const RESOLVE_CACHE = new Map<
+  string,
+  { value: ResolvedCompany | null; expiresAt: number }
+>();
+const RESOLVE_TTL_MS = 5 * 60 * 1000;
+
+/**
  * Look up a company by ID within the user's account-master registry.
  * Returns null if the company doesn't belong to this user or the
  * user hasn't set up their platform root yet.
@@ -50,38 +76,79 @@ export async function resolveCompany(
   userEmail: string,
   companyId: string
 ): Promise<ResolvedCompany | null> {
+  const cacheKey = `${userEmail}:${companyId}`;
+  const cached = RESOLVE_CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
   const oauth2 = new google.auth.OAuth2();
   oauth2.setCredentials({ access_token: accessToken });
   const drive = google.drive({ version: "v3", auth: oauth2 });
   const sheets = google.sheets({ version: "v4", auth: oauth2 });
 
   // Walk: WORKMANIS/accounts/{email}/_account/WORKMANIS_ACCOUNT_MASTER
-  const rootId = await findFolder(drive, ROOT_FOLDER_NAME, null);
-  if (!rootId) return null;
-
-  const accountsId = await findFolder(drive, "accounts", rootId);
-  if (!accountsId) return null;
-
-  const userAccountId = await findFolder(drive, userEmail, accountsId);
-  if (!userAccountId) return null;
-
-  const accountInternalId = await findFolder(drive, "_account", userAccountId);
-  if (!accountInternalId) return null;
-
-  const accountMasterId = await findSheet(
-    drive,
-    ACCOUNT_MASTER_NAME,
-    accountInternalId
+  // Each step wrapped in withRetry so a transient Drive rate limit
+  // doesn't fail the whole request — just back off and try again.
+  const rootId = await withRetry(
+    () => findFolder(drive, ROOT_FOLDER_NAME, null),
+    "find root folder"
   );
-  if (!accountMasterId) return null;
+  if (!rootId) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
+
+  const accountsId = await withRetry(
+    () => findFolder(drive, "accounts", rootId),
+    "find accounts folder"
+  );
+  if (!accountsId) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
+
+  const userAccountId = await withRetry(
+    () => findFolder(drive, userEmail, accountsId),
+    "find user folder"
+  );
+  if (!userAccountId) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
+
+  const accountInternalId = await withRetry(
+    () => findFolder(drive, "_account", userAccountId),
+    "find _account folder"
+  );
+  if (!accountInternalId) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
+
+  const accountMasterId = await withRetry(
+    () => findSheet(drive, ACCOUNT_MASTER_NAME, accountInternalId),
+    "find account-master"
+  );
+  if (!accountMasterId) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
 
   // Read 01_companies tab and find the matching row
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: accountMasterId,
-    range: "01_companies!A:Z",
-  });
+  const response = await withRetry(
+    () =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId: accountMasterId,
+        range: "01_companies!A:Z",
+      }),
+    "read 01_companies"
+  );
   const rows = response.data.values ?? [];
-  if (rows.length < 2) return null;
+  if (rows.length < 2) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
 
   const header = rows[0] as string[];
   const idCol = header.indexOf("id");
@@ -91,7 +158,10 @@ export async function resolveCompany(
   const sheetCol = header.indexOf("sheet_id");
   const deletedCol = header.indexOf("deleted_at");
 
-  if (idCol < 0 || sheetCol < 0 || folderCol < 0) return null;
+  if (idCol < 0 || sheetCol < 0 || folderCol < 0) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
 
   const match = rows
     .slice(1)
@@ -100,15 +170,36 @@ export async function resolveCompany(
         r[idCol] === companyId &&
         !(deletedCol >= 0 && r[deletedCol]) // skip soft-deleted
     );
-  if (!match) return null;
+  if (!match) {
+    cacheNullResult(cacheKey);
+    return null;
+  }
 
-  return {
+  const result: ResolvedCompany = {
     companyId: match[idCol] as string,
     sheetId: match[sheetCol] as string,
     folderId: match[folderCol] as string,
     slug: slugCol >= 0 ? ((match[slugCol] as string) ?? "") : "",
     name: nameCol >= 0 ? ((match[nameCol] as string) ?? "") : "",
   };
+  RESOLVE_CACHE.set(cacheKey, {
+    value: result,
+    expiresAt: Date.now() + RESOLVE_TTL_MS,
+  });
+  return result;
+}
+
+/**
+ * Cache a null result for a shorter TTL than success. Negative
+ * results are still worth caching (avoids hammering the API for
+ * a deleted/typo'd company) but a shorter TTL means the user
+ * sees recovery faster after fixing whatever was wrong.
+ */
+function cacheNullResult(cacheKey: string) {
+  RESOLVE_CACHE.set(cacheKey, {
+    value: null,
+    expiresAt: Date.now() + 30 * 1000, // 30s for negatives
+  });
 }
 
 // ============================================================
