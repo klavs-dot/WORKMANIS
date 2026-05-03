@@ -41,13 +41,20 @@ interface EmailImportRobotButtonProps {
 // playful — the user is going to see this for 30-60 seconds, so it
 // shouldn't feel like a serious system spinner. Order matters: we
 // loop through them in sequence.
+//
+// Updated to reflect the two-phase pipeline (triage every email,
+// then extract from the relevant ones) — older messages assumed
+// only PDF attachments were scanned.
 const SCAN_MESSAGES = [
-  "🔍 Rakņājos pa iesūtni…",
-  "📬 Šķiro vēstules…",
-  "📎 Atrodu pielikumus…",
+  "🔍 Lasu visas vēstules…",
+  "👀 Skatos kas par ko sūtīts…",
   "🤔 Vai šis ir rēķins?",
+  "📑 Atlasu finansiāli būtiskos…",
+  "📎 Atrodu pielikumus…",
   "📄 Lasu PDF failus…",
+  "📝 Lasu HTML rēķinus…",
   "✨ AI domā cītīgi…",
+  "🧠 Izvelk supplieru, summas, datumus…",
   "💾 Saglabāju Drive…",
   "📊 Pievienoju tabelei…",
   "🧹 Pārbaudu dublikātus…",
@@ -126,7 +133,13 @@ export function EmailImportRobotButton({
       // The scan caps each click at 6 messages per mailbox. If
       // Gmail returned exactly the cap for a mailbox, there are
       // probably more emails behind. Tell the user to click again.
-      const SCAN_CAP_PER_MAILBOX = 6;
+      // Cap on messages PER MAILBOX scanned per click. If Gmail
+      // returned >= the cap, there are probably more emails behind.
+      // Tell the user to click again. Synced with email-scanner.ts
+      // default (12 messages × 2 mailboxes = up to 24 emails per
+      // click, but only ~3-5 will typically pass triage and
+      // become invoices).
+      const SCAN_CAP_PER_MAILBOX = 12;
       const inboxCapped =
         (inbox?.messagesFound ?? 0) >= SCAN_CAP_PER_MAILBOX;
       const sentCapped =

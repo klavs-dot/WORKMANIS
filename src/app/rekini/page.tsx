@@ -137,10 +137,11 @@ export default function RekiniMaksajumiPage() {
           <EmailImportRobotButton onComplete={handleEmailImportComplete} />
           <div className="flex-1 pt-1">
             <p className="text-[12.5px] text-graphite-600 leading-relaxed max-w-md">
-              Spied robotu, lai AI ievelktu rēķinus no tava Gmail —
-              gan saņemtos (Iesūtne), gan tavus izsūtītos (Nosūtītie).
-              Pirmajā reizē ielādēs pēdējā mēneša rēķinus. Nākamreiz
-              tikai jaunos kopš pēdējās skenēšanas.
+              Spied robotu, lai AI rūpīgi izlasītu KATRU vēstuli tavā Gmail —
+              gan saņemtās (Iesūtne), gan tavas izsūtītās (Nosūtītie).
+              AI atpazīs rēķinus pat ja tie nav PDF — arī HTML, attēlos vai
+              tikai tekstā vēstulē. Pirmajā reizē — pēdējais mēnesis.
+              Tālāk — tikai jauni kopš pēdējās skenēšanas.
             </p>
           </div>
         </div>

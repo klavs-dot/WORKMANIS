@@ -163,22 +163,28 @@ export async function scanGmailForInvoices(
   const gmail = google.gmail({ version: "v1", auth: oauth2 });
   const anthropic = new Anthropic({ apiKey });
 
-  // Cap default lowered from 50 → 6. Realistic budget per Vercel
-  // function call: 60s on Hobby, 300s on Pro. With Opus 4.7 at
-  // ~12-18s per parse and concurrency 2:
-  //   6 messages = 3 chunks × ~15s = 45s ✓ fits 60s Hobby budget
-  // For users with more mail, the user clicks the robot again —
-  // each click consumes the next batch from where the cursor
-  // left off.
-  const maxMessages = input.maxMessages ?? 6;
+  // Cap default lowered to 12. Realistic budget per Vercel
+  // function call: 60s Hobby, 300s Pro. With the new two-stage
+  // pipeline:
+  //   Stage 1 (Haiku triage):  ~1.5s per email × 12 = 18s
+  //   Stage 2 (Opus extraction): ~15s × 3-4 invoices typical = 45s
+  //   Total: ~60-65s, fits Pro budget; Hobby will partial-process
+  // The user clicks the robot again to continue past the cap.
+  const maxMessages = input.maxMessages ?? 12;
 
   // Build Gmail search query.
   //
-  // 'has:attachment filename:pdf' filters to messages with a PDF
-  // attached — invoices are essentially always sent this way.
-  // Misses HTML-only invoices and inline images, but those are a
-  // small fraction in real LV business mail and would need a
-  // different (more expensive) AI path anyway.
+  // We DELIBERATELY do NOT filter by 'has:attachment filename:pdf'
+  // anymore. That was missing real invoices that arrive as:
+  //   - HTML-only emails (subscription renewals, small services)
+  //   - Inline images (scanned receipts)
+  //   - Word/JPG/PNG attachments (some smaller suppliers)
+  //   - Payment confirmations referencing an invoice without
+  //     attaching it
+  //
+  // Instead we let Haiku triage every email and decide if it's
+  // financially relevant. Costs ~$0.0001 per triage, well worth
+  // not missing real invoices.
   //
   // 'after:<seconds>' is Gmail's standard timestamp query. Note
   // that internalDate is milliseconds while the query expects
@@ -189,10 +195,17 @@ export async function scanGmailForInvoices(
   //                        invoices we owe)
   //   SENT:  'in:sent'   — emails the user SENT (outgoing
   //                        invoices we issued through other systems)
+  //
+  // We also filter out chat / draft / spam categories which
+  // never contain real invoices but pad the result count.
   const queryParts: string[] = [];
   queryParts.push(input.mailbox === "INBOX" ? "in:inbox" : "in:sent");
-  queryParts.push("has:attachment");
-  queryParts.push("filename:pdf");
+  // Exclude obviously-non-invoice categories. Gmail uses these
+  // labels automatically; -category:promotions catches most
+  // marketing newsletters which would otherwise eat our budget.
+  queryParts.push("-category:promotions");
+  queryParts.push("-category:social");
+  queryParts.push("-category:forums");
 
   let afterSeconds: number;
   if (input.sinceInternalDate) {
@@ -226,50 +239,167 @@ export async function scanGmailForInvoices(
     lastMessageInternalDate: input.sinceInternalDate ?? 0,
   };
 
-  // Process messages in parallel chunks of CONCURRENCY at a time.
-  // Each chunk's results are collected before moving to the next.
+  // Process messages in two stages:
   //
-  // Why chunked rather than all-parallel:
-  //   - Anthropic rate limits get unhappy with too many concurrent
-  //     requests from one key (typical limit: 5 RPM/concurrent for
-  //     accounts that haven't been rate-limit-bumped)
-  //   - Gmail attachment fetches are also rate-limited per user
-  //   - Bounded concurrency keeps memory predictable too — we're
-  //     holding PDF buffers in memory until they're persisted
+  // Stage 1 — Triage (cheap, fast):
+  //   Fetch headers + plain text body, send to Haiku 4.5 to
+  //   classify: is this an invoice? a payment receipt? a bill
+  //   reminder? something else? Haiku returns { type, confidence }.
   //
-  // Concurrency 2 fits comfortably under typical limits while
-  // halving per-batch latency vs. full serial.
-  const CONCURRENCY = 2;
+  // Stage 2 — Extract (expensive, accurate):
+  //   For emails Haiku flags as financially relevant, run the
+  //   full extraction. If a PDF/image attachment is present, send
+  //   that to Opus. If the email is HTML/text-only with the
+  //   invoice details inline, send the body text to Opus.
+  //
+  // This way we look at EVERY email but only pay for full
+  // extraction on the relevant ones (~10-20% of inbox typically).
+  //
+  // Concurrency — triage can run more aggressively than extract
+  // because Haiku is faster and uses less of our rate limit
+  // budget.
+  const TRIAGE_CONCURRENCY = 4;
+  const EXTRACT_CONCURRENCY = 2;
 
-  for (let i = 0; i < messageRefs.length; i += CONCURRENCY) {
-    const chunk = messageRefs.slice(i, i + CONCURRENCY);
+  // ───── STAGE 1: triage all messages ─────
+  const triaged: Array<{
+    messageId: string;
+    triage: TriageResult;
+    fetched: FetchedEmail;
+  }> = [];
+
+  for (let i = 0; i < messageRefs.length; i += TRIAGE_CONCURRENCY) {
+    const chunk = messageRefs.slice(i, i + TRIAGE_CONCURRENCY);
 
     onProgress?.({
       current: i + 1,
       total: messageRefs.length,
-      message: `Apstrādā ziņojumus ${i + 1}-${Math.min(
-        i + CONCURRENCY,
+      message: `Pārbaudu ziņojumus ${i + 1}-${Math.min(
+        i + TRIAGE_CONCURRENCY,
         messageRefs.length
       )} no ${messageRefs.length}`,
     });
 
-    // Run the chunk in parallel. Promise.allSettled so a single
-    // failed message doesn't tank the whole chunk.
     const chunkResults = await Promise.allSettled(
       chunk.map(async (ref) => {
         if (!ref.id) return null;
-        const candidate = await fetchAndExtractAttachment(gmail, ref.id);
-        if (!candidate) return null;
-        const parsed = await parseInvoiceWithAI(
-          anthropic,
-          candidate.attachment.data,
-          candidate.attachment.mimeType
-        );
-        return { messageId: ref.id, candidate, parsed };
+        const fetched = await fetchEmailFull(gmail, ref.id);
+        if (!fetched) return null;
+
+        // Advance cursor regardless of outcome — prevents re-
+        // scanning the same email forever
+        if (fetched.internalDate > result.lastMessageInternalDate) {
+          result.lastMessageInternalDate = fetched.internalDate;
+        }
+
+        const triage = await triageEmailWithAI(anthropic, fetched);
+        return { messageId: ref.id, triage, fetched };
       })
     );
 
-    // Collect results from this chunk
+    for (let j = 0; j < chunkResults.length; j++) {
+      const res = chunkResults[j];
+      const ref = chunk[j];
+      if (res.status === "rejected") {
+        result.errors.push({
+          messageId: ref.id ?? "",
+          reason:
+            res.reason instanceof Error
+              ? `Triage: ${res.reason.message}`
+              : "Triage failed",
+        });
+        continue;
+      }
+      if (!res.value) continue;
+      const { triage } = res.value;
+      // Accept invoices and payment confirmations. Skip
+      // 'reminder' (just a notification, not a new invoice) and
+      // 'other' (not financially relevant).
+      if (
+        (triage.type === "invoice" || triage.type === "payment_confirmation") &&
+        triage.confidence >= 0.5
+      ) {
+        triaged.push(res.value);
+      }
+    }
+  }
+
+  // ───── STAGE 2: full extraction on triage-flagged emails ─────
+  for (let i = 0; i < triaged.length; i += EXTRACT_CONCURRENCY) {
+    const chunk = triaged.slice(i, i + EXTRACT_CONCURRENCY);
+
+    onProgress?.({
+      current: messageRefs.length + i + 1,
+      total: messageRefs.length + triaged.length,
+      message: `Ekstrahē rēķinus ${i + 1}-${Math.min(
+        i + EXTRACT_CONCURRENCY,
+        triaged.length
+      )} no ${triaged.length}`,
+    });
+
+    const chunkResults = await Promise.allSettled(
+      chunk.map(async ({ messageId, fetched, triage }) => {
+        // Decide what to feed Opus:
+        //   - PDF attachment present: use the PDF (best quality)
+        //   - Image attachment: use the image
+        //   - Neither: synthesize a 'document' from email body
+        //     text — Opus extracts from text just fine, and we
+        //     persist that body as the .txt file in Drive
+        let attachment: ParsedAttachment;
+
+        if (fetched.pdfAttachment) {
+          attachment = fetched.pdfAttachment;
+        } else if (fetched.imageAttachment) {
+          attachment = fetched.imageAttachment;
+        } else {
+          // Build a synthetic .txt 'invoice document' from the
+          // email body. Opus's tool-use schema doesn't actually
+          // care about file extension — only mime type matters
+          // for vision/PDF parsing — but storing as .txt makes
+          // the Drive folder browsable for the user.
+          const textContent = [
+            `From: ${fetched.fromHeader}`,
+            `Subject: ${fetched.subject}`,
+            `Date: ${fetched.emailDate}`,
+            "",
+            fetched.bodyText,
+          ].join("\n");
+          attachment = {
+            filename: `email-${messageId}.txt`,
+            data: Buffer.from(textContent, "utf-8"),
+            mimeType: "text/plain",
+          };
+        }
+
+        const candidate: CandidateInvoice = {
+          messageId,
+          internalDate: fetched.internalDate,
+          fromHeader: fetched.fromHeader,
+          subject: fetched.subject,
+          attachment,
+          emailDate: fetched.emailDate,
+        };
+
+        // For text-only emails Opus needs the text inline, not
+        // as a 'document'/'image' block. Branch on attachment
+        // mime type.
+        const parsed =
+          attachment.mimeType === "text/plain"
+            ? await parseInvoiceFromText(
+                anthropic,
+                attachment.data.toString("utf-8"),
+                triage.type
+              )
+            : await parseInvoiceWithAI(
+                anthropic,
+                attachment.data,
+                attachment.mimeType
+              );
+
+        return { messageId, candidate, parsed };
+      })
+    );
+
     for (let j = 0; j < chunkResults.length; j++) {
       const res = chunkResults[j];
       const ref = chunk[j];
@@ -279,23 +409,15 @@ export async function scanGmailForInvoices(
           res.reason instanceof Error
             ? res.reason.message
             : String(res.reason);
-        result.errors.push({ messageId: ref.id ?? "", reason });
+        result.errors.push({ messageId: ref.messageId, reason });
         console.error(
-          `Email scan: failed on message ${ref.id}:`,
+          `Email scan: extract failed on message ${ref.messageId}:`,
           res.reason
         );
         continue;
       }
 
-      if (!res.value) continue; // no PDF attachment / no id
-
       const { candidate, parsed } = res.value;
-
-      // Advance cursor regardless of confidence — prevents re-
-      // scanning the same broken email forever.
-      if (candidate.internalDate > result.lastMessageInternalDate) {
-        result.lastMessageInternalDate = candidate.internalDate;
-      }
 
       // Lower confidence threshold (0.25 from 0.4) — Opus 4.7
       // gives more accurate confidence reports and was being
@@ -369,10 +491,39 @@ export async function scanGmailForInvoices(
  * query filters for filename:pdf, but multipart email mime trees
  * can be quirky).
  */
-async function fetchAndExtractAttachment(
+/**
+ * Fetched email — combines all the bits we might want to feed to
+ * the AI pipeline: headers, body text, and the first PDF/image
+ * attachment (if any).
+ *
+ * Body text is extracted from text/plain part if present, else
+ * stripped from text/html. We DO NOT just feed raw HTML to Haiku
+ * because email HTML often weighs 50KB+ of layout noise, and
+ * Haiku does fine on the visible plaintext.
+ */
+interface FetchedEmail {
+  messageId: string;
+  internalDate: number;
+  fromHeader: string;
+  subject: string;
+  emailDate: string;
+  bodyText: string;
+  pdfAttachment?: ParsedAttachment;
+  imageAttachment?: ParsedAttachment;
+}
+
+/**
+ * Fetch a Gmail message and return everything the pipeline needs:
+ * headers, plain-text body, optional PDF/image attachments.
+ *
+ * This is the universal fetcher — replaces the old
+ * fetchAndExtractAttachment which assumed a PDF was always present.
+ * Now we fetch everything and let the AI decide what's relevant.
+ */
+async function fetchEmailFull(
   gmail: gmail_v1.Gmail,
   messageId: string
-): Promise<CandidateInvoice | null> {
+): Promise<FetchedEmail | null> {
   const msgRes = await gmail.users.messages.get({
     userId: "me",
     id: messageId,
@@ -387,37 +538,148 @@ async function fetchAndExtractAttachment(
   const dateHeader = findHeader(headers, "Date") ?? "";
   const internalDate = parseInt(msg.internalDate ?? "0", 10);
 
-  // Walk the multipart tree looking for application/pdf
+  const bodyText = extractBodyText(msg.payload);
   const pdfPart = findPdfPart(msg.payload);
-  if (!pdfPart || !pdfPart.body?.attachmentId) return null;
+  const imagePart = findImagePart(msg.payload);
 
-  const attachmentRes = await gmail.users.messages.attachments.get({
-    userId: "me",
-    messageId,
-    id: pdfPart.body.attachmentId,
-  });
-
-  const data = attachmentRes.data.data;
-  if (!data) return null;
-
-  // Gmail returns base64url; normalize to base64 then to Buffer
-  const buffer = Buffer.from(
-    data.replace(/-/g, "+").replace(/_/g, "/"),
-    "base64"
-  );
-
-  return {
+  const fetched: FetchedEmail = {
     messageId,
     internalDate,
     fromHeader,
     subject,
-    attachment: {
-      filename: pdfPart.filename ?? `invoice-${messageId}.pdf`,
-      data: buffer,
-      mimeType: "application/pdf",
-    },
     emailDate: emailDateToISO(dateHeader, internalDate),
+    bodyText,
   };
+
+  // Fetch attachment bytes if present. Cap at 10 MB — anything
+  // bigger is probably a contract or media file, not an invoice.
+  if (pdfPart?.body?.attachmentId) {
+    const buffer = await fetchAttachmentBytes(
+      gmail,
+      messageId,
+      pdfPart.body.attachmentId
+    );
+    if (buffer && buffer.length <= 10 * 1024 * 1024) {
+      fetched.pdfAttachment = {
+        filename: pdfPart.filename ?? `invoice-${messageId}.pdf`,
+        data: buffer,
+        mimeType: "application/pdf",
+      };
+    }
+  } else if (imagePart?.body?.attachmentId) {
+    const buffer = await fetchAttachmentBytes(
+      gmail,
+      messageId,
+      imagePart.body.attachmentId
+    );
+    if (buffer && buffer.length <= 10 * 1024 * 1024) {
+      fetched.imageAttachment = {
+        filename: imagePart.filename ?? `image-${messageId}`,
+        data: buffer,
+        mimeType: imagePart.mimeType ?? "image/jpeg",
+      };
+    }
+  }
+
+  return fetched;
+}
+
+async function fetchAttachmentBytes(
+  gmail: gmail_v1.Gmail,
+  messageId: string,
+  attachmentId: string
+): Promise<Buffer | null> {
+  try {
+    const res = await gmail.users.messages.attachments.get({
+      userId: "me",
+      messageId,
+      id: attachmentId,
+    });
+    const data = res.data.data;
+    if (!data) return null;
+    return Buffer.from(
+      data.replace(/-/g, "+").replace(/_/g, "/"),
+      "base64"
+    );
+  } catch (err) {
+    console.warn(`Failed to fetch attachment ${attachmentId}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Extract readable text from an email payload. Prefers text/plain
+ * parts; falls back to stripping text/html. Caps at 8000 chars
+ * (~2000 tokens) — Haiku doesn't need the whole email to triage,
+ * just enough to recognize the subject + first paragraph.
+ */
+function extractBodyText(part: gmail_v1.Schema$MessagePart): string {
+  // Walk the part tree, collecting text/plain content first
+  const plainTexts: string[] = [];
+  const htmlTexts: string[] = [];
+
+  function walk(p: gmail_v1.Schema$MessagePart) {
+    const mime = (p.mimeType ?? "").toLowerCase();
+    if (mime === "text/plain" && p.body?.data) {
+      plainTexts.push(decodeBase64Url(p.body.data));
+    } else if (mime === "text/html" && p.body?.data) {
+      htmlTexts.push(decodeBase64Url(p.body.data));
+    }
+    for (const sub of p.parts ?? []) walk(sub);
+  }
+  walk(part);
+
+  let text = plainTexts.join("\n\n").trim();
+  if (!text && htmlTexts.length > 0) {
+    text = stripHtml(htmlTexts.join("\n\n"));
+  }
+  // Cap to keep Haiku context window reasonable
+  if (text.length > 8000) {
+    text = text.slice(0, 8000) + "\n[...truncated]";
+  }
+  return text;
+}
+
+function decodeBase64Url(b64url: string): string {
+  try {
+    return Buffer.from(
+      b64url.replace(/-/g, "+").replace(/_/g, "/"),
+      "base64"
+    ).toString("utf-8");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Strip HTML tags + collapse whitespace to get readable plaintext.
+ * Doesn't try to be perfect — just good enough that Haiku sees
+ * meaningful content. Real HTML-to-text libraries (html-to-text,
+ * jsdom) are heavy and we don't need their fidelity here.
+ */
+function stripHtml(html: string): string {
+  return (
+    html
+      // Drop script/style entirely (not just the tags but content)
+      .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+      // Convert <br> and </p> to newlines for readability
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n\n")
+      // Strip remaining tags
+      .replace(/<[^>]+>/g, " ")
+      // HTML entities — limited set, covers most real cases
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&euro;/g, "€")
+      // Collapse whitespace
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 function findPdfPart(
@@ -438,6 +700,31 @@ function findPdfPart(
 
   for (const sub of part.parts ?? []) {
     const found = findPdfPart(sub);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Find the first image attachment (PNG, JPEG, WebP). Used as a
+ * fallback when no PDF is present — covers scanned paper invoices
+ * that get sent as photos.
+ */
+function findImagePart(
+  part: gmail_v1.Schema$MessagePart
+): gmail_v1.Schema$MessagePart | null {
+  const filename = (part.filename ?? "").toLowerCase();
+  const mime = (part.mimeType ?? "").toLowerCase();
+
+  // Skip inline embedded images that aren't real attachments
+  // (signature logos, layout images). Heuristic: real attachments
+  // have a non-empty filename.
+  if (filename && (mime.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(filename))) {
+    if (part.body?.attachmentId) return part;
+  }
+
+  for (const sub of part.parts ?? []) {
+    const found = findImagePart(sub);
     if (found) return found;
   }
   return null;
@@ -477,6 +764,180 @@ function emailDateToISO(
  * so the email-scan path produces invoices identical in shape
  * to the manual-upload path.
  */
+/**
+ * Triage result from Haiku — what kind of email is this?
+ *
+ * Types:
+ *   invoice              — supplier sent us a bill we need to pay
+ *                          (or, if SENT mailbox, we sent a bill to
+ *                          a client). Has amount + supplier/client +
+ *                          ideally an invoice number.
+ *   payment_confirmation — bank confirmation, payment receipt
+ *                          ("Your payment of X EUR was received").
+ *                          We persist these to track expenses even
+ *                          without a proper invoice document.
+ *   reminder             — "Your invoice X is due in 3 days" — a
+ *                          notification, not a new invoice. We
+ *                          skip these since the original invoice
+ *                          should already be in the system.
+ *   other                — newsletter, personal mail, calendar
+ *                          notification, anything else. Skip.
+ */
+interface TriageResult {
+  type: "invoice" | "payment_confirmation" | "reminder" | "other";
+  confidence: number;
+  reasoning: string;
+}
+
+const TRIAGE_TOOL = {
+  name: "classify_email",
+  description:
+    "Classify an email by its financial relevance. Call this exactly once per email.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      type: {
+        type: "string",
+        enum: ["invoice", "payment_confirmation", "reminder", "other"],
+        description:
+          "What kind of email this is. 'invoice' = a bill (with amount + supplier). 'payment_confirmation' = bank/payment receipt. 'reminder' = notification about an existing invoice (skip). 'other' = anything not financial.",
+      },
+      confidence: {
+        type: "number",
+        description:
+          "How sure you are (0.0 to 1.0). Below 0.5 means 'probably not'.",
+      },
+      reasoning: {
+        type: "string",
+        description: "One sentence explaining the classification.",
+      },
+    },
+    required: ["type", "confidence", "reasoning"],
+  },
+};
+
+const TRIAGE_SYSTEM_PROMPT = `You triage business emails to find invoices and payment-related messages for a Latvian small-business accounting tool.
+
+You'll receive: sender, subject, and body text (in Latvian, English, Russian, or other languages).
+
+Classify each email into ONE of:
+
+  - invoice: Contains a bill the user must pay (or has issued). Look for: amount, due date, supplier name, invoice number. Common Latvian phrases: "rēķins", "rēķina nr.", "apmaksāt līdz", "summa apmaksai". Common English: "invoice", "bill", "amount due", "please remit", "payment due". Subscription renewal invoices count.
+
+  - payment_confirmation: A receipt confirming money moved. Common phrases: "maksājums saņemts", "rēķins apmaksāts", "payment received", "transaction completed", "your payment of X". From banks, payment processors (Stripe, PayPal), service providers confirming receipt.
+
+  - reminder: A NOTIFICATION about an existing invoice — typically "rēķins Nr. X termiņš tuvojas", "your invoice X is due in 3 days", "payment reminder". The original invoice already exists somewhere; this is just a nudge. Mark as reminder.
+
+  - other: Anything else. Marketing newsletters, personal email, meeting invites, calendar notifications, package shipping notifications, social media. Most emails will be 'other'.
+
+Be conservative — if it's not clearly invoice/payment/reminder, mark 'other'. Confidence should reflect your certainty: 0.9+ for clear cases, 0.5-0.7 for ambiguous, below 0.5 for 'probably not but maybe'.`;
+
+/**
+ * Send an email's headers + body text to Haiku for triage.
+ * Returns a structured classification.
+ *
+ * Why Haiku 4.5 specifically:
+ *   - ~30× cheaper than Opus per token
+ *   - 2-3 second latency (Opus is 12-18s on PDFs)
+ *   - More than smart enough for "is this an invoice?" — that's
+ *     a classification task, not a vision/extraction task
+ *
+ * If the AI call itself fails, returns 'other' with confidence 0
+ * so the email is skipped — better to miss one than crash the
+ * whole scan.
+ */
+async function triageEmailWithAI(
+  anthropic: Anthropic,
+  fetched: FetchedEmail
+): Promise<TriageResult> {
+  const userContent = [
+    `From: ${fetched.fromHeader}`,
+    `Subject: ${fetched.subject}`,
+    `Date: ${fetched.emailDate}`,
+    "",
+    "Body:",
+    fetched.bodyText || "(no readable body text)",
+  ].join("\n");
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 512,
+      system: TRIAGE_SYSTEM_PROMPT,
+      tools: [TRIAGE_TOOL as Anthropic.Messages.Tool],
+      tool_choice: { type: "tool", name: "classify_email" },
+      messages: [{ role: "user", content: userContent }],
+    });
+
+    const toolUse = response.content.find(
+      (block): block is Anthropic.Messages.ToolUseBlock =>
+        block.type === "tool_use" && block.name === "classify_email"
+    );
+    if (!toolUse) {
+      return { type: "other", confidence: 0, reasoning: "AI returned no classification" };
+    }
+    const result = toolUse.input as TriageResult;
+    return {
+      type: result.type ?? "other",
+      confidence: typeof result.confidence === "number" ? result.confidence : 0,
+      reasoning: result.reasoning ?? "",
+    };
+  } catch (err) {
+    console.warn("Triage AI call failed:", err);
+    // Fail open — skip this email rather than crash the scan
+    return {
+      type: "other",
+      confidence: 0,
+      reasoning:
+        err instanceof Error ? `Triage error: ${err.message}` : "Triage error",
+    };
+  }
+}
+
+/**
+ * Extract invoice fields from PLAIN TEXT email body. Used when
+ * the email has no PDF/image attachment but the invoice details
+ * are in the body itself (subscription renewals, online services).
+ *
+ * Same Opus model + same EXTRACT_TOOL schema as the PDF path —
+ * Opus does excellent extraction from prose. The triageType
+ * argument hints at what we expect (invoice vs payment receipt)
+ * so the extraction is calibrated correctly.
+ */
+async function parseInvoiceFromText(
+  anthropic: Anthropic,
+  bodyText: string,
+  triageType: TriageResult["type"]
+): Promise<ParsedInvoice> {
+  const hint =
+    triageType === "payment_confirmation"
+      ? "This is a PAYMENT CONFIRMATION/RECEIPT. Extract the supplier (who got paid), the amount paid, and the date. Mark is_paid: true."
+      : "This is an invoice in email body text. Extract the standard invoice fields.";
+
+  const response = await anthropic.messages.create({
+    model: "claude-opus-4-7",
+    max_tokens: 2048,
+    system: SYSTEM_PROMPT,
+    tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],
+    tool_choice: { type: "tool", name: "save_invoice_data" },
+    messages: [
+      {
+        role: "user",
+        content: `${hint}\n\n--- Email content ---\n${bodyText}`,
+      },
+    ],
+  });
+
+  const toolUse = response.content.find(
+    (block): block is Anthropic.Messages.ToolUseBlock =>
+      block.type === "tool_use" && block.name === "save_invoice_data"
+  );
+  if (!toolUse) {
+    throw new Error("AI neatgrieza strukturētus datus");
+  }
+  return toolUse.input as ParsedInvoice;
+}
+
 async function parseInvoiceWithAI(
   anthropic: Anthropic,
   pdfBuffer: Buffer,
