@@ -113,11 +113,105 @@ export function createSheetsClient(config: SheetsClientConfig) {
 // Client implementation
 // ============================================================
 
+/**
+ * Sleep helper for backoff between retries.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Detect Google Sheets API rate limit / quota errors.
+ * Google returns either:
+ *   - HTTP 429 with code 'RESOURCE_EXHAUSTED'
+ *   - HTTP 403 with reason 'rateLimitExceeded' or 'userRateLimitExceeded'
+ * The googleapis client wraps these in GaxiosError. We check both
+ * .code (numeric or string) and the error message text.
+ */
+function isRateLimitError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: number | string; message?: string; status?: number };
+  if (e.code === 429 || e.code === "429") return true;
+  if (e.status === 429) return true;
+  const msg = (e.message ?? "").toLowerCase();
+  return (
+    msg.includes("quota exceeded") ||
+    msg.includes("rate limit") ||
+    msg.includes("rate_limit") ||
+    msg.includes("ratelimitexceeded") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("user_rate_limit")
+  );
+}
+
+/**
+ * Wrap a Sheets API call in retry-with-backoff for rate limit
+ * errors. Google's quotas are per-minute, so we wait increasingly
+ * long between attempts.
+ *
+ * Backoff schedule: 2s, 5s, 10s (= 17s total max wait).
+ * After 3 attempts we give up and throw the original error.
+ *
+ * Non-rate-limit errors are NOT retried — they bubble up
+ * immediately.
+ *
+ * Exported so provisioning + repair can use the same retry
+ * logic without duplicating the backoff schedule.
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string
+): Promise<T> {
+  const delays = [2000, 5000, 10000];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isRateLimitError(err)) throw err;
+      if (attempt === delays.length) break;
+      const wait = delays[attempt];
+      console.warn(
+        `[sheets-client] ${label} hit rate limit; retrying in ${wait}ms (attempt ${attempt + 1}/${delays.length})`
+      );
+      await sleep(wait);
+    }
+  }
+  throw lastErr;
+}
+
 export class SheetsClient {
   constructor(
     private readonly sheets: sheets_v4.Sheets,
     private readonly config: SheetsClientConfig
   ) {}
+
+  /**
+   * Per-instance cache for table header rows. Header order rarely
+   * changes during a single function invocation, so caching saves
+   * a Sheets API read per write — significant when bulk-writing
+   * 12+ invoices in one scan.
+   *
+   * Cleared automatically when the SheetsClient instance is gc'd
+   * (i.e. between requests). No manual invalidation needed for
+   * normal operations; if a write extends the header (rare —
+   * only schema repair does this), that codepath uses a fresh
+   * client.
+   */
+  private headerCache = new Map<TableName, string[]>();
+
+  /**
+   * Per-instance cache for the highest ID counter per table per
+   * day. generateId() reads all rows to find the next N for
+   * today's prefix. Cache that count after the first read so
+   * subsequent generateId() calls within the same scan just
+   * increment without re-reading.
+   *
+   * Format: { '30_invoices_out:030526': 5 } means 5 rows already
+   * created today for that table.
+   */
+  private idCounterCache = new Map<string, number>();
 
   /**
    * List all non-deleted rows from a table.
@@ -179,13 +273,17 @@ export class SheetsClient {
       }),
     ];
 
-    await this.sheets.spreadsheets.values.append({
-      spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!A:Z`,
-      valueInputOption: "RAW",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values },
-    });
+    await withRetry(
+      () =>
+        this.sheets.spreadsheets.values.append({
+          spreadsheetId: this.config.spreadsheetId,
+          range: `${table}!A:Z`,
+          valueInputOption: "RAW",
+          insertDataOption: "INSERT_ROWS",
+          requestBody: { values },
+        }),
+      `append(${table})`
+    );
 
     await this.writeAuditLog({
       action: "create",
@@ -230,13 +328,17 @@ export class SheetsClient {
       }),
     ];
 
-    await this.sheets.spreadsheets.values.append({
-      spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!A:Z`,
-      valueInputOption: "RAW",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values },
-    });
+    await withRetry(
+      () =>
+        this.sheets.spreadsheets.values.append({
+          spreadsheetId: this.config.spreadsheetId,
+          range: `${table}!A:Z`,
+          valueInputOption: "RAW",
+          insertDataOption: "INSERT_ROWS",
+          requestBody: { values },
+        }),
+      `append(${table})`
+    );
 
     await this.writeAuditLog({
       action: "create",
@@ -293,12 +395,16 @@ export class SheetsClient {
     // is sheet row N+2 (target.index is 0-indexed within data rows)
     const sheetRowNumber = target.index + 2;
 
-    await this.sheets.spreadsheets.values.update({
-      spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!A${sheetRowNumber}:${columnLetter(header.length)}${sheetRowNumber}`,
-      valueInputOption: "RAW",
-      requestBody: { values },
-    });
+    await withRetry(
+      () =>
+        this.sheets.spreadsheets.values.update({
+          spreadsheetId: this.config.spreadsheetId,
+          range: `${table}!A${sheetRowNumber}:${columnLetter(header.length)}${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values },
+        }),
+      `update(${table})`
+    );
 
     await this.writeAuditLog({
       action: "update",
@@ -341,12 +447,16 @@ export class SheetsClient {
     const sheetRowNumber = target.index + 2;
 
     // Update only the deleted_at (col D) and updated_at (col C) cells
-    await this.sheets.spreadsheets.values.update({
-      spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!C${sheetRowNumber}:D${sheetRowNumber}`,
-      valueInputOption: "RAW",
-      requestBody: { values: [[now, now]] },
-    });
+    await withRetry(
+      () =>
+        this.sheets.spreadsheets.values.update({
+          spreadsheetId: this.config.spreadsheetId,
+          range: `${table}!C${sheetRowNumber}:D${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [[now, now]] },
+        }),
+      `softDelete(${table})`
+    );
 
     await this.writeAuditLog({
       action: "delete",
@@ -379,12 +489,16 @@ export class SheetsClient {
     const now = new Date().toISOString();
     const sheetRowNumber = target.index + 2;
 
-    await this.sheets.spreadsheets.values.update({
-      spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!C${sheetRowNumber}:D${sheetRowNumber}`,
-      valueInputOption: "RAW",
-      requestBody: { values: [[now, ""]] },
-    });
+    await withRetry(
+      () =>
+        this.sheets.spreadsheets.values.update({
+          spreadsheetId: this.config.spreadsheetId,
+          range: `${table}!C${sheetRowNumber}:D${sheetRowNumber}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [[now, ""]] },
+        }),
+      `restore(${table})`
+    );
 
     await this.writeAuditLog({
       action: "restore",
@@ -425,15 +539,24 @@ export class SheetsClient {
     //
     // We read A1:Z to capture both header and data in one round
     // trip. Row 1 is header, rows 2+ are data.
-    const response = await this.sheets.spreadsheets.values.get({
-      spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!A1:Z`,
-    });
+    const response = await withRetry(
+      () =>
+        this.sheets.spreadsheets.values.get({
+          spreadsheetId: this.config.spreadsheetId,
+          range: `${table}!A1:Z`,
+        }),
+      `readAllRowsWithIndex(${table})`
+    );
 
     const allValues = response.data.values ?? [];
     if (allValues.length === 0) return [];
 
     const header = (allValues[0] ?? []) as string[];
+    // Populate header cache as a side benefit — readAllRowsWithIndex
+    // is already paying for the header row, no point reading it
+    // again later
+    this.headerCache.set(table, header.filter((h) => !!h));
+
     const dataRows = allValues.slice(1);
 
     return dataRows.map((rowValues, index) => {
@@ -452,13 +575,24 @@ export class SheetsClient {
    * of what's in the sheet if schema repair hasn't run yet).
    */
   private async readHeader(table: TableName): Promise<string[]> {
-    const response = await this.sheets.spreadsheets.values.get({
-      spreadsheetId: this.config.spreadsheetId,
-      range: `${table}!A1:Z1`,
-    });
-    return ((response.data.values?.[0] ?? []) as string[]).filter(
+    // Cached? Return it. Header order is stable within a single
+    // SheetsClient lifetime (one HTTP request).
+    const cached = this.headerCache.get(table);
+    if (cached) return cached;
+
+    const response = await withRetry(
+      () =>
+        this.sheets.spreadsheets.values.get({
+          spreadsheetId: this.config.spreadsheetId,
+          range: `${table}!A1:Z1`,
+        }),
+      `readHeader(${table})`
+    );
+    const header = ((response.data.values?.[0] ?? []) as string[]).filter(
       (h) => !!h
     );
+    this.headerCache.set(table, header);
+    return header;
   }
 
   /**
@@ -470,8 +604,18 @@ export class SheetsClient {
     const schema = getTableSchema(table);
     const today = ddmmyy(new Date());
     const prefix = `${schema.idPrefix}-${today}-`;
+    const cacheKey = `${table}:${today}`;
 
-    // Read existing IDs to find the highest N for today
+    // Cached counter? Increment and return — saves a full table
+    // read for every subsequent ID generation in the same scan.
+    const cached = this.idCounterCache.get(cacheKey);
+    if (cached !== undefined) {
+      const next = cached + 1;
+      this.idCounterCache.set(cacheKey, next);
+      return `${prefix}${next}`;
+    }
+
+    // First call: read existing IDs to find the highest N for today
     const allRows = await this.readAllRows(table);
     const todaysIds = allRows
       .map((r) => r.id)
@@ -482,7 +626,9 @@ export class SheetsClient {
       return isNaN(n) ? max : Math.max(max, n);
     }, 0);
 
-    return `${prefix}${highestN + 1}`;
+    const next = highestN + 1;
+    this.idCounterCache.set(cacheKey, next);
+    return `${prefix}${next}`;
   }
 
   /**
@@ -515,13 +661,17 @@ export class SheetsClient {
         "", // user_agent (L)
       ];
 
-      await this.sheets.spreadsheets.values.append({
-        spreadsheetId: this.config.spreadsheetId,
-        range: `99_audit_log!A:Z`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: { values: [row] },
-      });
+      await withRetry(
+        () =>
+          this.sheets.spreadsheets.values.append({
+            spreadsheetId: this.config.spreadsheetId,
+            range: `99_audit_log!A:Z`,
+            valueInputOption: "RAW",
+            insertDataOption: "INSERT_ROWS",
+            requestBody: { values: [row] },
+          }),
+        `append(99_audit_log)`
+      );
     } catch (err) {
       console.error("Audit log write failed:", err);
       // Intentionally swallow — don't fail the parent operation

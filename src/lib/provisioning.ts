@@ -31,6 +31,7 @@
 
 import { google, type drive_v3, type sheets_v4 } from "googleapis";
 import { COMPANY_TABS } from "./sheets-schema";
+import { withRetry } from "./sheets-client";
 
 // ============================================================
 // Types
@@ -425,10 +426,14 @@ export async function ensureTabsAndHeaders(
   tabs: Array<{ name: string; cols: readonly string[] }>
 ): Promise<void> {
   // Read existing tab list
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets.properties(sheetId,title)",
-  });
+  const meta = await withRetry(
+    () =>
+      sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: "sheets.properties(sheetId,title)",
+      }),
+    "read sheet meta"
+  );
   const existingTabs = meta.data.sheets ?? [];
   const existingTitles = new Set(
     existingTabs.map((s) => s.properties?.title).filter(Boolean) as string[]
@@ -441,15 +446,30 @@ export async function ensureTabsAndHeaders(
     const requests: sheets_v4.Schema$Request[] = tabsToCreate.map((t) => ({
       addSheet: { properties: { title: t.name } },
     }));
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests },
-    });
+    await withRetry(
+      () =>
+        sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: { requests },
+        }),
+      "create tabs batch"
+    );
   }
 
-  // Write headers to every tab (skipped if header row already matches)
-  for (const tab of tabs) {
+  // Write headers to every tab (skipped if header row already matches).
+  //
+  // We add a small delay between tabs because the per-tab writeHeadersIfMissing
+  // makes 1-3 Sheets API calls each. With 25 tabs that's up to 75 calls —
+  // perilously close to the 300/min read + 60/min write limits, especially
+  // if email-import or other operations are running concurrently. A 200ms
+  // delay caps us at ~5 tabs/second = 300/min worst case, well within
+  // budget.
+  for (let i = 0; i < tabs.length; i++) {
+    const tab = tabs[i];
     await writeHeadersIfMissing(sheets, spreadsheetId, tab.name, tab.cols);
+    if (i < tabs.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
   }
 
   // Clean up: delete default "Sheet1" if it's the only empty one left
@@ -458,14 +478,18 @@ export async function ensureTabsAndHeaders(
   );
   if (defaultSheet?.properties?.sheetId !== undefined) {
     try {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            { deleteSheet: { sheetId: defaultSheet.properties.sheetId } },
-          ],
-        },
-      });
+      await withRetry(
+        () =>
+          sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              requests: [
+                { deleteSheet: { sheetId: defaultSheet.properties!.sheetId! } },
+              ],
+            },
+          }),
+        "delete Sheet1"
+      );
     } catch {
       // Already gone or can't delete — ignore
     }
@@ -516,11 +540,18 @@ async function writeHeadersIfMissing(
 
   // Read existing header row (up to an extra-wide range to catch
   // any columns beyond our expected count — orphans from an older
-  // schema version where we removed a column)
-  const current = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${tabName}!A1:ZZ1`,
-  });
+  // schema version where we removed a column).
+  // Wrapped in withRetry to handle Google Sheets rate limits — the
+  // schema repair flow walks ~25 tabs and can hit the 300/min read
+  // quota if other operations are running concurrently.
+  const current = await withRetry(
+    () =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${tabName}!A1:ZZ1`,
+      }),
+    `read header(${tabName})`
+  );
   const existing = (current.data.values?.[0] ?? []) as string[];
 
   // Fast path: headers match exactly → nothing to do
@@ -532,10 +563,14 @@ async function writeHeadersIfMissing(
   }
 
   // Look up the sheetId for this tab (needed for batchUpdate ops)
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets.properties(sheetId,title)",
-  });
+  const meta = await withRetry(
+    () =>
+      sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: "sheets.properties(sheetId,title)",
+      }),
+    `read meta(${tabName})`
+  );
   const sheetProps = meta.data.sheets?.find(
     (s) => s.properties?.title === tabName
   )?.properties;

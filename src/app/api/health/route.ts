@@ -73,31 +73,46 @@ export async function GET(request: Request) {
       actor: session.user.email,
     });
 
-    // Read every tab's counts in parallel, catching errors per-tab
-    // so one broken tab doesn't tank the whole report.
-    const reports: TabReport[] = await Promise.all(
-      COMPANY_TABS.map(async (tab): Promise<TabReport> => {
-        try {
-          // Use includeDeleted=true to get both counts at once
-          const allRows = await client.list(tab.name, {
-            includeDeleted: true,
-          });
-          const active = allRows.filter((r) => !r.deleted_at);
-          return {
-            tab: tab.name,
-            prefix: tab.idPrefix,
-            rowCount: active.length,
-            deletedCount: allRows.length - active.length,
-          };
-        } catch (err) {
-          return {
-            tab: tab.name,
-            prefix: tab.idPrefix,
-            error: err instanceof Error ? err.message : "Unknown error",
-          };
-        }
-      })
-    );
+    // Read every tab's counts. We chunk these into batches of 5
+    // rather than all-parallel because Sheets API has a 300/min
+    // read quota per user, and 25 simultaneous reads is enough
+    // to trip that limit when other operations (email-import,
+    // schema repair) are running concurrently.
+    //
+    // Per-tab errors are caught individually so one broken tab
+    // doesn't tank the whole report.
+    const CHUNK_SIZE = 5;
+    const reports: TabReport[] = [];
+    for (let i = 0; i < COMPANY_TABS.length; i += CHUNK_SIZE) {
+      const chunk = COMPANY_TABS.slice(i, i + CHUNK_SIZE);
+      const chunkReports = await Promise.all(
+        chunk.map(async (tab): Promise<TabReport> => {
+          try {
+            const allRows = await client.list(tab.name, {
+              includeDeleted: true,
+            });
+            const active = allRows.filter((r) => !r.deleted_at);
+            return {
+              tab: tab.name,
+              prefix: tab.idPrefix,
+              rowCount: active.length,
+              deletedCount: allRows.length - active.length,
+            };
+          } catch (err) {
+            return {
+              tab: tab.name,
+              prefix: tab.idPrefix,
+              error: err instanceof Error ? err.message : "Unknown error",
+            };
+          }
+        })
+      );
+      reports.push(...chunkReports);
+      // Brief pause between chunks to spread the API load
+      if (i + CHUNK_SIZE < COMPANY_TABS.length) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
 
     const totalRows = reports.reduce((sum, r) => sum + (r.rowCount ?? 0), 0);
     const totalErrors = reports.filter((r) => r.error).length;
