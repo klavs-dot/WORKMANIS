@@ -425,6 +425,33 @@ export const COMPANY_TABS = [
       // pointing to a real invoice row instead).
       "manual_invoice_drive_id",
       "manual_invoice_filename",
+      // 2026-05 (Sesija 5) — AI orphan classification.
+      //
+      // ai_category buckets orphan transactions:
+      //   'alga'          — salary payment
+      //   'nodoklis'      — tax (VID, social, PVN)
+      //   'rekins'        — looks like an invoice — needs PDF
+      //                     attachment via 'Augšupielādēt manuāli'
+      //   'automatiskais' — recurring/subscription/utility
+      //   'nezinams'      — AI couldn't tell
+      //   '' (empty)      — not yet classified
+      //
+      // ai_confidence ('high' | 'medium' | 'low') — AI's
+      // self-assessment of how confident it is. Surfaced in
+      // tooltips so user knows whether to trust the bucketing
+      // or override it.
+      //
+      // ai_expected_supplier — the supplier name the AI thinks
+      // a matching invoice would be FROM. Populated only for
+      // 'rekins' / 'automatiskais' categories. Used by Sesija 6
+      // for partner auto-fill on first attached payment.
+      //
+      // ai_reasoning — one-sentence Latvian rationale for the
+      // classification, shown in tooltip.
+      "ai_category",
+      "ai_confidence",
+      "ai_expected_supplier",
+      "ai_reasoning",
     ],
   },
   {

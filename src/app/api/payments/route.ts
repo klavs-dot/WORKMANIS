@@ -66,6 +66,22 @@ interface ApiPayment {
   manualInvoiceDriveId: string | undefined;
   /** Original filename of the manually-attached invoice, if any */
   manualInvoiceFilename: string | undefined;
+  /**
+   * Sesija 5 — AI classification of orphan transactions:
+   *   ''               — not yet classified
+   *   'alga'           — salary
+   *   'nodoklis'       — tax
+   *   'rekins'         — invoice (action: attach manually)
+   *   'automatiskais'  — recurring/subscription
+   *   'nezinams'       — AI couldn't tell
+   */
+  aiCategory: string;
+  /** 'high' | 'medium' | 'low' — AI's self-assessment */
+  aiConfidence: string;
+  /** Suggested supplier name from AI (for 'rekins'/'automatiskais') */
+  aiExpectedSupplier: string;
+  /** One-sentence Latvian rationale, surfaced in tooltips */
+  aiReasoning: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -157,6 +173,10 @@ function rowToApi(row: Record<string, unknown>): ApiPayment {
       ((row.manual_invoice_filename as string) || undefined) as
         | string
         | undefined,
+    aiCategory: (row.ai_category as string) ?? "",
+    aiConfidence: (row.ai_confidence as string) ?? "",
+    aiExpectedSupplier: (row.ai_expected_supplier as string) ?? "",
+    aiReasoning: (row.ai_reasoning as string) ?? "",
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

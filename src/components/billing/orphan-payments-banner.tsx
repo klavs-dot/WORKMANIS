@@ -58,6 +58,23 @@ export function OrphanPaymentsBanner({
 
   if (orphans.length === 0) return null;
 
+  // Sesija 5 — count classified vs unclassified for the header
+  // hint. If many orphans are classified as 'rekins', we surface
+  // it: "12 izskatās pēc rēķiniem — augšupielādē tos manuāli".
+  const classified = orphans.filter((o) => o.aiCategory).length;
+  const rekins = orphans.filter((o) => o.aiCategory === "rekins").length;
+  const algas = orphans.filter((o) => o.aiCategory === "alga").length;
+  const nodokli = orphans.filter((o) => o.aiCategory === "nodoklis").length;
+  const automatiskie = orphans.filter(
+    (o) => o.aiCategory === "automatiskais"
+  ).length;
+
+  const aiHints: string[] = [];
+  if (rekins > 0) aiHints.push(`${rekins} rēķinu`);
+  if (algas > 0) aiHints.push(`${algas} algu`);
+  if (nodokli > 0) aiHints.push(`${nodokli} nodokļu`);
+  if (automatiskie > 0) aiHints.push(`${automatiskie} automātisko`);
+
   return (
     <div className="mb-4 space-y-2">
       <div className="flex items-center gap-2">
@@ -75,6 +92,11 @@ export function OrphanPaymentsBanner({
         {direction === "incoming"
           ? "Šie maksājumi ir saņemti, bet nav atrasts atbilstošs izrakstītais rēķins. Augšupielādē rēķinu manuāli, lai sasaistītu."
           : "Šie maksājumi ir veikti, bet nav atrasts atbilstošs piegādātāja rēķins. Augšupielādē rēķinu manuāli, lai sasaistītu."}
+        {classified > 0 && aiHints.length > 0 && (
+          <span className="block mt-1 text-graphite-500">
+            AI šķiroja: {aiHints.join(", ")}.
+          </span>
+        )}
       </p>
       <AnimatePresence initial={false}>
         {orphans.map((orphan) => (
@@ -178,6 +200,16 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
           <span className="text-[13.5px] font-semibold text-graphite-900 truncate">
             {payment.counterparty || "(nav norādīts)"}
           </span>
+          {/* AI classification badge — Sesija 5. Shows what
+              category the AI thinks this orphan is, so user
+              knows whether to upload an invoice (rekins),
+              accept it as a tax/salary, or ignore. */}
+          <CategoryBadge
+            category={payment.aiCategory}
+            confidence={payment.aiConfidence}
+            reasoning={payment.aiReasoning}
+            expectedSupplier={payment.aiExpectedSupplier}
+          />
           <span className="text-[12.5px] font-semibold text-graphite-700 ml-auto whitespace-nowrap">
             {isIncoming ? "+" : "−"}
             {absAmount.toFixed(2)} EUR
@@ -273,4 +305,82 @@ export function PaymentStatusPill({
   }
 
   return null;
+}
+
+// ============================================================
+// AI category badge — shown on orphan rows
+// ============================================================
+
+/**
+ * Small inline badge showing the AI's bucket for an orphan
+ * transaction. Color-coded by category so the user can at a
+ * glance see which orphans are routine (alga, nodoklis,
+ * automatiskais — typically don't need invoices) vs which
+ * need action ('rekins' — these need a PDF attached).
+ *
+ * Returns null if no classification (orphan hasn't been
+ * processed yet, or this isn't an orphan).
+ */
+function CategoryBadge({
+  category,
+  confidence,
+  reasoning,
+  expectedSupplier,
+}: {
+  category: string | undefined;
+  confidence: string | undefined;
+  reasoning: string | undefined;
+  expectedSupplier: string | undefined;
+}) {
+  if (!category) return null;
+
+  const palette: Record<string, { bg: string; text: string; label: string }> = {
+    alga: {
+      bg: "bg-blue-50 border-blue-200",
+      text: "text-blue-800",
+      label: "Alga",
+    },
+    nodoklis: {
+      bg: "bg-purple-50 border-purple-200",
+      text: "text-purple-800",
+      label: "Nodoklis",
+    },
+    rekins: {
+      bg: "bg-red-100 border-red-300",
+      text: "text-red-800",
+      label: "Rēķins",
+    },
+    automatiskais: {
+      bg: "bg-amber-50 border-amber-200",
+      text: "text-amber-800",
+      label: "Automātisks",
+    },
+    nezinams: {
+      bg: "bg-graphite-100 border-graphite-300",
+      text: "text-graphite-600",
+      label: "Nezināms",
+    },
+  };
+  const p = palette[category];
+  if (!p) return null;
+
+  // Tooltip: full AI reasoning + confidence + suggested supplier
+  const tooltipParts: string[] = [];
+  if (reasoning) tooltipParts.push(reasoning);
+  if (confidence) tooltipParts.push(`Konfidence: ${confidence}`);
+  if (expectedSupplier)
+    tooltipParts.push(`Sagaidāmais piegādātājs: ${expectedSupplier}`);
+  const tooltip = tooltipParts.join("\n\n");
+
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${p.bg} ${p.text}`}
+      title={tooltip}
+    >
+      {p.label}
+      {confidence === "low" && (
+        <span className="ml-1 opacity-60">?</span>
+      )}
+    </span>
+  );
 }

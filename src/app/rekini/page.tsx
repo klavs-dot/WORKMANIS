@@ -24,6 +24,7 @@ import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { EmailImportRobotButton } from "@/components/billing/email-import-robot-button";
 import { BankImportRobotButton } from "@/components/billing/bank-import-robot-button";
 import { BankExportRobotButton } from "@/components/billing/bank-export-robot-button";
+import { ReconcileActionsRow } from "@/components/billing/reconcile-actions-row";
 import { useBilling } from "@/lib/billing-store";
 import { usePayments } from "@/lib/payments-store";
 import { useNotifications } from "@/lib/notifications";
@@ -135,6 +136,10 @@ export default function RekiniMaksajumiPage() {
             bankas izrakstu un salīdzina ar rēķiniem, violetais sagatavo
             maksājumu pakotni augšupielādei bankā.
           </p>
+          {/* Sesija 5 — secondary actions for re-running
+              reconciliation and AI-classifying orphan transactions
+              after the user has manually filled gaps in the data. */}
+          <ReconcileActionsRow />
         </div>
 
         {/* Segmented control */}

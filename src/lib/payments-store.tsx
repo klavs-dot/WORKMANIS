@@ -65,6 +65,14 @@ export interface BankPayment {
   manualInvoiceDriveId?: string;
   /** Original filename of manually-attached invoice */
   manualInvoiceFilename?: string;
+  /**
+   * Sesija 5 — AI classification of this orphan transaction.
+   * Empty when not classified or not an orphan.
+   */
+  aiCategory?: string;
+  aiConfidence?: string;
+  aiExpectedSupplier?: string;
+  aiReasoning?: string;
   createdAt: string;
   updatedAt: string;
 }
