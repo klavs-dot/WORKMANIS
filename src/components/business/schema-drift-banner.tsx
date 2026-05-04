@@ -54,6 +54,42 @@ export function SchemaDriftBanner() {
     let cancelled = false;
     setState({ kind: "checking" });
 
+    // KRITISKAIS LABOJUMS — schema-check tika izsaukts uz KATRAS
+    // lapas atvēršanas, kas izsmēla Google Sheets API quota
+    // (300 reads/min/user). Quota errors padarīja VISU lēnu —
+    // rēķinus, e-pastu, viss retried 3 reizes ar 5-10s pauzēm.
+    //
+    // Risinājums: cache rezultātu localStorage uz 24h. Schema
+    // mainās reti (parasti 1× nedēļā pēc deploy). Pat ja kāds
+    // jauns lauks ir pievienots, lietotājs to redzēs nākamajā
+    // dienā — neviens nelūdz uzreiz pamanīt.
+    //
+    // Per-company cache, tāpēc katra struktūrvienība pārbauda
+    // savu shemu atsevišķi.
+    const CACHE_KEY = `workmanis.schema-check.${activeCompany.id}`;
+    const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 stundas
+
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw) as {
+          timestamp: number;
+          result: SchemaCheckResult;
+        };
+        if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
+          // Cache valid — apply it immediately, skip API call
+          if (cached.result.ok) {
+            setState({ kind: "ok" });
+          } else {
+            setState({ kind: "drift", result: cached.result });
+          }
+          return; // SKIP fetch — this is the critical change
+        }
+      }
+    } catch {
+      // localStorage kaut kā neaizsniedzams → fall through uz fetch
+    }
+
     fetch(
       `/api/companies/schema-check?company_id=${encodeURIComponent(activeCompany.id)}`,
       { cache: "no-store" }
@@ -64,6 +100,16 @@ export function SchemaDriftBanner() {
       })
       .then((data: SchemaCheckResult) => {
         if (cancelled) return;
+        // Save to cache regardless of outcome — even 'ok' result
+        // should be cached so we don't re-check for 24h
+        try {
+          localStorage.setItem(
+            CACHE_KEY,
+            JSON.stringify({ timestamp: Date.now(), result: data })
+          );
+        } catch {
+          // best-effort
+        }
         if (data.ok) {
           setState({ kind: "ok" });
         } else {
@@ -72,8 +118,9 @@ export function SchemaDriftBanner() {
       })
       .catch((err) => {
         if (cancelled) return;
-        // Non-fatal — show nothing rather than scaring the user
-        // with a banner about a check that itself failed.
+        // Quota error or other failure → treat as ok (don't bug
+        // the user with a check that itself failed). Don't cache
+        // the failure — try again next page load.
         console.warn("[schema-drift] check failed:", err);
         setState({ kind: "ok" });
       });
@@ -102,6 +149,15 @@ export function SchemaDriftBanner() {
         "Tabulas atjauninātas. Atsvaidzini lapu (F5), lai redzētu jaunās funkcijas.",
         9000
       );
+      // Invalidate the cached drift state so next page load checks
+      // again (and cache gets the new 'ok' result for next 24h)
+      try {
+        localStorage.removeItem(
+          `workmanis.schema-check.${activeCompany.id}`
+        );
+      } catch {
+        // best-effort
+      }
       setState({ kind: "fixed" });
       // Auto-fade banner after 3s so the page doesn't keep the
       // green chip taking up space forever.
