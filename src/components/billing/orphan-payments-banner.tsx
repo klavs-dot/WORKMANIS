@@ -22,7 +22,7 @@
  * Sesija 4 of the rēķini-redesign.
  */
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertTriangle,
@@ -31,6 +31,8 @@ import {
   ArrowUpFromLine,
   CheckCircle2,
   Loader2,
+  UserCheck,
+  X,
 } from "lucide-react";
 import { useCompany } from "@/lib/company-context";
 import { usePayments, type BankPayment } from "@/lib/payments-store";
@@ -116,6 +118,7 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
   const { refresh: refreshPayments } = usePayments();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [classifyOpen, setClassifyOpen] = useState(false);
 
   const isIncoming = payment.amount > 0;
   const Icon = isIncoming ? ArrowDownToLine : ArrowUpFromLine;
@@ -230,26 +233,301 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => !uploading && fileInputRef.current?.click()}
-        disabled={uploading}
-        className={cn(
-          "shrink-0 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5",
-          "text-[11.5px] font-medium border transition-colors",
-          uploading
-            ? "bg-graphite-100 border-graphite-200 text-graphite-500 cursor-wait"
-            : "bg-white border-red-300 text-red-700 hover:bg-red-100 hover:border-red-400"
+      <div className="shrink-0 flex flex-col items-end gap-1.5 relative">
+        <button
+          type="button"
+          onClick={() => !uploading && fileInputRef.current?.click()}
+          disabled={uploading}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5",
+            "text-[11.5px] font-medium border transition-colors",
+            uploading
+              ? "bg-graphite-100 border-graphite-200 text-graphite-500 cursor-wait"
+              : "bg-white border-red-300 text-red-700 hover:bg-red-100 hover:border-red-400"
+          )}
+          title="Izvēlies rēķina PDF / attēlu"
+        >
+          {uploading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Upload className="h-3.5 w-3.5" />
+          )}
+          {uploading ? "Augšupielādē…" : "Augšupielādēt rēķinu"}
+        </button>
+
+        {/* Sesija 6 — register as partner / employee. Only shown
+            for outgoing payments (we don't pay clients via salaries
+            or commissions in the typical case; if we did, the
+            user could still use 'Augšupielādēt rēķinu' instead). */}
+        {!isIncoming && (
+          <button
+            type="button"
+            onClick={() => setClassifyOpen((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5",
+              "text-[11.5px] font-medium border transition-colors",
+              "bg-white border-graphite-300 text-graphite-700",
+              "hover:bg-graphite-50 hover:border-graphite-400"
+            )}
+            title="Reģistrē šo maksājumu kā maksājumu darbiniekam, partnerim vai aģentam"
+          >
+            <UserCheck className="h-3.5 w-3.5" />
+            Reģistrēt kā…
+          </button>
         )}
-        title="Izvēlies rēķina PDF / attēlu"
-      >
-        {uploading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Upload className="h-3.5 w-3.5" />
+
+        {classifyOpen && (
+          <ClassifyPopover
+            payment={payment}
+            onClose={() => setClassifyOpen(false)}
+          />
         )}
-        {uploading ? "Augšupielādē…" : "Augšupielādēt manuāli"}
-      </button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ============================================================
+// Classify popover — Sesija 6 partner/employee picker
+// ============================================================
+
+interface PartnerOption {
+  id: string;
+  name: string;
+  kind: string;
+}
+
+interface EmployeeOption {
+  id: string;
+  fullName: string;
+}
+
+function ClassifyPopover({
+  payment,
+  onClose,
+}: {
+  payment: BankPayment;
+  onClose: () => void;
+}) {
+  const { activeCompany } = useCompany();
+  const { refresh: refreshPayments } = usePayments();
+  const [tab, setTab] = useState<"partner" | "employee">("partner");
+  const [partners, setPartners] = useState<PartnerOption[] | null>(null);
+  const [employees, setEmployees] = useState<EmployeeOption[] | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [filter, setFilter] = useState("");
+
+  // Load both lists once when popover opens. Cheap (these tabs
+  // are typically small) and the user might switch between them.
+  useEffect(() => {
+    if (!activeCompany?.id) return;
+    let cancelled = false;
+    fetch(
+      `/api/partners?company_id=${encodeURIComponent(activeCompany.id)}`
+    )
+      .then((r) => (r.ok ? r.json() : { partners: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        const items = (data.partners ?? data.items ?? []) as Array<
+          Record<string, unknown>
+        >;
+        setPartners(
+          items.map((p) => ({
+            id: String(p.id ?? ""),
+            name: String(p.name ?? ""),
+            kind: String(p.partnerKind ?? p.partner_kind ?? "partner"),
+          }))
+        );
+      })
+      .catch(() => !cancelled && setPartners([]));
+    fetch(
+      `/api/employees?company_id=${encodeURIComponent(activeCompany.id)}`
+    )
+      .then((r) => (r.ok ? r.json() : { employees: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        const items = (data.employees ?? data.items ?? []) as Array<
+          Record<string, unknown>
+        >;
+        setEmployees(
+          items.map((e) => ({
+            id: String(e.id ?? ""),
+            fullName:
+              `${e.firstName ?? e.first_name ?? ""} ${e.lastName ?? e.last_name ?? ""}`.trim() ||
+              "(bez vārda)",
+          }))
+        );
+      })
+      .catch(() => !cancelled && setEmployees([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCompany?.id]);
+
+  const handleSelect = async (
+    kind: "partner" | "employee",
+    entityId: string
+  ) => {
+    if (submitting || !activeCompany?.id) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/payments/${encodeURIComponent(payment.id)}/classify-as?company_id=${encodeURIComponent(activeCompany.id)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind, entity_id: entityId }),
+        }
+      );
+      if (!res.ok) {
+        const errBody = await res
+          .json()
+          .catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(errBody?.error || `Kļūda ${res.status}`);
+      }
+      const data = (await res.json()) as { ok: boolean; ibanSaved: boolean };
+      pushToastGlobally(
+        "success",
+        data.ibanSaved
+          ? `Maksājums sasaistīts. IBAN saglabāts nākamajai reizei — turpmākie maksājumi sasaistīsies automātiski.`
+          : `Maksājums sasaistīts.`,
+        7000
+      );
+      void refreshPayments();
+      onClose();
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Neizdevās";
+      pushToastGlobally("error", msg, 6000);
+      setSubmitting(false);
+    }
+  };
+
+  const visiblePartners = (partners ?? []).filter((p) =>
+    filter ? p.name.toLowerCase().includes(filter.toLowerCase()) : true
+  );
+  const visibleEmployees = (employees ?? []).filter((e) =>
+    filter ? e.fullName.toLowerCase().includes(filter.toLowerCase()) : true
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.15 }}
+      className="absolute top-full right-0 mt-1 w-[280px] rounded-lg border border-graphite-200 bg-white shadow-soft-lg z-20 overflow-hidden"
+    >
+      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-graphite-100">
+        <div className="flex gap-0.5">
+          <button
+            type="button"
+            onClick={() => setTab("partner")}
+            className={cn(
+              "px-2 py-0.5 rounded text-[11px] font-medium",
+              tab === "partner"
+                ? "bg-graphite-900 text-white"
+                : "text-graphite-600 hover:bg-graphite-50"
+            )}
+          >
+            Partneris/aģents
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("employee")}
+            className={cn(
+              "px-2 py-0.5 rounded text-[11px] font-medium",
+              tab === "employee"
+                ? "bg-graphite-900 text-white"
+                : "text-graphite-600 hover:bg-graphite-50"
+            )}
+          >
+            Darbinieks
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-graphite-400 hover:text-graphite-700"
+          aria-label="Aizvērt"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <input
+        type="text"
+        placeholder="Meklēt…"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        className="w-full px-2.5 py-1.5 border-b border-graphite-100 text-[12px] outline-none focus:bg-graphite-50/50"
+      />
+
+      <div className="max-h-[200px] overflow-y-auto">
+        {tab === "partner" && (
+          <>
+            {partners === null && (
+              <div className="px-2.5 py-3 text-[11px] text-graphite-500">
+                Ielādē…
+              </div>
+            )}
+            {partners !== null && visiblePartners.length === 0 && (
+              <div className="px-2.5 py-3 text-[11px] text-graphite-500">
+                {filter
+                  ? "Neviens neatbilst"
+                  : "Nav reģistrētu partneru — pievieno tos /partneri sadaļā"}
+              </div>
+            )}
+            {visiblePartners.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                disabled={submitting}
+                onClick={() => handleSelect("partner", p.id)}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-graphite-50 disabled:opacity-50 flex items-center justify-between gap-2"
+              >
+                <span className="text-[12px] text-graphite-900 truncate">
+                  {p.name}
+                </span>
+                {p.kind === "agent" && (
+                  <span className="text-[9.5px] uppercase font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
+                    aģents
+                  </span>
+                )}
+              </button>
+            ))}
+          </>
+        )}
+        {tab === "employee" && (
+          <>
+            {employees === null && (
+              <div className="px-2.5 py-3 text-[11px] text-graphite-500">
+                Ielādē…
+              </div>
+            )}
+            {employees !== null && visibleEmployees.length === 0 && (
+              <div className="px-2.5 py-3 text-[11px] text-graphite-500">
+                {filter
+                  ? "Neviens neatbilst"
+                  : "Nav reģistrētu darbinieku"}
+              </div>
+            )}
+            {visibleEmployees.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                disabled={submitting}
+                onClick={() => handleSelect("employee", e.id)}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-graphite-50 disabled:opacity-50"
+              >
+                <span className="text-[12px] text-graphite-900 truncate">
+                  {e.fullName}
+                </span>
+              </button>
+            ))}
+          </>
+        )}
+      </div>
     </motion.div>
   );
 }

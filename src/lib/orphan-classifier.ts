@@ -48,15 +48,56 @@ export interface KnownSupplier {
   typicalAccountCode?: string;
 }
 
+/**
+ * Sesija 6 — partners are non-invoice payment recipients
+ * (sales agents on commission, business partners getting profit
+ * shares, etc). Distinguished from suppliers because their
+ * payouts don't have invoices — they're paid based on contract
+ * terms or sales records, not an invoice document.
+ */
+export interface KnownPartner {
+  id: string;
+  name: string;
+  regNumber: string;
+  iban: string;
+  /** 'partner' = generic; 'agent' = sales agent on commission */
+  kind: "partner" | "agent";
+}
+
+/**
+ * Sesija 6 — employees for salary payments. Identified by
+ * IBAN match (employees rarely change accounts month-to-month,
+ * making IBAN very reliable) or by name fuzzy match against
+ * 'first_name last_name' string.
+ */
+export interface KnownEmployee {
+  id: string;
+  fullName: string;
+  iban: string;
+  personalCode: string;
+}
+
 export type ClassificationTarget =
   | { kind: "client"; entity: KnownClient; confidence: "high" | "medium" }
   | { kind: "supplier"; entity: KnownSupplier; confidence: "high" | "medium" }
+  | {
+      kind: "partner";
+      entity: KnownPartner;
+      confidence: "high" | "medium";
+    }
+  | {
+      kind: "employee";
+      entity: KnownEmployee;
+      confidence: "high" | "medium";
+    }
   | { kind: "unknown" };
 
 export interface ClassifyInput {
   transaction: BankTransaction;
   knownClients: KnownClient[];
   knownSuppliers: KnownSupplier[];
+  knownPartners: KnownPartner[];
+  knownEmployees: KnownEmployee[];
   /** Anthropic SDK client for the optional AI tier-3 match. */
   anthropic?: Anthropic;
 }
@@ -88,13 +129,21 @@ function digitsOnly(s: string): string {
 function deterministicMatch(
   tx: BankTransaction,
   clients: KnownClient[],
-  suppliers: KnownSupplier[]
+  suppliers: KnownSupplier[],
+  partners: KnownPartner[],
+  employees: KnownEmployee[]
 ): ClassificationTarget | null {
   const txIban = tx.counterpartyIban ? normalizeIban(tx.counterpartyIban) : "";
   const refLower = tx.reference.toLowerCase();
   const counterpartyLower = tx.counterparty.toLowerCase();
 
   // ───── Tier 1: IBAN ─────
+  // Order matters slightly: we check clients/suppliers FIRST because
+  // they're the more common case (most companies have many more
+  // invoices than salary/commission payments). Partner/employee
+  // checks last so we don't accidentally route an invoice payment
+  // to a partner who happened to share an IBAN — though IBANs
+  // are unique enough that this is theoretical.
   if (txIban) {
     for (const c of clients) {
       if (c.iban && normalizeIban(c.iban) === txIban) {
@@ -106,12 +155,26 @@ function deterministicMatch(
         return { kind: "supplier", entity: s, confidence: "high" };
       }
     }
+    for (const p of partners) {
+      if (p.iban && normalizeIban(p.iban) === txIban) {
+        return { kind: "partner", entity: p, confidence: "high" };
+      }
+    }
+    for (const e of employees) {
+      if (e.iban && normalizeIban(e.iban) === txIban) {
+        return { kind: "employee", entity: e, confidence: "high" };
+      }
+    }
   }
 
   // ───── Tier 2: reg / VAT number in reference ─────
   // We check both reference and counterparty fields because banks
   // sometimes put the reg number in the counterparty line (e.g.
-  // 'SIA Mosphera 40103108904')
+  // 'SIA Mosphera 40103108904').
+  //
+  // For employees we also check personal_code (11-digit Latvian
+  // personas kods) — some bank statements include it on salary
+  // transfers as the 'recipient' identifier.
   const haystack = `${refLower} ${counterpartyLower}`;
   for (const c of clients) {
     const reg = digitsOnly(c.regNumber);
@@ -131,6 +194,18 @@ function deterministicMatch(
     }
     if (vat && vat.length >= 9 && haystack.includes(vat)) {
       return { kind: "supplier", entity: s, confidence: "high" };
+    }
+  }
+  for (const p of partners) {
+    const reg = digitsOnly(p.regNumber);
+    if (reg && reg.length >= 9 && haystack.includes(reg)) {
+      return { kind: "partner", entity: p, confidence: "high" };
+    }
+  }
+  for (const e of employees) {
+    const code = digitsOnly(e.personalCode);
+    if (code && code.length >= 11 && haystack.includes(code)) {
+      return { kind: "employee", entity: e, confidence: "high" };
     }
   }
 
@@ -305,11 +380,38 @@ async function aiMatch(
 export async function classifyOrphanTransaction(
   input: ClassifyInput
 ): Promise<ClassificationTarget> {
-  const { transaction, knownClients, knownSuppliers, anthropic } = input;
+  const {
+    transaction,
+    knownClients,
+    knownSuppliers,
+    knownPartners,
+    knownEmployees,
+    anthropic,
+  } = input;
 
-  const det = deterministicMatch(transaction, knownClients, knownSuppliers);
+  const det = deterministicMatch(
+    transaction,
+    knownClients,
+    knownSuppliers,
+    knownPartners,
+    knownEmployees
+  );
   if (det) return det;
 
+  // AI tier — only checks clients + suppliers for fuzzy match.
+  // Partners + employees are NOT included in the AI prompt
+  // intentionally:
+  //   - Partner / employee identification is a one-time decision
+  //     that the user makes deliberately (they pick from a
+  //     dropdown). After that, IBAN match takes over for future
+  //     payments — no need for AI to guess.
+  //   - Adding 'is this a partner or supplier?' to the AI prompt
+  //     makes it much more likely to mis-classify (a freelance
+  //     designer could be either, depending on contract terms).
+  //     We'd rather leave it unknown and let the user decide.
+  //   - Salary payments to employees usually have unambiguous
+  //     IBANs (they're set up once via bank transfer and rarely
+  //     change). If IBAN doesn't match, the user knows best.
   if (!anthropic) {
     return { kind: "unknown" };
   }

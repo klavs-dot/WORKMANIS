@@ -18,6 +18,8 @@ interface PartnerRow extends Record<string, string> {
   email: string;
   phone: string;
   comment: string;
+  iban: string;
+  partner_kind: string;
 }
 
 interface ApiPartner {
@@ -31,6 +33,8 @@ interface ApiPartner {
   email: string;
   phone: string;
   comment: string;
+  iban: string;
+  partnerKind: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +55,13 @@ function parseCreateBody(body: unknown): PartnerRow | null {
     email: typeof b.email === "string" ? b.email : "",
     phone: typeof b.phone === "string" ? b.phone : "",
     comment: typeof b.comment === "string" ? b.comment : "",
+    iban: typeof b.iban === "string" ? b.iban.trim() : "",
+    partner_kind:
+      typeof b.partner_kind === "string"
+        ? b.partner_kind
+        : typeof b.partnerKind === "string"
+          ? (b.partnerKind as string)
+          : "",
   };
 }
 
@@ -66,6 +77,8 @@ function rowToApi(row: Record<string, unknown>): ApiPartner {
     email: (row.email as string) ?? "",
     phone: (row.phone as string) ?? "",
     comment: (row.comment as string) ?? "",
+    iban: (row.iban as string) ?? "",
+    partnerKind: (row.partner_kind as string) ?? "partner",
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

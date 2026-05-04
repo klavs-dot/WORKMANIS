@@ -60,6 +60,8 @@ import {
   classifyOrphanTransaction,
   type KnownClient,
   type KnownSupplier,
+  type KnownPartner,
+  type KnownEmployee,
 } from "@/lib/orphan-classifier";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -410,9 +412,13 @@ export async function POST(request: Request) {
   // any auto-classification — or delete the auto-created
   // placeholder if it was wrong.
 
-  // Load known clients + suppliers ONCE for all classifications
+  // Load known clients + suppliers + partners + employees ONCE
+  // for all classifications. The classifier accepts all four
+  // lists; loading them all up-front avoids per-orphan Sheets reads.
   let knownClients: KnownClient[] = [];
   let knownSuppliers: KnownSupplier[] = [];
+  let knownPartners: KnownPartner[] = [];
+  let knownEmployees: KnownEmployee[] = [];
   try {
     const clientsRaw = (await sheets.list("10_clients")) as Array<
       Record<string, unknown>
@@ -444,12 +450,50 @@ export async function POST(request: Request) {
           ? String(r.typical_account_code)
           : undefined,
       }));
+
+    // Partners — Sesija 6. Only those with IBAN saved are useful
+    // for IBAN-tier matching; rows without IBAN can still be
+    // matched by reg_number through tier 2.
+    const partnersRaw = (await sheets.list("15_partners")) as Array<
+      Record<string, unknown>
+    >;
+    knownPartners = partnersRaw
+      .filter((r) => r.name)
+      .map((r) => {
+        const rawKind = String(r.partner_kind ?? "").toLowerCase();
+        const kind: "partner" | "agent" =
+          rawKind === "agent" ? "agent" : "partner";
+        return {
+          id: String(r.id ?? ""),
+          name: String(r.name ?? ""),
+          regNumber: String(r.reg_number ?? ""),
+          iban: String(r.iban ?? ""),
+          kind,
+        };
+      });
+
+    // Employees — same idea. Salary payments are usually IBAN-
+    // matched. We compose fullName from first_name + last_name
+    // for AI prompts (we don't pass employees to AI, but kept
+    // for symmetry / future use).
+    const employeesRaw = (await sheets.list("20_employees")) as Array<
+      Record<string, unknown>
+    >;
+    knownEmployees = employeesRaw
+      .filter((r) => r.first_name || r.last_name)
+      .map((r) => ({
+        id: String(r.id ?? ""),
+        fullName: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(),
+        iban: String(r.iban ?? ""),
+        personalCode: String(r.personal_code ?? ""),
+      }));
+
     console.log(
-      `[bank-import] classifier inputs: ${knownClients.length} clients, ${knownSuppliers.length} suppliers`
+      `[bank-import] classifier inputs: ${knownClients.length} clients, ${knownSuppliers.length} suppliers, ${knownPartners.length} partners, ${knownEmployees.length} employees`
     );
   } catch (err) {
     console.warn(
-      "[bank-import] failed to load clients/suppliers — orphans will all stay unclassified:",
+      "[bank-import] failed to load classifier inputs — orphans will all stay unclassified:",
       err
     );
   }
@@ -479,6 +523,8 @@ export async function POST(request: Request) {
         transaction: orphan.transaction,
         knownClients,
         knownSuppliers,
+        knownPartners,
+        knownEmployees,
         anthropic,
       });
     } catch (err) {
@@ -519,12 +565,9 @@ export async function POST(request: Request) {
       const tx = orphan.transaction;
       const absAmountCents = Math.abs(tx.amountCents);
 
-      let createdInvoiceId: string;
-      let invoiceTab: "30_invoices_out" | "31_invoices_in";
-
       if (classification.kind === "client") {
-        // Incoming payment → we issued an invoice to this client
-        invoiceTab = "30_invoices_out";
+        // Incoming payment → we issued an invoice to this client.
+        // Auto-create a placeholder invoice + link the payment.
         const created = await sheets.create("30_invoices_out", {
           number: "(automātiski izveidots)",
           client: classification.entity.name,
@@ -544,11 +587,26 @@ export async function POST(request: Request) {
           payment_status: "apmaksats",
           payment_id: tx.paymentId ?? "",
         });
-        createdInvoiceId = (created as unknown as Record<string, unknown>)
-          .id as string;
-      } else {
+        const createdInvoiceId = (
+          created as unknown as Record<string, unknown>
+        ).id as string;
+
+        await sheets.update(
+          "35_payments",
+          orphan.transaction.paymentId,
+          {
+            matched_invoice_id: createdInvoiceId,
+            classified_section: "invoice_out",
+            payment_status: "",
+            expected_updated_at: expectedUpdatedAt,
+          }
+        );
+        autoClassifiedCount++;
+        console.log(
+          `[bank-import] auto-classified ${orphan.transaction.paymentId} → 30_invoices_out/${createdInvoiceId} (client ${classification.entity.name}, ${classification.confidence})`
+        );
+      } else if (classification.kind === "supplier") {
         // Outgoing payment → supplier sent us an invoice we paid
-        invoiceTab = "31_invoices_in";
         const created = await sheets.create("31_invoices_in", {
           supplier: classification.entity.name,
           invoice_number: "(automātiski izveidots)",
@@ -573,30 +631,75 @@ export async function POST(request: Request) {
           payment_status: "apmaksats",
           payment_id: tx.paymentId ?? "",
         });
-        createdInvoiceId = (created as unknown as Record<string, unknown>)
-          .id as string;
+        const createdInvoiceId = (
+          created as unknown as Record<string, unknown>
+        ).id as string;
+
+        await sheets.update(
+          "35_payments",
+          orphan.transaction.paymentId,
+          {
+            matched_invoice_id: createdInvoiceId,
+            classified_section: "invoice_in",
+            payment_status: "",
+            expected_updated_at: expectedUpdatedAt,
+          }
+        );
+        autoClassifiedCount++;
+        console.log(
+          `[bank-import] auto-classified ${orphan.transaction.paymentId} → 31_invoices_in/${createdInvoiceId} (supplier ${classification.entity.name}, ${classification.confidence})`
+        );
+      } else if (classification.kind === "partner") {
+        // Sesija 6 — partner / agent payment.
+        //
+        // We do NOT create an invoice row here — partners don't
+        // typically have invoices (commission-based or contract-
+        // based payouts). Instead we tag the 35_payments row
+        // directly with partner_id + payment_category. The UI
+        // will render these as 'Komisija' or 'Partneru maksājums'
+        // sections, separate from the invoice flow.
+        const category =
+          classification.entity.kind === "agent"
+            ? "commission"
+            : "partner_payment";
+        await sheets.update(
+          "35_payments",
+          orphan.transaction.paymentId,
+          {
+            partner_id: classification.entity.id,
+            payment_category: category,
+            classified_section: "partner",
+            payment_status: "",
+            expected_updated_at: expectedUpdatedAt,
+          }
+        );
+        autoClassifiedCount++;
+        console.log(
+          `[bank-import] auto-classified ${orphan.transaction.paymentId} → partner ${classification.entity.name} (${category}, ${classification.confidence})`
+        );
+      } else if (classification.kind === "employee") {
+        // Sesija 6 — salary payment to an employee.
+        //
+        // Same as partner: no invoice row. We tag with
+        // employee_id + payment_category='salary'. The bookkeeper
+        // export aggregates these per employee per period for
+        // the monthly salary report.
+        await sheets.update(
+          "35_payments",
+          orphan.transaction.paymentId,
+          {
+            employee_id: classification.entity.id,
+            payment_category: "salary",
+            classified_section: "salary",
+            payment_status: "",
+            expected_updated_at: expectedUpdatedAt,
+          }
+        );
+        autoClassifiedCount++;
+        console.log(
+          `[bank-import] auto-classified ${orphan.transaction.paymentId} → employee ${classification.entity.fullName} (salary, ${classification.confidence})`
+        );
       }
-
-      // Link the 35_payments row back to the new invoice
-      await sheets.update(
-        "35_payments",
-        orphan.transaction.paymentId,
-        {
-          matched_invoice_id: createdInvoiceId,
-          classified_section:
-            classification.kind === "client" ? "invoice_out" : "invoice_in",
-          // Don't tag with maksajums_bez_rekina — it's no longer
-          // an orphan after this step. Empty payment_status means
-          // 'matched normally during import'.
-          payment_status: "",
-          expected_updated_at: expectedUpdatedAt,
-        }
-      );
-
-      autoClassifiedCount++;
-      console.log(
-        `[bank-import] auto-classified payment ${orphan.transaction.paymentId} → ${invoiceTab}/${createdInvoiceId} (${classification.kind} ${classification.entity.name}, ${classification.confidence})`
-      );
     } catch (err) {
       console.warn(
         `Failed to auto-classify ${orphan.transaction.paymentId}:`,

@@ -148,6 +148,20 @@ export const COMPANY_TABS = [
       "email",
       "phone",
       "comment",
+      // 2026-05 (Sesija 6) — bank reconciliation auto-link.
+      //
+      // When a payment to this partner first appears in a bank
+      // statement and the user manually identifies them, we save
+      // the IBAN here. Future imports that see the same IBAN auto-
+      // create a payment record without prompting again.
+      //
+      // partner_kind: 'partner' | 'agent'
+      //   partner = generic business partner (commission-free)
+      //   agent   = sales agent (commission flow — payouts get
+      //             tagged separately for accounting)
+      // Empty defaults to 'partner' for legacy rows.
+      "iban",
+      "partner_kind",
     ],
   },
 
@@ -178,6 +192,11 @@ export const COMPANY_TABS = [
       // Drive integration (future)
       "photo_drive_id",
       "folder_drive_id",
+      // 2026-05 (Sesija 6) — bank reconciliation IBAN.
+      // Same purpose as on partners: when the user identifies
+      // a salary payment for the first time, the IBAN gets saved
+      // here so future months auto-link without asking.
+      "iban",
     ],
   },
   {
@@ -452,6 +471,30 @@ export const COMPANY_TABS = [
       "ai_confidence",
       "ai_expected_supplier",
       "ai_reasoning",
+      // 2026-05 (Sesija 6) — partner / employee linkage.
+      //
+      // Set when the user identifies an orphan transaction as a
+      // payment to/from a partner, agent, or employee that
+      // doesn't have a matching invoice (commission payouts,
+      // salary transfers, partner profit-sharing, etc).
+      //
+      //   partner_id        → 15_partners row (partner / agent)
+      //   employee_id       → 20_employees row (salary)
+      //   payment_category  → 'salary' | 'commission' |
+      //                       'partner_payment' | ''
+      //
+      // Only ONE of partner_id / employee_id is set. Empty
+      // category means 'not categorized this way' — the row
+      // is either an invoice payment (matched_invoice_id set)
+      // or still an orphan.
+      //
+      // Why store IBAN on partner/employee separately AND
+      // payment_category here: the IBAN lets future imports
+      // auto-link without prompting; the category lets the
+      // monthly accountant export bucket payments correctly.
+      "partner_id",
+      "employee_id",
+      "payment_category",
     ],
   },
   {

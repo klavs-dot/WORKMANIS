@@ -41,6 +41,7 @@ interface EmployeeRow extends Record<string, string> {
   safety_notes: string;
   photo_drive_id: string;
   folder_drive_id: string;
+  iban: string;
 }
 
 interface ApiEmployee {
@@ -54,6 +55,7 @@ interface ApiEmployee {
   position: string | undefined;
   startedAt: string | undefined;
   notes: string | undefined;
+  iban: string | undefined;
   ovp: {
     passed: boolean;
     lastCheckDate: string | undefined;
@@ -109,6 +111,7 @@ function parseCreateBody(body: unknown): EmployeeRow | null {
     safety_notes: typeof safety.notes === "string" ? safety.notes : "",
     photo_drive_id: "",
     folder_drive_id: "",
+    iban: typeof b.iban === "string" ? b.iban.trim() : "",
   };
 }
 
@@ -126,6 +129,7 @@ function rowToApi(row: Record<string, unknown>): ApiEmployee {
     startedAt:
       ((row.started_at as string) || undefined) as string | undefined,
     notes: ((row.notes as string) || undefined) as string | undefined,
+    iban: ((row.iban as string) || undefined) as string | undefined,
     ovp: {
       passed: (row.ovp_passed as string) === "TRUE",
       lastCheckDate:
