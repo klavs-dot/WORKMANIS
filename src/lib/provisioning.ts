@@ -140,6 +140,54 @@ const ACCOUNT_MASTER_TABS = [
     name: "03_settings",
     cols: ["key", "value", "description"],
   },
+  {
+    // Per-company OAuth tokens for Gmail/Drive/Sheets access.
+    //
+    // The architecture: when a user adds a company they go through
+    // a separate OAuth flow (NOT NextAuth) where they pick which
+    // Gmail account owns the company's data. That account's
+    // refresh_token is stored here, encrypted, so any future
+    // operation on that company (provisioning, email scanning,
+    // sheet writes) uses THIS token rather than the user's login
+    // session token.
+    //
+    // This separation lets a single user own companies under
+    // different Gmail accounts (e.g. klavs@gwm.com personal login,
+    // but invoices@mosphera.lv for the Mosphera company's data).
+    //
+    // Encryption: refresh_token_encrypted is AES-256-GCM ciphertext
+    // base64-encoded; iv is the random 12-byte nonce; auth_tag is
+    // GCM's 16-byte authentication tag. All three together are
+    // required to decrypt — losing any one renders the token
+    // unreadable. The key is derived from AUTH_SECRET (already
+    // available in env) so we don't need a separate KMS.
+    //
+    // company_id is FK to 01_companies.id — when a company is
+    // hard-deleted, its OAuth row is deleted too (cascade
+    // implemented manually in the delete endpoint).
+    //
+    // gmail_address is stored in plaintext for UX (showing the
+    // user "this company connects via invoices@mosphera.lv") and
+    // for token-rotation logic — if the user re-connects the same
+    // Gmail to a company, we update the existing row rather than
+    // creating duplicates.
+    //
+    // granted_scopes is a space-separated list of OAuth scopes
+    // actually approved at consent time. We check this before
+    // attempting Gmail/Drive/Sheets calls so we can surface a
+    // clear "needs reconsent" UI instead of mysterious 403s.
+    name: "04_company_oauth",
+    cols: [
+      "company_id",
+      "gmail_address",
+      "refresh_token_encrypted",
+      "iv",
+      "auth_tag",
+      "granted_scopes",
+      "granted_at",
+      "last_used_at",
+    ],
+  },
 ];
 
 // ============================================================
