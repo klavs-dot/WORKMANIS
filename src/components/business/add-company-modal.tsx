@@ -2,31 +2,37 @@
 
 /**
  * AddCompanyModal — form for provisioning a new company through
- * POST /api/companies/create. On submit:
+ * the OAuth flow (Phase 2/3 architecture).
+ *
+ * On submit:
  *   1. Validates required fields client-side
- *   2. Shows a full-form loading state (provisioning takes ~10-20s
- *      due to 25 Sheets tabs + 18 Drive folders being created)
- *   3. On success: calls onCreated callback with the new company
- *      metadata, which the parent uses to refresh its state, then
- *      saves the requisites (color, addresses, emails, etc.) via a
- *      separate PUT to /api/companies/requisites
- *   4. On failure: shows the server error inline with a retry option
+ *   2. POSTs form data to /api/companies/oauth/init which signs
+ *      the data into a state token and returns Google's consent
+ *      URL
+ *   3. Redirects the WHOLE PAGE to that URL — user picks which
+ *      Gmail account owns this company, approves Drive + Sheets
+ *      + Gmail scopes
+ *   4. Google redirects to /api/companies/oauth/callback, which
+ *      provisions the company in chosen Gmail's Drive, saves the
+ *      encrypted refresh token in account-master/04_company_oauth,
+ *      and redirects back to /uznemumi?created=ID&gmail=X
+ *   5. The /uznemumi page picks up that param, refreshes the
+ *      company list, activates the new company, shows a toast
  *
- * The provisioning API call makes real Drive + Sheets API calls to
- * the user's Google account — every submit creates actual files.
- * This is NOT a dry run. The 'Atcelt' button only works before
- * submission; once the API call is in flight, cancel is disabled
- * because we can't undo partial Drive creation.
+ * Why full-page redirect instead of popup:
+ *   - Mobile Safari + many other browsers block popups created
+ *     from async fetch handlers
+ *   - The state token carries form data through the round-trip
+ *     so nothing is lost when the user returns
  *
- * Two-step save flow:
- *   /api/companies/create  → creates Drive + Sheets, returns IDs
- *   /api/companies/requisites → fills in the rich requisite fields
- *
- * We split because the create endpoint validates only the bare
- * minimum (name, legal_name, reg_number) needed to provision
- * infrastructure; the rest are optional and live in 01_requisites.
- * If the requisites save fails, we still consider the company
- * created — the user can fill the rest in via the edit modal.
+ * Why this isn't onCreated callback anymore:
+ *   - Provisioning happens server-side during the OAuth callback,
+ *     not in this modal
+ *   - The user is redirected away from this page during submit
+ *   - When they return, /uznemumi handles state updates via the
+ *     useEffect on ?created= param. The onCreated prop is dead
+ *     code retained for type-compatibility (the prop fires only
+ *     in the no-longer-reachable success state which we removed).
  */
 
 import { useEffect, useState } from "react";

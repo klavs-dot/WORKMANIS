@@ -26,11 +26,14 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
 import {
-  createDriveClient,
+  createDriveClientFromInstance,
   DriveError,
 } from "@/lib/drive-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 
 export const maxDuration = 60;
 
@@ -38,7 +41,7 @@ const MAX_UPLOAD_SIZE = 25 * 1024 * 1024;
 
 export async function POST(request: Request) {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
@@ -84,21 +87,16 @@ export async function POST(request: Request) {
   const subPathRaw = formData.get("sub_path");
   const subPath = typeof subPathRaw === "string" ? subPathRaw : "";
 
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
-  const drive = createDriveClient({
-    accessToken: session.accessToken,
-    companyFolderId: company.folderId,
-  });
-
   try {
+    // Per-company OAuth: file goes into the company's Drive,
+    // not the login user's. Critical when companies span multiple
+    // Gmail accounts.
+    const cc = await getCompanyClients(companyId);
+    const drive = createDriveClientFromInstance({
+      drive: cc.drive,
+      companyFolderId: cc.company.folderId,
+    });
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await drive.uploadFile({
       subPath,
@@ -114,6 +112,16 @@ export async function POST(request: Request) {
       size: file.size,
     });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        {
+          error:
+            "Šim uzņēmumam nav pievienots Gmail konts.",
+          oauth_disconnected: true,
+        },
+        { status: 412 }
+      );
+    }
     console.error("Drive upload failed:", err);
     if (err instanceof DriveError) {
       return NextResponse.json(

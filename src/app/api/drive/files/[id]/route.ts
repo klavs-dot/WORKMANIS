@@ -32,11 +32,14 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
 import {
-  createDriveClient,
+  createDriveClientFromInstance,
   DriveError,
 } from "@/lib/drive-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 
 export const maxDuration = 30;
 
@@ -45,7 +48,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
@@ -70,23 +73,18 @@ export async function GET(
   // anything else = attachment (download dialog with filename).
   const mode = url.searchParams.get("mode") === "view" ? "view" : "download";
 
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
-  const drive = createDriveClient({
-    accessToken: session.accessToken,
-    companyFolderId: company.folderId,
-  });
-
   try {
+    // Per-company OAuth: file lives in the COMPANY's Drive,
+    // accessed via the company's own access token. Without this
+    // migration, files belonging to companies whose Drive is in
+    // a different Gmail than the login user's would 404.
+    const cc = await getCompanyClients(companyId);
+    const drive = createDriveClientFromInstance({
+      drive: cc.drive,
+      companyFolderId: cc.company.folderId,
+    });
+
     // Fetch metadata first so we can set the filename + mime type.
-    // If this fails the download will too, so it's not extra cost.
     const meta = await drive.getFileMetadata(fileId);
     if (!meta) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
@@ -119,6 +117,16 @@ export async function GET(
       },
     });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        {
+          error:
+            "Šim uzņēmumam nav pievienots Gmail konts.",
+          oauth_disconnected: true,
+        },
+        { status: 412 }
+      );
+    }
     console.error(`Drive download failed for ${fileId}:`, err);
     if (err instanceof DriveError) {
       return NextResponse.json(

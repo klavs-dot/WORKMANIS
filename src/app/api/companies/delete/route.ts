@@ -72,6 +72,11 @@ import { google } from "googleapis";
 import { auth } from "@/auth";
 import { resolveCompany } from "@/lib/resolve-company";
 import { withRetry } from "@/lib/sheets-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
+import { deleteCompanyOAuth } from "@/lib/company-oauth-store";
 
 // Drive trash + master row delete is fast — usually under 5s.
 // 30s is generous headroom in case Drive trash takes longer for
@@ -133,16 +138,42 @@ export async function DELETE(request: Request) {
     // Skipped entirely when keep_drive=true. The folder + all
     // its contents stay exactly where they are; only the
     // WORKMANIS registry pointer is removed.
+    //
+    // CRITICAL: we use the COMPANY's Drive client here, not the
+    // login user's. The company folder lives in the connected
+    // Gmail's Drive, which may be different from the login user's
+    // Drive. Without per-company OAuth we'd get a 404 trying to
+    // trash a folder we don't own from the session perspective.
     if (!keepDrive) {
       try {
+        // Try per-company OAuth first — this works when company
+        // has a Gmail connected (the normal case)
+        let companyDrive;
+        try {
+          const cc = await getCompanyClients(companyId);
+          companyDrive = cc.drive;
+        } catch (oauthErr) {
+          if (oauthErr instanceof NoCompanyOAuthError) {
+            // No Gmail connected — fall back to session client.
+            // This handles edge case: orphan companies (created
+            // before OAuth flow, or where token save failed).
+            // If the folder is in user's own Drive, this works.
+            // If it's in someone else's Drive, the trash will 404
+            // and we'll catch it below.
+            console.warn(
+              `[delete-company] No OAuth for ${companyId}, using session token`
+            );
+            companyDrive = drive;
+          } else {
+            throw oauthErr;
+          }
+        }
+
         await withRetry(
           () =>
-            drive.files.update({
+            companyDrive.files.update({
               fileId: company.folderId,
               requestBody: { trashed: true },
-              // supportsAllDrives so this works for both My Drive
-              // and Shared Drive locations (we currently use My
-              // Drive but defensive for future)
               supportsAllDrives: true,
             }),
           `trash folder(${company.folderId})`
@@ -199,6 +230,30 @@ export async function DELETE(request: Request) {
       accountMasterId,
       company.companyId
     );
+
+    // ───── Step 4: soft-delete the OAuth row ─────
+    // Mark the company's 04_company_oauth row(s) as deleted so
+    // future getCompanyClients(id) calls return NoCompanyOAuth
+    // rather than trying to use stale tokens. This is a separate
+    // step from the hard-delete above because OAuth rows are
+    // soft-deleted (audit trail) while company registry rows are
+    // hard-deleted (clean state).
+    //
+    // Best-effort: if this fails the company is already gone from
+    // WORKMANIS, the orphan OAuth row is harmless (no company id
+    // matches it anymore).
+    try {
+      await deleteCompanyOAuth({
+        userAccessToken: session.accessToken,
+        userEmail: session.user.email,
+        companyId: company.companyId,
+      });
+    } catch (err) {
+      console.warn(
+        `[delete-company] OAuth row cleanup failed for ${company.companyId}:`,
+        err
+      );
+    }
 
     return NextResponse.json({
       ok: true,

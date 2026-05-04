@@ -11,12 +11,15 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
 import {
-  createSheetsClient,
+  createSheetsClientFromInstance,
   OptimisticLockError,
   RowNotFoundError,
 } from "@/lib/sheets-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 
 export const maxDuration = 30;
 
@@ -31,7 +34,7 @@ export async function PATCH(
   const { id } = await params;
 
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
@@ -39,15 +42,6 @@ export async function PATCH(
   const companyId = url.searchParams.get("company_id");
   if (!companyId) {
     return NextResponse.json({ error: "Missing company_id" }, { status: 400 });
-  }
-
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
   }
 
   let body: unknown;
@@ -66,9 +60,10 @@ export async function PATCH(
   }
 
   try {
-    const client = createSheetsClient({
-      accessToken: session.accessToken,
-      spreadsheetId: company.sheetId,
+    const cc = await getCompanyClients(companyId);
+    const client = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
       actor: session.user.email,
     });
 
@@ -77,6 +72,12 @@ export async function PATCH(
       client: rowToClient(row as unknown as Record<string, unknown>),
     });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        { error: "Šim uzņēmumam nav pievienots Gmail konts.", oauth_disconnected: true },
+        { status: 412 }
+      );
+    }
     if (err instanceof OptimisticLockError) {
       return NextResponse.json(
         {
@@ -112,7 +113,7 @@ export async function DELETE(
   const { id } = await params;
 
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
@@ -126,25 +127,23 @@ export async function DELETE(
     );
   }
 
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
   try {
-    const client = createSheetsClient({
-      accessToken: session.accessToken,
-      spreadsheetId: company.sheetId,
+    const cc = await getCompanyClients(companyId);
+    const client = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
       actor: session.user.email,
     });
 
     await client.softDelete("10_clients", id, expectedUpdatedAt);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        { error: "Šim uzņēmumam nav pievienots Gmail konts.", oauth_disconnected: true },
+        { status: 412 }
+      );
+    }
     if (err instanceof OptimisticLockError) {
       return NextResponse.json(
         {

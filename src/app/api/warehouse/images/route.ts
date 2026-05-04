@@ -6,6 +6,19 @@
  * publicly-readable URL the client can stuff into the inventory
  * item's imageUrl field.
  *
+ * Why this still uses session.accessToken (not per-company OAuth):
+ *   - The warehouse images folder is GLOBAL to the user, not per
+ *     company. Multiple companies can share the same physical
+ *     inventory (a workshop's tools serve all client companies).
+ *   - Storing in the login user's primary Drive means images
+ *     persist regardless of which company is active.
+ *   - Login Drive scope (drive.file) covers this folder because
+ *     OUR app created it.
+ *
+ * If we ever want per-company warehouses, this needs to migrate
+ * to getCompanyClients(), and the warehouse-images lib needs to
+ * accept a Drive client instance instead of a token.
+ *
  * Limits:
  *   - 5 MB max (warehouse photos don't need print resolution)
  *   - JPEG, PNG, WebP, HEIC accepted (HEIC because iPhones)

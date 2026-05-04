@@ -9,14 +9,17 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
-import { createSheetsClient } from "@/lib/sheets-client";
+import { createSheetsClientFromInstance } from "@/lib/sheets-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 
 export const maxDuration = 30;
 
 export async function GET(request: Request) {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
@@ -26,19 +29,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing company_id" }, { status: 400 });
   }
 
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
   try {
-    const client = createSheetsClient({
-      accessToken: session.accessToken,
-      spreadsheetId: company.sheetId,
+    const cc = await getCompanyClients(companyId);
+    const client = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
       actor: session.user.email,
     });
 
@@ -49,6 +44,12 @@ export async function GET(request: Request) {
       ),
     });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        { error: "Šim uzņēmumam nav pievienots Gmail konts.", oauth_disconnected: true },
+        { status: 412 }
+      );
+    }
     console.error("List documents failed:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
@@ -67,15 +68,6 @@ export async function POST(request: Request) {
   const companyId = url.searchParams.get("company_id");
   if (!companyId) {
     return NextResponse.json({ error: "Missing company_id" }, { status: 400 });
-  }
-
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
   }
 
   let body: unknown;
@@ -94,9 +86,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const client = createSheetsClient({
-      accessToken: session.accessToken,
-      spreadsheetId: company.sheetId,
+    const cc = await getCompanyClients(companyId);
+    const client = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
       actor: session.user.email,
     });
 
@@ -105,6 +98,12 @@ export async function POST(request: Request) {
       document: rowToDocument(row as unknown as Record<string, unknown>),
     });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        { error: "Šim uzņēmumam nav pievienots Gmail konts.", oauth_disconnected: true },
+        { status: 412 }
+      );
+    }
     console.error("Create document failed:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },
