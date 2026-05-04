@@ -27,6 +27,17 @@ export interface CompanyRequisites {
   swift?: string;
   phone?: string;
   website?: string;
+  /**
+   * Hex color (e.g. '#10b981') chosen by the user when creating
+   * or editing the company. Used to tint the left sidebar and
+   * other accents when this company is active, so the user has a
+   * visual cue of which entity they're working with.
+   *
+   * Stored as the requisite (not just local UI state) so it
+   * persists across browsers and is shared if the user invites
+   * someone else to the company later.
+   */
+  brandColor?: string;
 }
 
 export type CopyFormat = "lv" | "en";
@@ -34,7 +45,13 @@ export type CopyFormat = "lv" | "en";
 export interface Company extends CompanyRequisites {
   id: string;
   name: string;
-  color?: string; // tailwind class suffix for subtle identification
+  /**
+   * @deprecated Legacy field — use brandColor (hex) instead.
+   * Kept for backwards compatibility with old localStorage cache
+   * data; will be removed once everyone has re-saved at least
+   * once.
+   */
+  color?: string;
   logoUrl?: string;
   /** Drive file ID of the uploaded logo (PNG/SVG). When set, the
    *  UI renders the logo via /api/drive/files/{id}?company_id=X

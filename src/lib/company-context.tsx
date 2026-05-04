@@ -244,6 +244,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       "phone",
       "website",
       "logoDriveId",
+      "brandColor",
     ];
     for (const f of fields) {
       const v = patch[f];
@@ -306,6 +307,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         phone: string;
         website: string;
         logoDriveId: string;
+        brandColor: string;
       };
     };
     const r = data.requisites;
@@ -326,6 +328,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     if (r.phone) patch.phone = r.phone;
     if (r.website) patch.website = r.website;
     if (r.logoDriveId) patch.logoDriveId = r.logoDriveId;
+    if (r.brandColor) patch.brandColor = r.brandColor;
 
     // Reflect into local state so the next render sees the data
     if (Object.keys(patch).length > 0) {

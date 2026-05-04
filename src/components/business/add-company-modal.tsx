@@ -7,7 +7,9 @@
  *   2. Shows a full-form loading state (provisioning takes ~10-20s
  *      due to 25 Sheets tabs + 18 Drive folders being created)
  *   3. On success: calls onCreated callback with the new company
- *      metadata, which the parent uses to refresh its state
+ *      metadata, which the parent uses to refresh its state, then
+ *      saves the requisites (color, addresses, emails, etc.) via a
+ *      separate PUT to /api/companies/requisites
  *   4. On failure: shows the server error inline with a retry option
  *
  * The provisioning API call makes real Drive + Sheets API calls to
@@ -15,6 +17,16 @@
  * This is NOT a dry run. The 'Atcelt' button only works before
  * submission; once the API call is in flight, cancel is disabled
  * because we can't undo partial Drive creation.
+ *
+ * Two-step save flow:
+ *   /api/companies/create  → creates Drive + Sheets, returns IDs
+ *   /api/companies/requisites → fills in the rich requisite fields
+ *
+ * We split because the create endpoint validates only the bare
+ * minimum (name, legal_name, reg_number) needed to provision
+ * infrastructure; the rest are optional and live in 01_requisites.
+ * If the requisites save fails, we still consider the company
+ * created — the user can fill the rest in via the edit modal.
  */
 
 import { useEffect, useState } from "react";
@@ -26,6 +38,7 @@ import {
   FolderPlus,
   Save,
   X,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +50,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { BrandColorPicker } from "./brand-color-picker";
 import { cn } from "@/lib/utils";
 
 export interface CreatedCompany {
@@ -53,12 +67,32 @@ export interface CreatedCompany {
 interface AddCompanyModalProps {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  onCreated: (company: CreatedCompany) => void;
+  onCreated: (company: CreatedCompany, extras: ExtraRequisites) => void;
+}
+
+/**
+ * Extra fields beyond what /api/companies/create accepts. Caller
+ * receives these so it can update local state with the full
+ * Company shape (the create endpoint only knows about Drive +
+ * Sheet provisioning; rich requisites are written separately).
+ */
+export interface ExtraRequisites {
+  brandColor?: string;
+  legalAddress?: string;
+  deliveryAddress?: string;
+  contactEmail?: string;
+  invoiceEmail?: string;
+  iban?: string;
+  bankName?: string;
+  swift?: string;
+  phone?: string;
+  website?: string;
 }
 
 type SubmitState =
   | { stage: "idle" }
   | { stage: "submitting" }
+  | { stage: "saving_requisites" }
   | { stage: "success"; company: CreatedCompany }
   | { stage: "error"; message: string };
 
@@ -72,12 +106,16 @@ export function AddCompanyModal({
   const [legalName, setLegalName] = useState("");
   const [regNumber, setRegNumber] = useState("");
   const [vatNumber, setVatNumber] = useState("");
-  const [address, setAddress] = useState("");
+  const [legalAddress, setLegalAddress] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [iban, setIban] = useState("");
-  const [bic, setBic] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [swift, setSwift] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [invoiceEmail, setInvoiceEmail] = useState("");
   const [website, setWebsite] = useState("");
+  const [brandColor, setBrandColor] = useState("");
   const [directorName, setDirectorName] = useState("");
   const [directorPosition, setDirectorPosition] =
     useState("Valdes loceklis");
@@ -98,17 +136,23 @@ export function AddCompanyModal({
     setLegalName("");
     setRegNumber("");
     setVatNumber("");
-    setAddress("");
+    setLegalAddress("");
+    setDeliveryAddress("");
     setIban("");
-    setBic("");
+    setBankName("");
+    setSwift("");
     setPhone("");
-    setEmail("");
+    setContactEmail("");
+    setInvoiceEmail("");
     setWebsite("");
+    setBrandColor("");
     setDirectorName("");
     setDirectorPosition("Valdes loceklis");
   };
 
-  const isSubmitting = submitState.stage === "submitting";
+  const isSubmitting =
+    submitState.stage === "submitting" ||
+    submitState.stage === "saving_requisites";
   const isSuccess = submitState.stage === "success";
 
   const canSubmit =
@@ -123,6 +167,7 @@ export function AddCompanyModal({
     setSubmitState({ stage: "submitting" });
 
     try {
+      // ─── Step 1: provision Drive + Sheets ───
       const response = await fetch("/api/companies/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,11 +176,15 @@ export function AddCompanyModal({
           legal_name: legalName.trim(),
           reg_number: regNumber.trim(),
           vat_number: vatNumber.trim() || undefined,
-          address: address.trim() || undefined,
+          // Best-effort initial seeding into 01_requisites' first
+          // row at provisioning time. The richer fields below get
+          // saved in step 2 since the create endpoint only knows
+          // the v1 schema.
+          address: legalAddress.trim() || undefined,
           iban: iban.replace(/\s/g, "").toUpperCase() || undefined,
-          bic: bic.trim() || undefined,
+          bic: swift.trim() || undefined,
           phone: phone.trim() || undefined,
-          email: email.trim() || undefined,
+          email: contactEmail.trim() || undefined,
           website: website.trim() || undefined,
           director_name: directorName.trim() || undefined,
           director_position: directorPosition.trim() || undefined,
@@ -152,8 +201,59 @@ export function AddCompanyModal({
         return;
       }
 
+      // ─── Step 2: save the rich requisites (color, dual
+      //     addresses, dual emails, bank name) ───
+      // These don't fit the create endpoint's v1 schema, so we
+      // PUT them to the dedicated requisites endpoint after the
+      // company exists.
+      setSubmitState({ stage: "saving_requisites" });
+      try {
+        await fetch(
+          `/api/companies/requisites?company_id=${encodeURIComponent(
+            data.company.id
+          )}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: name.trim(),
+              legalName: legalName.trim(),
+              regNumber: regNumber.trim(),
+              vatNumber: vatNumber.trim() || undefined,
+              legalAddress: legalAddress.trim() || undefined,
+              deliveryAddress: deliveryAddress.trim() || undefined,
+              contactEmail: contactEmail.trim() || undefined,
+              invoiceEmail: invoiceEmail.trim() || undefined,
+              iban: iban.replace(/\s/g, "").toUpperCase() || undefined,
+              bankName: bankName.trim() || undefined,
+              swift: swift.trim() || undefined,
+              phone: phone.trim() || undefined,
+              website: website.trim() || undefined,
+              brandColor: brandColor || undefined,
+            }),
+          }
+        );
+        // Best-effort — even if requisites save fails, the company
+        // exists and the user can fix it via the edit modal
+      } catch {
+        console.warn("Requisites save failed but company was created");
+      }
+
+      const extras: ExtraRequisites = {
+        brandColor: brandColor || undefined,
+        legalAddress: legalAddress.trim() || undefined,
+        deliveryAddress: deliveryAddress.trim() || undefined,
+        contactEmail: contactEmail.trim() || undefined,
+        invoiceEmail: invoiceEmail.trim() || undefined,
+        iban: iban.replace(/\s/g, "").toUpperCase() || undefined,
+        bankName: bankName.trim() || undefined,
+        swift: swift.trim() || undefined,
+        phone: phone.trim() || undefined,
+        website: website.trim() || undefined,
+      };
+
       setSubmitState({ stage: "success", company: data.company });
-      onCreated(data.company);
+      onCreated(data.company, extras);
 
       // Auto-close after 2s success state
       setTimeout(() => {
@@ -171,10 +271,7 @@ export function AddCompanyModal({
   const handleClose = () => {
     if (isSubmitting) return; // don't allow close mid-flight
     onOpenChange(false);
-    // Reset form on close
-    if (!isSuccess) {
-      // keep data if user might retry
-    } else {
+    if (isSuccess) {
       resetForm();
     }
   };
@@ -188,8 +285,8 @@ export function AddCompanyModal({
             Pievienot uzņēmumu
           </DialogTitle>
           <DialogDescription>
-            Pievienojiet uzņēmumu vai struktūrvienību. Google Drive automātiski
-            tiks izveidota mapju struktūra un Sheets datu fails.
+            Aizpildi rekvizītus jaunajai struktūrvienībai. Drive mape un
+            Sheets dokuments tiks izveidoti automātiski.
           </DialogDescription>
         </DialogHeader>
 
@@ -225,7 +322,9 @@ export function AddCompanyModal({
             </div>
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
-                Izveidojam uzņēmumu…
+                {submitState.stage === "saving_requisites"
+                  ? "Saglabājam rekvizītus…"
+                  : "Izveidojam uzņēmumu…"}
               </h3>
               <p className="mt-1 text-[12.5px] text-graphite-500 max-w-sm mx-auto leading-relaxed">
                 Veidojam Drive mapju struktūru un Sheets failu ar 25 tabām.
@@ -245,6 +344,28 @@ export function AddCompanyModal({
         {!isSuccess && !isSubmitting && (
           <>
             <div className="space-y-3 pt-2">
+              {/* Privacy notice — explains what creating a company
+                  does to the user's Google Drive + Gmail. Critical
+                  for trust before they hit submit. */}
+              <PrivacyNotice />
+
+              {/* Brand color — picked early because the user sees
+                  the result instantly in the sidebar */}
+              <div className="rounded-lg border border-graphite-200 p-4 space-y-2">
+                <p className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-semibold">
+                  Krāsa sānu izvēlnei
+                </p>
+                <p className="text-[11px] text-graphite-500 leading-relaxed">
+                  Šī krāsa parādīsies sānu izvēlnē, kad strādāsi ar
+                  šo uzņēmumu — viegli atšķirsi, kurā struktūrvienībā
+                  patlaban atrodies.
+                </p>
+                <BrandColorPicker
+                  value={brandColor}
+                  onChange={setBrandColor}
+                />
+              </div>
+
               {/* Required section */}
               <div className="rounded-lg border border-graphite-200 bg-graphite-50/40 p-4 space-y-3">
                 <p className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-semibold">
@@ -302,74 +423,127 @@ export function AddCompanyModal({
                 </div>
               </div>
 
-              {/* Optional section */}
+              {/* Adreses */}
               <div className="rounded-lg border border-graphite-200 p-4 space-y-3">
                 <p className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-semibold">
-                  Papildu rekvizīti (neobligāti)
+                  Adreses
                 </p>
 
                 <div className="space-y-1.5">
                   <Label>Juridiskā adrese</Label>
                   <Input
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Bāriņu iela 5, Liepāja, LV-3401"
+                    value={legalAddress}
+                    onChange={(e) => setLegalAddress(e.target.value)}
+                    placeholder="Iela, pilsēta, pasta indekss, valsts"
                   />
                 </div>
 
-                <div className="grid grid-cols-[2fr_1fr] gap-3">
-                  <div className="space-y-1.5">
-                    <Label>IBAN</Label>
-                    <Input
-                      value={iban}
-                      onChange={(e) => setIban(e.target.value)}
-                      placeholder="LV61HABA0001408042678"
-                      className="font-mono text-[12.5px]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>BIC/SWIFT</Label>
-                    <Input
-                      value={bic}
-                      onChange={(e) => setBic(e.target.value)}
-                      placeholder="HABALV22"
-                      className="font-mono text-[12.5px]"
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label>Faktiskā / piegādes adrese</Label>
+                  <Input
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder="Ja atšķiras no juridiskās"
+                  />
+                  <p className="text-[10.5px] text-graphite-500">
+                    Atstāj tukšu, ja sakrīt ar juridisko adresi
+                  </p>
                 </div>
+              </div>
+
+              {/* Sakari */}
+              <div className="rounded-lg border border-graphite-200 p-4 space-y-3">
+                <p className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-semibold">
+                  Sakari
+                </p>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label>Tālrunis</Label>
+                    <Label>E-pasts saziņai</Label>
                     <Input
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+371 28000000"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      placeholder="info@company.com"
+                      type="email"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>E-pasts</Label>
+                    <Label>E-pasts rēķiniem</Label>
                     <Input
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="info@mosphera.com"
+                      value={invoiceEmail}
+                      onChange={(e) => setInvoiceEmail(e.target.value)}
+                      placeholder="rekini@company.com"
                       type="email"
                     />
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Telefona numurs</Label>
+                    <Input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+371 00 000 000"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Mājaslapa</Label>
+                    <Input
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                      placeholder="https://company.com"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bankas rekvizīti */}
+              <div className="rounded-lg border border-graphite-200 p-4 space-y-3">
+                <p className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-semibold">
+                  Bankas rekvizīti
+                </p>
+
                 <div className="space-y-1.5">
-                  <Label>Mājaslapa</Label>
+                  <Label>IBAN</Label>
                   <Input
-                    value={website}
-                    onChange={(e) => setWebsite(e.target.value)}
-                    placeholder="https://mosphera.com"
+                    value={iban}
+                    onChange={(e) => setIban(e.target.value)}
+                    placeholder="LV61HABA0001408042678"
+                    className="font-mono text-[12.5px]"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label>Valdes loceklis</Label>
+                    <Label>Bankas nosaukums</Label>
+                    <Input
+                      value={bankName}
+                      onChange={(e) => setBankName(e.target.value)}
+                      placeholder="Swedbank AS"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>SWIFT</Label>
+                    <Input
+                      value={swift}
+                      onChange={(e) => setSwift(e.target.value)}
+                      placeholder="HABALV22"
+                      className="font-mono text-[12.5px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Direktors */}
+              <div className="rounded-lg border border-graphite-200 p-4 space-y-3">
+                <p className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-semibold">
+                  Atbildīgā persona (neobligāti)
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Vārds, uzvārds</Label>
                     <Input
                       value={directorName}
                       onChange={(e) => setDirectorName(e.target.value)}
@@ -425,5 +599,63 @@ export function AddCompanyModal({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Privacy notice shown at the top of the create-company form.
+ * Explains in plain Latvian what creating a company does to the
+ * user's Google account, and what WORKMANIS does NOT see/store.
+ *
+ * Critical for trust — the user is about to grant us access to
+ * Drive + Gmail; they should know exactly what that means before
+ * they hit submit.
+ *
+ * Visually styled as an info card (not a wall of disclaimer text)
+ * so it gets read instead of skipped.
+ */
+function PrivacyNotice() {
+  return (
+    <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4 space-y-2">
+      <div className="flex items-center gap-2">
+        <Lock className="h-3.5 w-3.5 text-blue-700" />
+        <p className="text-[11.5px] uppercase tracking-wider text-blue-900 font-semibold">
+          Kā Workmanis strādā ar taviem datiem
+        </p>
+      </div>
+      <ul className="space-y-1.5 text-[11.5px] text-blue-900 leading-relaxed">
+        <li className="flex gap-2">
+          <span className="text-blue-500 shrink-0">•</span>
+          <span>
+            Tava Google Drive kontā Workmanis automātiski izveidos
+            atsevišķu mapi failiem un Google Sheets dokumentu, kurā
+            tiks glabāti visi rēķini un saistītie dati.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-blue-500 shrink-0">•</span>
+          <span>
+            Dokumenti paliks tava Google Drive kontā, tāpēc tiem
+            varēsi piekļūt arī tad, ja kādreiz vairs nelietosi
+            Workmanis.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-blue-500 shrink-0">•</span>
+          <span>
+            Pievienojot e-pastu, tu atļauj Workmanis AI droši
+            pārskatīt šo e-pastu, lai tas varētu automātiski atrast
+            un ievilkt rēķinus sistēmā.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <span className="text-blue-500 shrink-0">•</span>
+          <span className="font-medium">
+            Workmanis neredz un neglabā tavus failus savos serveros —
+            viss paliek tava Google kontā.
+          </span>
+        </li>
+      </ul>
+    </div>
   );
 }

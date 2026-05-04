@@ -62,6 +62,7 @@ export const COMPANY_TABS = [
       "phone",
       "website",
       "logo_drive_id",
+      "brand_color",
       "director_name",
       "director_position",
     ],

@@ -39,6 +39,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useCompany } from "@/lib/company-context";
+import { BrandColorPicker } from "./brand-color-picker";
 import {
   uploadFileToDrive,
   buildDriveFileUrl,
@@ -74,6 +75,7 @@ export function RequisitesModal({
   const [phone, setPhone] = useState("");
   const [website, setWebsite] = useState("");
   const [logoDriveId, setLogoDriveId] = useState("");
+  const [brandColor, setBrandColor] = useState("");
 
   const [loadingRequisites, setLoadingRequisites] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -101,6 +103,7 @@ export function RequisitesModal({
     setPhone(company.phone ?? "");
     setWebsite(company.website ?? "");
     setLogoDriveId(company.logoDriveId ?? "");
+    setBrandColor(company.brandColor ?? "");
 
     // Fetch fresh from API (updates form fields if remote has more)
     setLoadingRequisites(true);
@@ -120,6 +123,7 @@ export function RequisitesModal({
         if (fresh.phone) setPhone(fresh.phone);
         if (fresh.website) setWebsite(fresh.website);
         if (fresh.logoDriveId) setLogoDriveId(fresh.logoDriveId);
+        if (fresh.brandColor) setBrandColor(fresh.brandColor);
       })
       .finally(() => setLoadingRequisites(false));
   }, [open, company, loadRequisites]);
@@ -192,6 +196,7 @@ export function RequisitesModal({
         phone: phone.trim() || undefined,
         website: website.trim() || undefined,
         logoDriveId: logoDriveId || undefined,
+        brandColor: brandColor || undefined,
       });
       pushToastGlobally("success", "Rekvizīti saglabāti", 3500);
       onOpenChange(false);
@@ -292,6 +297,23 @@ export function RequisitesModal({
               Ielādē rekvizītus no Sheets…
             </p>
           )}
+
+          {/* Brand color — same component as the create modal,
+              changes are reflected in sidebar instantly via the
+              activeCompany subscription */}
+          <div className="space-y-1.5">
+            <Label>Krāsa sānu izvēlnei</Label>
+            <p className="text-[11px] text-graphite-500 leading-snug">
+              Šī krāsa parādīsies sānu izvēlnē, kad strādāsi ar šo
+              uzņēmumu. Ļauj viegli atšķirt struktūrvienības.
+            </p>
+            <div className="pt-1">
+              <BrandColorPicker
+                value={brandColor}
+                onChange={setBrandColor}
+              />
+            </div>
+          </div>
 
           <Section title="Identifikācija">
             <Field

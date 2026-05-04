@@ -19,6 +19,7 @@ import { RequisitesModal } from "@/components/business/requisites-modal";
 import {
   AddCompanyModal,
   type CreatedCompany,
+  type ExtraRequisites,
 } from "@/components/business/add-company-modal";
 import {
   Dialog,
@@ -157,8 +158,13 @@ export default function UznemumiPage() {
       <AddCompanyModal
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreated={(created: CreatedCompany) => {
-          // Add to local state immediately so sidebar + list update
+        onCreated={(created: CreatedCompany, extras: ExtraRequisites) => {
+          // Add to local state immediately so sidebar + list update.
+          // Merge in the extras (color, dual addresses, dual emails,
+          // bank, phone, website) which the create endpoint doesn't
+          // know about — those went through the requisites PUT
+          // separately. Without merging here, the user would have
+          // to refresh the page to see them.
           upsertCompany({
             id: created.id,
             name: created.name,
@@ -168,6 +174,16 @@ export default function UznemumiPage() {
             folderDriveId: created.folderId,
             sheetId: created.sheetId,
             slug: created.slug,
+            brandColor: extras.brandColor,
+            legalAddress: extras.legalAddress,
+            deliveryAddress: extras.deliveryAddress,
+            contactEmail: extras.contactEmail,
+            invoiceEmail: extras.invoiceEmail,
+            iban: extras.iban,
+            bankName: extras.bankName,
+            swift: extras.swift,
+            phone: extras.phone,
+            website: extras.website,
           });
           // Auto-activate the newly created company
           setActiveCompany(created.id);

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/lib/notifications";
+import { useCompany } from "@/lib/company-context";
 
 interface NavItem {
   href: string;
@@ -81,6 +82,30 @@ const bottomNav: NavItem[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const notifications = useNotifications();
+  const { activeCompany } = useCompany();
+
+  /**
+   * Sidebar tint based on active company's brandColor.
+   *
+   * Approach: take the user's hex (e.g. '#10B981') and apply it as
+   * a very subtle background tint (~6% opacity). We can't just set
+   * `style={{ backgroundColor: hex }}` directly because that would
+   * make the whole sidebar a saturated brand color, which clashes
+   * with the rest of the chrome and hurts readability.
+   *
+   * Instead we layer:
+   *   1. The base surface-subtle color (existing default)
+   *   2. A tiny amount of the brand color on top (alpha 0x10 = 6%)
+   *
+   * Done via inline style on the aside, not Tailwind, because the
+   * value is dynamic per-user.
+   *
+   * Empty / missing brandColor → falls back to the default
+   * surface-subtle (no tint).
+   */
+  const sidebarStyle = activeCompany?.brandColor
+    ? { backgroundColor: `${activeCompany.brandColor}10` }
+    : undefined;
 
   // Map href → notification count. Only non-zero values produce a badge.
   const badgeFor = (href: string): number => {
@@ -91,7 +116,10 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-graphite-100 bg-surface-subtle">
+    <aside
+      className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-graphite-100 bg-surface-subtle transition-colors duration-300"
+      style={sidebarStyle}
+    >
       {/* Brand */}
       <div className="flex h-20 items-center gap-3 px-5 border-b border-graphite-100">
         <motion.div

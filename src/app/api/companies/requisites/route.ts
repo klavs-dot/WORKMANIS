@@ -55,6 +55,7 @@ interface RequisitesBody {
   phone?: string;
   website?: string;
   logoDriveId?: string;
+  brandColor?: string;
 }
 
 export async function GET(request: Request) {
@@ -173,6 +174,7 @@ export async function PUT(request: Request) {
     phone: (body.phone ?? "").trim(),
     website: (body.website ?? "").trim(),
     logo_drive_id: (body.logoDriveId ?? "").trim(),
+    brand_color: (body.brandColor ?? "").trim(),
   };
 
   try {
@@ -241,6 +243,7 @@ function emptyRequisites() {
     phone: "",
     website: "",
     logoDriveId: "",
+    brandColor: "",
   };
 }
 
@@ -260,5 +263,6 @@ function rowToApi(row: Record<string, unknown>) {
     phone: (row.phone as string) ?? "",
     website: (row.website as string) ?? "",
     logoDriveId: (row.logo_drive_id as string) ?? "",
+    brandColor: (row.brand_color as string) ?? "",
   };
 }
