@@ -50,11 +50,13 @@ export default function UznemumiPage() {
   const [confirmText, setConfirmText] = useState("");
   /**
    * Drive disposition for the delete operation:
-   *   'trash' (default)   → move folder + all contents to Drive Trash
-   *   'keep'              → unregister from WORKMANIS only, leave
-   *                         Drive folder intact
+   *   'keep' (default)    → unregister from WORKMANIS only, leave
+   *                         Drive folder intact (safer default —
+   *                         user must explicitly opt in to data
+   *                         loss)
+   *   'trash'             → move folder + all contents to Drive Trash
    */
-  const [driveAction, setDriveAction] = useState<"trash" | "keep">("trash");
+  const [driveAction, setDriveAction] = useState<"trash" | "keep">("keep");
   const [deleteInProgress, setDeleteInProgress] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -102,7 +104,7 @@ export default function UznemumiPage() {
       );
       setDeleting(null);
       setConfirmText("");
-      setDriveAction("trash"); // reset for next time
+      setDriveAction("keep"); // reset to safer default for next time
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Dzēšana neizdevās";
       showToast(msg);
@@ -183,7 +185,7 @@ export default function UznemumiPage() {
           if (!o && !deleteInProgress) {
             setDeleting(null);
             setConfirmText("");
-            setDriveAction("trash");
+            setDriveAction("keep");
           }
         }}
       >
@@ -328,7 +330,7 @@ export default function UznemumiPage() {
                   onClick={() => {
                     setDeleting(null);
                     setConfirmText("");
-                    setDriveAction("trash");
+                    setDriveAction("keep");
                   }}
                   disabled={deleteInProgress}
                 >
