@@ -28,6 +28,8 @@ interface InvoiceOutRow extends Record<string, string> {
   file_drive_id: string;
   pn_akts_drive_id: string;
   delivery_note_drive_id: string;
+  payment_status: string;
+  payment_id: string;
 }
 
 interface ApiInvoiceOut {
@@ -47,6 +49,8 @@ interface ApiInvoiceOut {
   fileDriveId: string | undefined;
   pnAktsDriveId: string | undefined;
   deliveryNoteDriveId: string | undefined;
+  paymentStatus: string | undefined;
+  paymentId: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +89,9 @@ function parseCreateBody(body: unknown): InvoiceOutRow | null {
       typeof b.delivery_note_drive_id === "string"
         ? b.delivery_note_drive_id
         : "",
+    payment_status:
+      typeof b.payment_status === "string" ? b.payment_status : "",
+    payment_id: typeof b.payment_id === "string" ? b.payment_id : "",
   };
 }
 
@@ -118,6 +125,10 @@ function rowToApi(row: Record<string, unknown>): ApiInvoiceOut {
       ((row.delivery_note_drive_id as string) || undefined) as
         | string
         | undefined,
+    paymentStatus:
+      ((row.payment_status as string) || undefined) as string | undefined,
+    paymentId:
+      ((row.payment_id as string) || undefined) as string | undefined,
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

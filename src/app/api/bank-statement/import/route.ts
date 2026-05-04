@@ -372,6 +372,42 @@ export async function POST(request: Request) {
     }
   }
 
+  // ───── Step 7: tag orphan transactions ─────
+  //
+  // Orphans are bank transactions where money moved but no
+  // matching invoice existed. We mark them with
+  // payment_status = 'maksajums_bez_rekina' on the 35_payments
+  // row so the UI can render them with a red frame and a
+  // 'Augšupielādēt manuāli' button.
+  //
+  // Why a separate column instead of inferring from
+  // matched_invoice_id being empty: classified_section can also
+  // be empty for transactions that ARE invoices but haven't been
+  // reconciled yet (e.g. the user uploaded statements before
+  // their invoices arrived in the inbox). Explicit tagging
+  // distinguishes 'we know this has no invoice' from 'not yet
+  // analysed'.
+  for (const orphan of result.orphans) {
+    if (!orphan.transaction.paymentId) continue;
+    const expectedUpdatedAt =
+      updatedAtBy.get(`35/${orphan.transaction.paymentId}`) ?? "";
+    try {
+      await sheets.update(
+        "35_payments",
+        orphan.transaction.paymentId,
+        {
+          payment_status: "maksajums_bez_rekina",
+          expected_updated_at: expectedUpdatedAt,
+        }
+      );
+    } catch (err) {
+      console.warn(
+        `Failed to tag orphan ${orphan.transaction.paymentId}:`,
+        err
+      );
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     parsed: {

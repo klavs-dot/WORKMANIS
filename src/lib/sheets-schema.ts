@@ -406,6 +406,25 @@ export const COMPANY_TABS = [
       "classified_section",
       "matched_invoice_id",
       "raw_reference",
+      // 2026-05 (Sesija 4) — orphan transaction handling.
+      //
+      // payment_status mirrors the same field on invoices but for
+      // BANK TRANSACTIONS that didn't match anything:
+      //   'maksajums_bez_rekina' — money moved through bank,
+      //                            no matching invoice found
+      //                            (will get red frame in UI)
+      //   'sasaistits'           — was orphan, then user manually
+      //                            uploaded an invoice — now linked
+      //   '' (empty)             — matched normally during import
+      //                            (most common case)
+      "payment_status",
+      // When the user attaches an invoice manually via the
+      // "Augšupielādēt manuāli" button, we save the PDF to Drive
+      // and store its Drive file ID here. Empty for matched
+      // transactions (those have invoice_out_id / invoice_in_id
+      // pointing to a real invoice row instead).
+      "manual_invoice_drive_id",
+      "manual_invoice_filename",
     ],
   },
   {

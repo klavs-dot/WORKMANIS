@@ -104,6 +104,10 @@ export interface ReceivedInvoice {
   /** Drive URL of the payment receipt PDF (e.g. from a bank
    *  statement match or an email auto-scan). Optional. */
   paymentEvidence?: string;
+  /** Sesija 3 — bank reconciliation status. Same semantics as
+   *  IssuedInvoice.paymentStatus but for invoices we received. */
+  paymentStatus?: string;
+  paymentId?: string;
   createdAt: string;
   /** Internal tracking for optimistic locking */
   updatedAt?: string;
@@ -132,6 +136,17 @@ export interface IssuedInvoice {
   pnAktsFileName?: string;
   /** Drive file ID of an uploaded PN akts PDF. */
   pnAktsDriveId?: string;
+  /**
+   * Sesija 3 — bank reconciliation outcome.
+   * '' (or undefined) when no statement has been imported yet,
+   * 'apmaksats' when bank confirmed payment received,
+   * 'gaida_apmaksu' when statement covered the period but no
+   *   matching transaction was found,
+   * 'nav_salidzinats' when the latest statement is older than
+   *   the invoice (we can't tell). */
+  paymentStatus?: string;
+  /** ID of the matching 35_payments row when paymentStatus='apmaksats' */
+  paymentId?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -276,6 +291,8 @@ interface ApiInvoiceOut {
   fileDriveId: string | undefined;
   pnAktsDriveId: string | undefined;
   deliveryNoteDriveId: string | undefined;
+  paymentStatus: string | undefined;
+  paymentId: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -305,6 +322,8 @@ interface ApiInvoiceIn {
   paymentEvidence: string | undefined;
   fileDriveId: string | undefined;
   pnAktsDriveId: string | undefined;
+  paymentStatus: string | undefined;
+  paymentId: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -382,6 +401,8 @@ function apiToIssued(a: ApiInvoiceOut): IssuedInvoice {
     fileDriveId: a.fileDriveId,
     deliveryNoteDriveId: a.deliveryNoteDriveId,
     pnAktsDriveId: a.pnAktsDriveId,
+    paymentStatus: a.paymentStatus,
+    paymentId: a.paymentId,
     createdAt: safeString(a.createdAt),
     updatedAt: safeString(a.updatedAt),
   };
@@ -442,6 +463,8 @@ function apiToReceived(a: ApiInvoiceIn): ReceivedInvoice {
     paymentEvidence: a.paymentEvidence || undefined,
     fileDriveId: a.fileDriveId,
     pnAktsDriveId: a.pnAktsDriveId,
+    paymentStatus: a.paymentStatus,
+    paymentId: a.paymentId,
     createdAt: safeString(a.createdAt),
     updatedAt: safeString(a.updatedAt),
   };

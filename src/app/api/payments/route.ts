@@ -55,6 +55,17 @@ interface ApiPayment {
   classifiedSection: string;
   matchedInvoiceId: string | undefined;
   rawReference: string;
+  /**
+   * Sesija 4 — bank reconciliation status for the transaction:
+   *   ''                       — matched normally during import
+   *   'maksajums_bez_rekina'   — orphan (red frame in UI)
+   *   'sasaistits'             — was orphan, user manually attached invoice
+   */
+  paymentStatus: string;
+  /** Drive file ID of the manually-attached invoice, if any */
+  manualInvoiceDriveId: string | undefined;
+  /** Original filename of the manually-attached invoice, if any */
+  manualInvoiceFilename: string | undefined;
   createdAt: string;
   updatedAt: string;
 }
@@ -137,6 +148,15 @@ function rowToApi(row: Record<string, unknown>): ApiPayment {
     matchedInvoiceId:
       ((row.matched_invoice_id as string) || undefined) as string | undefined,
     rawReference: (row.raw_reference as string) ?? "",
+    paymentStatus: (row.payment_status as string) ?? "",
+    manualInvoiceDriveId:
+      ((row.manual_invoice_drive_id as string) || undefined) as
+        | string
+        | undefined,
+    manualInvoiceFilename:
+      ((row.manual_invoice_filename as string) || undefined) as
+        | string
+        | undefined,
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

@@ -51,6 +51,7 @@ import {
 } from "@/lib/number-generator";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
+import { OrphanPaymentsBanner, PaymentStatusPill } from "@/components/billing/orphan-payments-banner";
 
 // ============================================================
 // FUTURE: Google Sheets integration
@@ -104,6 +105,12 @@ export function IenakosieTab() {
 
   return (
     <div className="space-y-6">
+      {/* Orphan incoming payments — bank transactions where money
+          arrived but no issued invoice matched. Renders nothing
+          when there are no orphans, so it's safe to mount
+          unconditionally. */}
+      <OrphanPaymentsBanner direction="incoming" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -175,7 +182,10 @@ export function IenakosieTab() {
                       {formatDate(inv.dueDate)}
                     </TableCell>
                     <TableCell>
-                      <IssuedStatusBadge status={inv.status} />
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <IssuedStatusBadge status={inv.status} />
+                        <PaymentStatusPill status={inv.paymentStatus} />
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1.5 items-center">

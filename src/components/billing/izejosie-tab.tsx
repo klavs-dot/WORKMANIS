@@ -71,6 +71,7 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { EditReceivedModal } from "@/components/billing/edit-received-modal";
 import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
+import { OrphanPaymentsBanner, PaymentStatusPill } from "@/components/billing/orphan-payments-banner";
 
 // ============================================================
 // Helpers for matching parsed-invoice data against known parties
@@ -562,6 +563,12 @@ export function IzejosieTab() {
 
   return (
     <div className="space-y-6">
+      {/* Orphan outgoing payments — money WE paid but no supplier
+          invoice was found. Mounts above the drop zone so the
+          user sees missing-receipt alerts before being prompted
+          to add new ones. */}
+      <OrphanPaymentsBanner direction="outgoing" />
+
       {/* Drop zone — full size when queue is empty, compact strip
           when there are drafts so the queue stays the focus */}
       <DropZone
@@ -745,7 +752,10 @@ export function IzejosieTab() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <ReceivedStatusBadge status={p.status} />
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <ReceivedStatusBadge status={p.status} />
+                        <PaymentStatusPill status={p.paymentStatus} />
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end items-center gap-1">

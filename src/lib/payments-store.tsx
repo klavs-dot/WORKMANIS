@@ -53,6 +53,18 @@ export interface BankPayment {
    *  'missing receipt' warnings in the relevant tab). */
   matchedInvoiceId?: string;
   rawReference: string;
+  /**
+   * Sesija 4 reconciliation status. Drives whether the
+   * OrphanPaymentBanner shows above this row in the UI:
+   *   ''                       — matched normally
+   *   'maksajums_bez_rekina'   — orphan, show red frame + upload btn
+   *   'sasaistits'             — orphan that user fixed by manual upload
+   */
+  paymentStatus?: string;
+  /** Drive file ID of manually-attached invoice (set when status='sasaistits') */
+  manualInvoiceDriveId?: string;
+  /** Original filename of manually-attached invoice */
+  manualInvoiceFilename?: string;
   createdAt: string;
   updatedAt: string;
 }
