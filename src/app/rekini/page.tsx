@@ -9,13 +9,10 @@ import {
   ShoppingBag,
   Users,
   Landmark,
-  Upload,
-  Download,
   LayoutGrid,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
-import { Button } from "@/components/ui/button";
 import { VisiMaksajumiTab } from "@/components/billing/visi-maksajumi-tab";
 import { IzejosieTab } from "@/components/billing/izejosie-tab";
 import { IenakosieTab } from "@/components/billing/ienakosie-tab";
@@ -25,6 +22,8 @@ import { AlgasTab } from "@/components/billing/algas-tab";
 import { NodokliTab } from "@/components/billing/nodokli-tab";
 import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { EmailImportRobotButton } from "@/components/billing/email-import-robot-button";
+import { BankImportRobotButton } from "@/components/billing/bank-import-robot-button";
+import { BankExportRobotButton } from "@/components/billing/bank-export-robot-button";
 import { useBilling } from "@/lib/billing-store";
 import { usePayments } from "@/lib/payments-store";
 import { useNotifications } from "@/lib/notifications";
@@ -107,43 +106,33 @@ export default function RekiniMaksajumiPage() {
         <PageHeader
           title="Rēķini & Maksājumi"
           description="Visu rēķinu, maksājumu un nodokļu pārvaldība vienuviet"
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                size="default"
-                variant="secondary"
-                onClick={openBankImport}
-              >
-                <Download className="h-4 w-4" />
-                No bankas
-              </Button>
-              <Button
-                size="default"
-                onClick={openBankExport}
-              >
-                <Upload className="h-4 w-4" />
-                Uz banku
-              </Button>
-            </div>
-          }
         />
 
-        {/* Email-import robot — sits between the page header and the
-            tab control. Its own row so the square card has room to
-            breathe; left-aligned. The tap target is large (140×140)
-            because this is THE primary 'pull stuff in' affordance
-            for the page and we want users to notice it. */}
-        <div className="flex items-start gap-4">
-          <EmailImportRobotButton onComplete={handleEmailImportComplete} />
-          <div className="flex-1 pt-1">
-            <p className="text-[12.5px] text-graphite-600 leading-relaxed max-w-md">
-              Spied robotu, lai AI rūpīgi izlasītu KATRU vēstuli tavā Gmail —
-              gan saņemtās (Iesūtne), gan tavas izsūtītās (Nosūtītie).
-              AI atpazīs rēķinus pat ja tie nav PDF — arī HTML, attēlos vai
-              tikai tekstā vēstulē. Pirmajā reizē — pēdējais mēnesis.
-              Tālāk — tikai jauni kopš pēdējās skenēšanas.
-            </p>
+        {/* Three robot mascots — the primary actions for this page.
+            Each handles one direction of data flow:
+              1. Email-import (green)  — pull invoices FROM Gmail
+              2. Bank-import (blue)    — pull bank data FROM bank
+              3. Bank-export (violet)  — push payments TO bank
+
+            Color-coding is the fastest visual cue. The robots
+            sit in their own row beneath the page header, with a
+            short shared description below. The previous design
+            had two compact buttons in the header + one big
+            robot below — visually inconsistent. Three robots
+            unifies the affordance and signals "these are the
+            actions that pull the rest of the page to life". */}
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 flex-wrap">
+            <EmailImportRobotButton onComplete={handleEmailImportComplete} />
+            <BankImportRobotButton onClick={openBankImport} />
+            <BankExportRobotButton onClick={openBankExport} />
           </div>
+          <p className="text-[12.5px] text-graphite-600 leading-relaxed max-w-2xl">
+            <strong className="text-graphite-900">Trīs roboti</strong> dara
+            visu smago darbu: zaļais lasa rēķinus tavā Gmail, zilais ielasa
+            bankas izrakstu un salīdzina ar rēķiniem, violetais sagatavo
+            maksājumu pakotni augšupielādei bankā.
+          </p>
         </div>
 
         {/* Segmented control */}

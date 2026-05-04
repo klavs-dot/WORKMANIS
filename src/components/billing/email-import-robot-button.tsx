@@ -1,34 +1,29 @@
 "use client";
 
 /**
- * EmailImportRobotButton — square card button with animated robot
- * mascot that triggers the Gmail invoice scan.
+ * EmailImportRobotButton — green robot mascot card. Clicking it
+ * scans the active company's connected Gmail (per-company OAuth)
+ * for invoices, parses them with AI, and persists results.
  *
- * The button has two states:
+ * Personality: cheerful inbox-skimmer. Antenna wiggles like it's
+ * tuning into a signal, eyes blink, mouth opens into an excited
+ * "O" while reading.
  *
- *   IDLE — Static robot, label "Ielasīt e-pasta rēķinus".
- *          Click triggers the scan.
+ * Visual identity within the trio:
+ *   - This robot:        emerald/green   — "in" (mail arriving)
+ *   - Bank-import robot: sky blue        — "down" (data flowing in)
+ *   - Bank-export robot: violet/purple   — "up" (payments going out)
  *
- *   SCANNING — Robot bobs and tilts, eyes blink, antenna wiggles.
- *              Below it, a rotating set of cute Latvian status
- *              messages cycles every ~2.5s ('Kasās pa iesūtni…',
- *              'Lasa rēķinus…', 'Šķiro PDF failus…').
- *              Click during scan is ignored.
- *
- * After scan completes, fires onComplete with the API response so
- * the parent can refetch the invoice store and show a result toast.
- *
- * Robot is built from primitives — Body, Eyes, Antenna — each is a
- * <motion.div> so we can animate parts independently. Keeps the
- * SVG-free, just CSS shapes — gives the cute "pixel toy" look that
- * fits the rest of the app's playful side.
+ * The card chrome (border, label, status messages) lives in the
+ * shared <RobotCard>. This file owns the robot anatomy + animations
+ * + the actual scan logic.
  */
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useCompany } from "@/lib/company-context";
 import { pushToastGlobally } from "@/lib/toast-context";
-import { cn } from "@/lib/utils";
+import { RobotCard } from "./robot-card";
 
 interface EmailImportRobotButtonProps {
   /** Called after the scan completes (or fails) so the parent can
@@ -37,14 +32,6 @@ interface EmailImportRobotButtonProps {
   className?: string;
 }
 
-// Cute progress messages cycled while scanning. Latvian, and a bit
-// playful — the user is going to see this for 30-60 seconds, so it
-// shouldn't feel like a serious system spinner. Order matters: we
-// loop through them in sequence.
-//
-// Updated to reflect the two-phase pipeline (triage every email,
-// then extract from the relevant ones) — older messages assumed
-// only PDF attachments were scanned.
 const SCAN_MESSAGES = [
   "🔍 Lasu visas vēstules…",
   "👀 Skatos kas par ko sūtīts…",
@@ -63,15 +50,12 @@ const SCAN_MESSAGES = [
 
 export function EmailImportRobotButton({
   onComplete,
-  className,
 }: EmailImportRobotButtonProps) {
   const { activeCompany } = useCompany();
   const [scanning, setScanning] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
 
-  // Cycle through status messages while scanning. 2.5s per message
-  // gives the user enough time to read each one without it feeling
-  // sluggish. Reset to first message when scan starts.
+  // Cycle status messages every 2.5s while scanning
   useEffect(() => {
     if (!scanning) {
       setMessageIndex(0);
@@ -84,7 +68,14 @@ export function EmailImportRobotButton({
   }, [scanning]);
 
   const handleClick = async () => {
-    if (scanning || !activeCompany?.id) return;
+    if (!activeCompany?.id) {
+      pushToastGlobally(
+        "error",
+        "Vispirms izvēlies struktūrvienību sānjoslā",
+        4000
+      );
+      return;
+    }
 
     setScanning(true);
     try {
@@ -117,18 +108,11 @@ export function EmailImportRobotButton({
         }>;
       };
 
-      // Print full debug info to browser console so the user can
-      // share it with us when something goes wrong. The toast is
-      // length-limited; the console isn't.
       console.group("[email-import] scan results");
       for (const scan of scans) {
         console.log(
           `${scan.mailbox}: found=${scan.messagesFound} processed=${scan.messagesProcessed} created=${scan.invoicesCreated} dup=${scan.duplicatesSkipped} errors=${scan.errors}`
         );
-        // Always log the summary — it contains the actual error
-        // message when the scan crashed before processing any
-        // emails (e.g. OAuth scope missing, Gmail API not
-        // enabled, rate limit hit on the very first call).
         console.log(`  ${scan.mailbox} summary: ${scan.summary}`);
         if (scan.debugErrors && scan.debugErrors.length > 0) {
           console.log(`  Errors in ${scan.mailbox}:`);
@@ -139,7 +123,6 @@ export function EmailImportRobotButton({
       }
       console.groupEnd();
 
-      // Build per-mailbox summary
       const inbox = scans.find((s) => s.mailbox === "INBOX");
       const sent = scans.find((s) => s.mailbox === "SENT");
 
@@ -150,18 +133,7 @@ export function EmailImportRobotButton({
       const totalErrors = (inbox?.errors ?? 0) + (sent?.errors ?? 0);
       const totalFound =
         (inbox?.messagesFound ?? 0) + (sent?.messagesFound ?? 0);
-      const totalProcessed =
-        (inbox?.messagesProcessed ?? 0) + (sent?.messagesProcessed ?? 0);
 
-      // The scan caps each click at 6 messages per mailbox. If
-      // Gmail returned exactly the cap for a mailbox, there are
-      // probably more emails behind. Tell the user to click again.
-      // Cap on messages PER MAILBOX scanned per click. If Gmail
-      // returned >= the cap, there are probably more emails behind.
-      // Tell the user to click again. Synced with email-scanner.ts
-      // default (12 messages × 2 mailboxes = up to 24 emails per
-      // click, but only ~3-5 will typically pass triage and
-      // become invoices).
       const SCAN_CAP_PER_MAILBOX = 12;
       const inboxCapped =
         (inbox?.messagesFound ?? 0) >= SCAN_CAP_PER_MAILBOX;
@@ -181,19 +153,16 @@ export function EmailImportRobotButton({
       let toastMessage: string;
       if (totalFound === 0) {
         toastMessage =
-          "Nav jaunu vēstuļu e-pastā kopš pēdējās skenēšanas. Mēģini iztīrīt 60_email_imports tabulu, ja gribi atkārtoti skenēt visu.";
+          "Nav jaunu vēstuļu e-pastā kopš pēdējās skenēšanas.";
       } else if (totalCreated === 0 && totalDup === 0) {
-        // Common case when triage is too aggressive or AI fails
-        // to extract — be specific so the user knows it's not
-        // their fault and can check Vercel logs / contact us.
-        toastMessage = `Atradu ${totalFound} vēstules, bet AI nevarēja izvilkt rēķinu datus no nevienas. Iespējams, vēstules nav rēķini, vai AI klasifikators noraidīja kā 'cita info'. Pārbaudi Vercel function logus, lai redzētu detaļas.`;
+        toastMessage = `Atradu ${totalFound} vēstules, bet AI nevarēja izvilkt rēķinu datus. Pārbaudi Vercel logus.`;
       } else {
         toastMessage = `Pievienoti ${totalCreated} rēķini no ${totalFound} vēstulēm${parts.length ? ` (${parts.join(", ")})` : ""}.`;
         if (totalErrors > 0) {
-          toastMessage += ` ${totalErrors} ar kļūdām (skatīt logus).`;
+          toastMessage += ` ${totalErrors} ar kļūdām.`;
         }
         if (moreAvailable) {
-          toastMessage += " Spied robotu vēlreiz, lai turpinātu ar nākamajiem.";
+          toastMessage += " Spied robotu vēlreiz nākamajiem.";
         }
       }
 
@@ -202,7 +171,6 @@ export function EmailImportRobotButton({
         toastMessage,
         moreAvailable ? 12000 : 9000
       );
-      void totalProcessed; // currently unused but kept for future logging
       onComplete?.();
     } catch (err) {
       const msg =
@@ -214,71 +182,28 @@ export function EmailImportRobotButton({
   };
 
   return (
-    <button
-      type="button"
+    <RobotCard
+      idleLabel="Ielasīt e-pasta rēķinus"
+      busyMessages={SCAN_MESSAGES}
+      busyIndex={messageIndex}
       onClick={handleClick}
-      disabled={scanning}
-      className={cn(
-        "group relative flex flex-col items-center justify-center gap-2",
-        "rounded-2xl border-2 transition-all overflow-hidden",
-        "h-[140px] w-[140px] shrink-0",
-        scanning
-          ? "border-graphite-900 bg-graphite-50 cursor-wait"
-          : "border-graphite-200 bg-white hover:border-graphite-400 hover:bg-graphite-50/40 hover:shadow-soft cursor-pointer",
-        className
-      )}
+      busy={scanning}
+      accent="emerald"
       title="Ielasīt rēķinus no e-pasta (Iesūtne + Nosūtītie)"
     >
-      <Robot scanning={scanning} />
-
-      <AnimatePresence mode="wait">
-        {scanning ? (
-          <motion.div
-            key={messageIndex}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.3 }}
-            className="text-[10px] font-medium text-graphite-700 text-center px-2 leading-tight min-h-[24px]"
-          >
-            {SCAN_MESSAGES[messageIndex]}
-          </motion.div>
-        ) : (
-          <motion.div
-            key="idle"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-[11px] font-semibold text-graphite-900 text-center px-2 leading-tight"
-          >
-            Ielasīt e-pasta rēķinus
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </button>
+      <EmailRobot scanning={scanning} />
+    </RobotCard>
   );
 }
 
 // ============================================================
-// Robot mascot
+// Email robot — antenna wiggles, eyes blink (mail-skimmer vibe)
 // ============================================================
 
-/**
- * The robot itself. Built from CSS-only shapes so it's crisp at
- * any resolution and trivially tweakable.
- *
- * Anatomy:
- *   - antenna  — top, wiggles when scanning
- *   - head     — main body container
- *   - eyes     — two dots, blink occasionally even when idle
- *   - mouth    — small horizontal line, becomes a wavy 'O' when
- *                scanning (excited robot)
- *   - body     — squat torso below head
- *   - arms     — small protrusions on each side, jiggle when busy
- */
-function Robot({ scanning }: { scanning: boolean }) {
+function EmailRobot({ scanning }: { scanning: boolean }) {
   return (
     <div className="relative h-[60px] w-[50px] flex flex-col items-center">
-      {/* Antenna */}
+      {/* Antenna with green LED */}
       <motion.div
         className="absolute -top-1 left-1/2 -translate-x-1/2 flex flex-col items-center"
         animate={
@@ -299,7 +224,7 @@ function Robot({ scanning }: { scanning: boolean }) {
 
       {/* Head */}
       <motion.div
-        className="relative mt-3 h-7 w-9 rounded-md bg-graphite-100 border-2 border-graphite-700 flex items-center justify-center gap-1.5"
+        className="relative mt-3 h-7 w-9 rounded-md bg-emerald-50 border-2 border-graphite-700 flex items-center justify-center gap-1.5"
         animate={
           scanning
             ? { y: [0, -2, 0, 2, 0], rotate: [-2, 2, -1, 1, -2] }
@@ -311,11 +236,10 @@ function Robot({ scanning }: { scanning: boolean }) {
             : { duration: 0.3 }
         }
       >
-        {/* Eyes */}
-        <Eye scanning={scanning} />
-        <Eye scanning={scanning} delay={0.15} />
+        <BlinkingEye scanning={scanning} />
+        <BlinkingEye scanning={scanning} delay={0.15} />
 
-        {/* Mouth — small horizontal dash idle, animated 'O' when scanning */}
+        {/* Mouth — opens into 'O' while busy (excited) */}
         <motion.div
           className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-graphite-700"
           animate={
@@ -337,52 +261,47 @@ function Robot({ scanning }: { scanning: boolean }) {
 
       {/* Body */}
       <motion.div
-        className="relative h-5 w-7 rounded-sm bg-graphite-200 border-2 border-graphite-700 flex items-center justify-center -mt-px"
-        animate={
-          scanning
-            ? { y: [0, 1, 0] }
-            : { y: 0 }
-        }
+        className="relative h-5 w-7 rounded-sm bg-emerald-100 border-2 border-graphite-700 flex items-center justify-center -mt-px"
+        animate={scanning ? { y: [0, 1, 0] } : { y: 0 }}
         transition={
           scanning
             ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
             : { duration: 0.3 }
         }
       >
-        {/* Arms */}
+        {/* Arms wave */}
         <motion.div
           className="absolute -left-1.5 top-1/2 -translate-y-1/2 h-1 w-2 rounded-sm bg-graphite-700"
           animate={
-            scanning
-              ? { rotate: [-15, 15, -15], originX: 1 }
-              : { rotate: 0 }
+            scanning ? { rotate: [-15, 15, -15] } : { rotate: 0 }
           }
           transition={
             scanning
               ? { duration: 0.6, repeat: Infinity, ease: "easeInOut" }
               : { duration: 0.3 }
           }
+          style={{ originX: 1 }}
         />
         <motion.div
           className="absolute -right-1.5 top-1/2 -translate-y-1/2 h-1 w-2 rounded-sm bg-graphite-700"
           animate={
-            scanning
-              ? { rotate: [15, -15, 15], originX: 0 }
-              : { rotate: 0 }
+            scanning ? { rotate: [15, -15, 15] } : { rotate: 0 }
           }
           transition={
             scanning
               ? { duration: 0.6, repeat: Infinity, ease: "easeInOut" }
               : { duration: 0.3 }
           }
+          style={{ originX: 0 }}
         />
 
-        {/* Status LED on chest */}
+        {/* Chest LED */}
         <motion.div
-          className={cn(
-            "h-1.5 w-1.5 rounded-full",
-            scanning ? "bg-emerald-500" : "bg-graphite-400"
-          )}
+          className={
+            scanning
+              ? "h-1.5 w-1.5 rounded-full bg-emerald-500"
+              : "h-1.5 w-1.5 rounded-full bg-graphite-400"
+          }
           animate={
             scanning
               ? { opacity: [1, 0.3, 1], scale: [1, 1.2, 1] }
@@ -399,12 +318,7 @@ function Robot({ scanning }: { scanning: boolean }) {
   );
 }
 
-/**
- * Single eye. Blinks at random-ish intervals even when idle (gives
- * the robot a bit of life), blinks faster + scans side-to-side
- * when actively working.
- */
-function Eye({
+function BlinkingEye({
   scanning,
   delay = 0,
 }: {
@@ -421,18 +335,8 @@ function Eye({
       }
       transition={
         scanning
-          ? {
-              duration: 1.4,
-              repeat: Infinity,
-              ease: "easeInOut",
-              delay,
-            }
-          : {
-              duration: 4,
-              repeat: Infinity,
-              ease: "easeInOut",
-              repeatDelay: 1.5,
-            }
+          ? { duration: 1.4, repeat: Infinity, ease: "easeInOut", delay }
+          : { duration: 4, repeat: Infinity, ease: "easeInOut", repeatDelay: 1.5 }
       }
     >
       <div className="h-full w-full rounded-full bg-graphite-900" />
