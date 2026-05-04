@@ -26,7 +26,24 @@ import { createHmac } from "crypto";
 export interface PendingCompanyState {
   /** Owner email — matches NextAuth session, prevents cross-user state hijack */
   userEmail: string;
-  /** Company form data carried through the OAuth round-trip */
+  /**
+   * Flow mode:
+   *   "create"    — provisions a new company in chosen Gmail's Drive
+   *                 (default; companyData is required)
+   *   "reconnect" — refreshes OAuth tokens for an EXISTING company
+   *                 (existingCompanyId is required; companyData ignored)
+   *
+   * Optional for backwards compatibility — if absent, treated as "create"
+   * to match pre-Sesija-3 callbacks still in flight.
+   */
+  mode?: "create" | "reconnect";
+  /**
+   * For reconnect mode only — the company we're refreshing tokens
+   * for. Callback validates this exists in the user's account-master
+   * before saving new tokens (prevents state-token spoofing).
+   */
+  existingCompanyId?: string;
+  /** Company form data carried through the OAuth round-trip (create mode) */
   companyData: {
     name: string;
     legal_name: string;

@@ -20,6 +20,7 @@ import { RequisitesModal } from "@/components/business/requisites-modal";
 import {
   AddCompanyModal,
 } from "@/components/business/add-company-modal";
+import { GmailStatusChip } from "@/components/business/gmail-status-chip";
 import {
   Dialog,
   DialogContent,
@@ -110,8 +111,15 @@ function UznemumiPageInner() {
    * Using router.replace (not router.push) prevents adding the
    * cleaned URL to history — back button stays useful.
    */
+  // Bumped after OAuth callbacks (created or reconnected) so the
+  // GmailStatusChip components refetch their status. Without this
+  // they'd keep showing 'not connected' even after the user just
+  // completed the OAuth flow.
+  const [oauthRefreshKey, setOauthRefreshKey] = useState(0);
+
   useEffect(() => {
     const created = searchParams.get("created");
+    const reconnected = searchParams.get("reconnected");
     const gmail = searchParams.get("gmail");
     const oauthError = searchParams.get("oauth_error");
 
@@ -126,12 +134,15 @@ function UznemumiPageInner() {
     if (created) {
       const gmailNote = gmail ? ` · ${decodeURIComponent(gmail)}` : "";
       showToast(`Uzņēmums izveidots${gmailNote}`);
-      // Refresh companies list to pick up the new one — the
-      // OAuth callback provisioned it server-side, so it's in
-      // the registry but not in local state yet.
       void refresh().then(() => {
         setActiveCompany(created);
       });
+      setOauthRefreshKey((k) => k + 1);
+      router.replace("/uznemumi");
+    } else if (reconnected) {
+      const gmailNote = gmail ? ` · ${decodeURIComponent(gmail)}` : "";
+      showToast(`Gmail savienojums atjaunots${gmailNote}`);
+      setOauthRefreshKey((k) => k + 1);
       router.replace("/uznemumi");
     }
     // Intentionally only run on mount + when searchParams change.
@@ -208,6 +219,7 @@ function UznemumiPageInner() {
               company={c}
               isActive={activeCompany?.id === c.id}
               index={i}
+              oauthRefreshKey={oauthRefreshKey}
               onEdit={() => setEditing(c)}
               onCopy={(f) => handleCopy(c, f)}
               onSelectActive={() => handleSelectActive(c)}
@@ -457,6 +469,7 @@ function CompanyRow({
   company,
   isActive,
   index,
+  oauthRefreshKey,
   onEdit,
   onCopy,
   onSelectActive,
@@ -465,6 +478,7 @@ function CompanyRow({
   company: Company;
   isActive: boolean;
   index: number;
+  oauthRefreshKey: number;
   onEdit: () => void;
   onCopy: (f: CopyFormat) => void;
   onSelectActive: () => void;
@@ -562,6 +576,16 @@ function CompanyRow({
 
         {/* ============ RIGHT COLUMN: secondary actions ============ */}
         <div className="flex items-center gap-1 justify-self-end">
+          {/* Gmail connection status — leftmost in the row's right
+              cluster so it's seen before the user starts looking at
+              copy/edit affordances. Shows green chip with the
+              connected address, or amber/gray button to start the
+              reconnect / connect OAuth flow. */}
+          <GmailStatusChip
+            companyId={company.id}
+            refreshKey={oauthRefreshKey}
+          />
+          <span className="w-1.5" />
           {!filled && (
             <span
               className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[10px] font-medium border border-amber-100 mr-1"

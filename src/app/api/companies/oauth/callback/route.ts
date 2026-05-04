@@ -180,41 +180,72 @@ export async function GET(request: Request) {
     );
   }
 
-  // ───── Step 3: provision the company ─────
-  // CRITICAL: we use the NEW access_token (the one tied to the
-  // chosen Gmail account), NOT the session token. This means
-  // Drive folders + Sheets are created in the chosen Gmail's
-  // Drive — exactly what the user expects from a multi-Gmail
-  // architecture.
-  let provisionResult;
-  try {
-    provisionResult = await provisionCompany(
-      {
-        accessToken: tokenData.access_token,
-        userEmail: chosenEmail,
-      },
-      {
-        name: state.companyData.name,
-        legal_name: state.companyData.legal_name,
-        reg_number: state.companyData.reg_number,
-        vat_number: state.companyData.vat_number,
-        address: state.companyData.legal_address,
-        iban: state.companyData.iban,
-      }
-    );
-  } catch (err) {
-    if (err instanceof ProvisioningError) {
-      console.error("Provisioning error during OAuth:", err);
+  // ───── Step 3: provision OR reuse the company ─────
+  //
+  // create mode (default): create a fresh Drive folder + Sheet
+  //                        using the NEW access_token, then
+  //                        register in account-master/01_companies.
+  //
+  // reconnect mode:        skip provisioning entirely. The company
+  //                        already has its Drive folder + Sheet;
+  //                        we're only here to refresh the OAuth
+  //                        tokens. Use existingCompanyId from state.
+  //
+  // The CRITICAL constraint for reconnect: chosenEmail (the Gmail
+  // the user picked at consent) must match the gmail_address on
+  // the existing 04_company_oauth row. Otherwise the user might
+  // unintentionally swap a company's Gmail by reconnecting with
+  // the wrong account. We could either error or just warn — for
+  // now we save the new tokens regardless and let the gmail_address
+  // upsert logic handle it (saveCompanyOAuth uses (company_id,
+  // gmail_address) as the key so a different gmail creates a
+  // separate row, leaving the original one alone).
+  const isReconnect = state.mode === "reconnect";
+  let companyIdForToken: string;
+
+  if (isReconnect) {
+    if (!state.existingCompanyId) {
       return failRedirect(
         url.origin,
-        `Uzņēmuma izveide neizdevās: ${err.message}`
+        "Reconnect state nav korekts (trūkst company_id)"
       );
     }
-    console.error("Unknown provisioning error:", err);
-    return failRedirect(
-      url.origin,
-      err instanceof Error ? err.message : "Provisioning failed"
+    companyIdForToken = state.existingCompanyId;
+    console.log(
+      `[oauth-callback] reconnect mode for company ${companyIdForToken}, gmail=${chosenEmail}`
     );
+  } else {
+    let provisionResult;
+    try {
+      provisionResult = await provisionCompany(
+        {
+          accessToken: tokenData.access_token,
+          userEmail: chosenEmail,
+        },
+        {
+          name: state.companyData.name,
+          legal_name: state.companyData.legal_name,
+          reg_number: state.companyData.reg_number,
+          vat_number: state.companyData.vat_number,
+          address: state.companyData.legal_address,
+          iban: state.companyData.iban,
+        }
+      );
+    } catch (err) {
+      if (err instanceof ProvisioningError) {
+        console.error("Provisioning error during OAuth:", err);
+        return failRedirect(
+          url.origin,
+          `Uzņēmuma izveide neizdevās: ${err.message}`
+        );
+      }
+      console.error("Unknown provisioning error:", err);
+      return failRedirect(
+        url.origin,
+        err instanceof Error ? err.message : "Provisioning failed"
+      );
+    }
+    companyIdForToken = provisionResult.accountMasterCompanyId;
   }
 
   // ───── Step 4: save encrypted refresh token ─────
@@ -222,35 +253,42 @@ export async function GET(request: Request) {
   // so future operations on this company can use this Gmail
   // account's tokens, not the login user's session.
   //
-  // Note: we use chosenEmail (not state.userEmail) for both
-  // userEmail (where the account-master sheet lives) and
-  // gmail_address (which Gmail account this connects to).
-  // This is correct because if the user picked a different
-  // Gmail, we ALSO want their account-master in that Gmail's
-  // Drive — provisioning created it there.
+  // For both create and reconnect modes the upsert logic in
+  // saveCompanyOAuth keys by (company_id, gmail_address) so:
+  //   - reconnect with same Gmail → updates existing row
+  //   - reconnect with different Gmail → adds a second row (the
+  //     old one stays, getCompanyClients picks the most recent)
   try {
     await saveCompanyOAuth({
       userAccessToken: tokenData.access_token,
       userEmail: chosenEmail,
-      companyId: provisionResult.accountMasterCompanyId,
+      companyId: companyIdForToken,
       gmailAddress: chosenEmail,
       refreshToken: tokenData.refresh_token,
       grantedScopes: (tokenData.scope ?? "").split(/\s+/).filter(Boolean),
     });
   } catch (err) {
-    // Provisioning succeeded but token save failed — this is
-    // recoverable. The user can re-connect Gmail later. We log
-    // and continue with success redirect since the company is
-    // usable, just won't auto-scan emails until reconnected.
+    // Provisioning (or reconnect's lookup) succeeded but token
+    // save failed. For create mode this leaves an unusable
+    // company — log loudly. For reconnect, the OLD tokens still
+    // work, so this is just an audit miss.
     console.error(
-      `Provisioning succeeded but token save failed for ${chosenEmail}:`,
+      `Token save failed for ${chosenEmail} (mode=${isReconnect ? "reconnect" : "create"}):`,
       err
     );
   }
 
   // ───── Success: redirect to /uznemumi ─────
+  // Use different query params so the page can show different
+  // toast text:
+  //   created=ID    — newly provisioned, activate it + show "izveidots"
+  //   reconnected=ID — refreshed tokens, just show "atjaunots"
   const successUrl = new URL("/uznemumi", url.origin);
-  successUrl.searchParams.set("created", provisionResult.accountMasterCompanyId);
+  if (isReconnect) {
+    successUrl.searchParams.set("reconnected", companyIdForToken);
+  } else {
+    successUrl.searchParams.set("created", companyIdForToken);
+  }
   successUrl.searchParams.set("gmail", chosenEmail);
   return NextResponse.redirect(successUrl);
 }
