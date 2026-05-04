@@ -69,6 +69,13 @@ interface MailboxScanSummary {
   duplicatesSkipped: number;
   errors: number;
   summary: string;
+  /**
+   * Per-error breakdown so the client can show the user WHY each
+   * email failed (rate limit, AI didn't recognize, dedup, etc.).
+   * Keeps debugging accessible without forcing the user to dig
+   * through Vercel function logs.
+   */
+  debugErrors?: Array<{ messageId: string; reason: string }>;
 }
 
 export async function POST(request: Request) {
@@ -350,6 +357,12 @@ export async function POST(request: Request) {
       duplicatesSkipped,
       errors: scanResult.errors.length,
       summary: summaryText,
+      // Debug: full error breakdown so we can see in client what's
+      // happening (UI surfaces this in a console.log + toast detail)
+      debugErrors: scanResult.errors.map((e) => ({
+        messageId: e.messageId,
+        reason: e.reason,
+      })),
     });
   }
 
@@ -373,16 +386,26 @@ async function persistOne(
   const direction: "issued" | "received" =
     mailbox === "INBOX" ? "received" : "issued";
 
+  console.log(
+    `[email-import] persistOne dir=${direction} supplier="${parsed.supplier_name ?? "?"}" recipient="${parsed.recipient_name ?? "?"}" number="${parsed.invoice_number ?? "?"}" amount=${parsed.amount_total ?? 0}`
+  );
+
   // Dedup BEFORE we spend Drive upload tokens
   if (direction === "received") {
     const key = `${parsed.supplier_name}|${parsed.invoice_number}`;
-    if (inDedup.has(key)) return "duplicate";
+    if (inDedup.has(key)) {
+      console.log(`[email-import] DUPLICATE (received) key=${key}`);
+      return "duplicate";
+    }
     inDedup.add(key);
   } else {
     // Issued: dedup by (recipient_name, invoice_number) — Claude's
     // recipient_name is the CLIENT, supplier_name is us
     const key = `${parsed.recipient_name}|${parsed.invoice_number}`;
-    if (outDedup.has(key)) return "duplicate";
+    if (outDedup.has(key)) {
+      console.log(`[email-import] DUPLICATE (issued) key=${key}`);
+      return "duplicate";
+    }
     outDedup.add(key);
   }
 
@@ -442,5 +465,10 @@ async function persistOne(
     });
   }
 
+  console.log(
+    `[email-import] CREATED ${direction} invoice for ${
+      direction === "received" ? parsed.supplier_name : parsed.recipient_name
+    } number=${parsed.invoice_number}`
+  );
   return "created";
 }

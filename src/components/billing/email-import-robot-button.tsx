@@ -113,8 +113,26 @@ export function EmailImportRobotButton({
           duplicatesSkipped: number;
           errors: number;
           summary: string;
+          debugErrors?: Array<{ messageId: string; reason: string }>;
         }>;
       };
+
+      // Print full debug info to browser console so the user can
+      // share it with us when something goes wrong. The toast is
+      // length-limited; the console isn't.
+      console.group("[email-import] scan results");
+      for (const scan of scans) {
+        console.log(
+          `${scan.mailbox}: found=${scan.messagesFound} processed=${scan.messagesProcessed} created=${scan.invoicesCreated} dup=${scan.duplicatesSkipped} errors=${scan.errors}`
+        );
+        if (scan.debugErrors && scan.debugErrors.length > 0) {
+          console.log(`  Errors in ${scan.mailbox}:`);
+          for (const err of scan.debugErrors) {
+            console.log(`    [${err.messageId}] ${err.reason}`);
+          }
+        }
+      }
+      console.groupEnd();
 
       // Build per-mailbox summary
       const inbox = scans.find((s) => s.mailbox === "INBOX");
