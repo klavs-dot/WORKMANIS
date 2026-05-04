@@ -88,23 +88,30 @@ export function Sidebar() {
    * Sidebar tint based on active company's brandColor.
    *
    * Approach: take the user's hex (e.g. '#10B981') and apply it as
-   * a very subtle background tint (~6% opacity). We can't just set
-   * `style={{ backgroundColor: hex }}` directly because that would
-   * make the whole sidebar a saturated brand color, which clashes
-   * with the rest of the chrome and hurts readability.
+   * a soft background tint with 18% alpha (hex 0x2E / 0xFF ≈ 18%).
    *
-   * Instead we layer:
-   *   1. The base surface-subtle color (existing default)
-   *   2. A tiny amount of the brand color on top (alpha 0x10 = 6%)
+   * Why 18% and not less:
+   *   - Earlier we used 6% (hex 0x10) which was technically applied
+   *     but practically invisible on a white-ish chrome — users
+   *     reported "tint isn't changing" after picking colors.
+   *   - 18% is high enough to clearly differentiate companies at a
+   *     glance, but still low enough that text contrast remains fine
+   *     for any reasonable brand color (we tested green/blue/red/
+   *     orange — all stay legible).
    *
-   * Done via inline style on the aside, not Tailwind, because the
-   * value is dynamic per-user.
+   * We also bump a second variable on the right border of the
+   * sidebar to a stronger 50% (hex 0x80) so there's a clear vertical
+   * accent stripe against the main content area — that visual cue is
+   * what most users actually notice first when they switch companies.
    *
    * Empty / missing brandColor → falls back to the default
-   * surface-subtle (no tint).
+   * surface-subtle (no tint, no accent).
    */
   const sidebarStyle = activeCompany?.brandColor
-    ? { backgroundColor: `${activeCompany.brandColor}10` }
+    ? {
+        backgroundColor: `${activeCompany.brandColor}2E`,
+        borderRightColor: `${activeCompany.brandColor}80`,
+      }
     : undefined;
 
   // Map href → notification count. Only non-zero values produce a badge.
