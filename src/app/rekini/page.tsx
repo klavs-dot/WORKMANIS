@@ -77,8 +77,10 @@ export default function RekiniMaksajumiPage() {
 
   const openBankExport = () =>
     setBankPanel({ open: true, section: "export" });
-  const openBankImport = () =>
-    setBankPanel({ open: true, section: "import" });
+  // openBankImport intentionally removed in Sesija 3 — the bank
+  // import flow is now the BankImportRobotButton's auto-reconcile
+  // pipeline, not the side-panel import. The side panel still
+  // exists for the export use case.
   const closeBankPanel = () =>
     setBankPanel((s) => ({ ...s, open: false }));
 
@@ -124,7 +126,7 @@ export default function RekiniMaksajumiPage() {
         <div className="space-y-3">
           <div className="flex items-start gap-3 flex-wrap">
             <EmailImportRobotButton onComplete={handleEmailImportComplete} />
-            <BankImportRobotButton onClick={openBankImport} />
+            <BankImportRobotButton />
             <BankExportRobotButton onClick={openBankExport} />
           </div>
           <p className="text-[12.5px] text-graphite-600 leading-relaxed max-w-2xl">

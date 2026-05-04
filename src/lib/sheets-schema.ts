@@ -264,6 +264,24 @@ export const COMPANY_TABS = [
       "file_drive_id",
       "pn_akts_drive_id",
       "delivery_note_drive_id",
+      // 2026-05 (Sesija 3) — bank reconciliation status.
+      // Possible values:
+      //   'apmaksats'         — invoice has been matched to an
+      //                         incoming bank transaction
+      //   'gaida_apmaksu'     — issued, due date passed or upcoming,
+      //                         no bank transaction matched yet
+      //   'nav_salidzinats'   — no recent bank statement on file
+      //                         (status can't be determined)
+      //   'maksajums_bez_rekina' — bank received money but we have
+      //                         no matching invoice (used on
+      //                         orphan inbound payments displayed
+      //                         in 35_payments)
+      // Default empty = legacy / not yet processed by reconciler.
+      "payment_status",
+      // ID of the matched 35_payments row when status == apmaksats.
+      // Empty otherwise. Lets the UI link 'view payment' from the
+      // invoice card.
+      "payment_id",
     ],
   },
   // 31_invoices_in: invoices you RECEIVE from suppliers (money
@@ -300,6 +318,12 @@ export const COMPANY_TABS = [
       // holds an associated PN akts PDF. Empty = no file uploaded.
       "file_drive_id",
       "pn_akts_drive_id",
+      // 2026-05 (Sesija 3) — bank reconciliation. Same semantics as
+      // 30_invoices_out.payment_status but applied to invoices we
+      // received (paid out by us). 'apmaksats' = matched to an
+      // outgoing bank transaction.
+      "payment_status",
+      "payment_id",
     ],
   },
   {
@@ -418,6 +442,41 @@ export const COMPANY_TABS = [
       "explanation",
       "created_by",
       "reviewed_by_accountant",
+    ],
+  },
+
+  // 2026-05 (Sesija 3) — uploaded bank statement files.
+  //
+  // One row per FIDAVISTA / camt.053 / CSV file the user
+  // uploads. The actual transactions go to 35_payments;
+  // this tab tracks WHICH file they came from + WHEN.
+  //
+  // The reconciler uses 'period_to' to decide whether the
+  // user has 'a recent bank statement' for status calculation:
+  //
+  //   period_to >= today() → status can be evaluated normally
+  //   period_to < today()  → invoices issued/due AFTER period_to
+  //                          show 'nav_salidzinats' status because
+  //                          we haven't seen any bank data covering
+  //                          that timeframe yet
+  //
+  // bank_account_iban is set when the file's account IBAN is
+  // detectable. Lets the user upload statements from multiple
+  // accounts without conflating them.
+  {
+    name: "39_bank_statements",
+    idPrefix: "stm",
+    cols: [
+      "filename",
+      "format",
+      "bank_account_iban",
+      "period_from",
+      "period_to",
+      "transaction_count",
+      "imported_at",
+      "imported_by",
+      "drive_file_id",
+      "notes",
     ],
   },
 

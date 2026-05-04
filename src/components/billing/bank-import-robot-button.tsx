@@ -1,57 +1,71 @@
 "use client";
 
 /**
- * BankImportRobotButton — sky-blue robot mascot card. Clicking it
- * opens the bank-exchange panel in IMPORT mode, where the user
- * uploads a bank statement file (FIDAVISTA XML, CSV, etc.) and
- * the system reconciles it against existing invoices.
+ * BankImportRobotButton — sky-blue robot mascot card. Clicking
+ * opens a hidden file picker; the user picks a bank statement
+ * (FIDAVISTA XML / camt.053 / CSV) and the robot:
+ *
+ *   1. POSTs the file to /api/bank-statement/import
+ *   2. Server parses, persists transactions to 35_payments,
+ *      writes a row to 39_bank_statements, runs the reconciler
+ *      to assign payment_status to every invoice
+ *   3. Returns counts; we show a toast with what was matched
+ *
+ * No side panel anymore — the whole flow is one click + one
+ * file picker dialog. Sesija 3 of the rēķini-redesign.
  *
  * Personality: data-pulling collector. Eyes scan left-to-right
  * like a barcode reader, body has a subtle pulled-forward lean,
  * arms reach forward.
- *
- * This robot does NOT do the import itself — it's a launch button.
- * The actual file picker + matching engine lives in the existing
- * BankExchangePanel side-drawer. We just need a visually unified
- * sibling to the email-import robot.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useCompany } from "@/lib/company-context";
+import { useBilling } from "@/lib/billing-store";
+import { usePayments } from "@/lib/payments-store";
 import { pushToastGlobally } from "@/lib/toast-context";
 import { RobotCard } from "./robot-card";
 
 interface BankImportRobotButtonProps {
-  onClick: () => void;
+  /**
+   * Optional: when set, clicking the robot opens this callback
+   * instead of going straight to the file picker. Used when the
+   * caller wants the legacy bank-exchange-panel side drawer.
+   * Without it, default flow is auto-reconcile.
+   */
+  onClick?: () => void;
 }
 
-// Cycled while the panel is opening — much shorter sequence than
-// email scan because the user takes over once the panel is open.
-// In practice these flash for ~1s during the open animation, then
-// the robot returns to idle.
-const OPENING_MESSAGES = [
-  "📥 Atveru bankas paneli…",
-  "🏦 Sagatavoju import…",
+const PROCESSING_MESSAGES = [
+  "📥 Lasu bankas izrakstu…",
+  "🔍 Atpazīstu darījumus…",
+  "💾 Saglabāju Sheets…",
+  "🤝 Salīdzinu ar rēķiniem…",
+  "✨ Gandrīz gatavs…",
 ];
 
 export function BankImportRobotButton({
   onClick,
 }: BankImportRobotButtonProps) {
   const { activeCompany } = useCompany();
-  const [opening, setOpening] = useState(false);
+  const { refresh: refreshBilling } = useBilling();
+  const { refresh: refreshPayments } = usePayments();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
 
+  // Cycle messages every 2s while processing
   useEffect(() => {
-    if (!opening) {
+    if (!busy) {
       setMessageIndex(0);
       return;
     }
     const interval = setInterval(() => {
-      setMessageIndex((i) => (i + 1) % OPENING_MESSAGES.length);
-    }, 700);
+      setMessageIndex((i) => (i + 1) % PROCESSING_MESSAGES.length);
+    }, 2000);
     return () => clearInterval(interval);
-  }, [opening]);
+  }, [busy]);
 
   const handleClick = () => {
     if (!activeCompany?.id) {
@@ -62,31 +76,115 @@ export function BankImportRobotButton({
       );
       return;
     }
-
-    // Brief animation before delegating to parent. Gives the
-    // robot a chance to "react" before the panel slides over it.
-    setOpening(true);
-    setTimeout(() => {
+    if (onClick) {
       onClick();
-      // Keep the busy state for another beat so the robot doesn't
-      // visually pop back to idle while the panel is still
-      // animating in. Then the panel covers it anyway.
-      setTimeout(() => setOpening(false), 600);
-    }, 300);
+      return;
+    }
+    // Default: open the file picker
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeCompany?.id) return;
+
+    // Reset the input so the same file can be picked again later
+    e.target.value = "";
+
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const res = await fetch(
+        `/api/bank-statement/import?company_id=${encodeURIComponent(activeCompany.id)}`,
+        { method: "POST", body: fd }
+      );
+
+      if (!res.ok) {
+        const errBody = await res
+          .json()
+          .catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(errBody?.error || `Kļūda ${res.status}`);
+      }
+
+      const data = (await res.json()) as {
+        ok: true;
+        parsed: {
+          transactionCount: number;
+          format: string;
+          period: { from: string; to: string };
+        };
+        reconciled: {
+          matched: number;
+          waiting: number;
+          notReconciled: number;
+          orphansIncoming: number;
+          orphansOutgoing: number;
+        };
+      };
+
+      console.group("[bank-import] result");
+      console.log("Parsed:", data.parsed);
+      console.log("Reconciled:", data.reconciled);
+      console.groupEnd();
+
+      const { matched, orphansIncoming, orphansOutgoing } = data.reconciled;
+      const orphanTotal = orphansIncoming + orphansOutgoing;
+
+      const parts: string[] = [];
+      parts.push(`${data.parsed.transactionCount} darījumi`);
+      if (matched > 0) parts.push(`${matched} apmaksāti`);
+      if (orphanTotal > 0) {
+        parts.push(`${orphanTotal} bez rēķina`);
+      }
+
+      let toastMsg = `Importēts: ${parts.join(", ")}.`;
+      if (orphansIncoming > 0) {
+        toastMsg += ` ${orphansIncoming} ienākoši maksājumi bez rēķina — pārbaudi sadaļu Ienākošie.`;
+      }
+      if (orphansOutgoing > 0) {
+        toastMsg += ` ${orphansOutgoing} izejoši maksājumi bez rēķina — augšupielādē rēķinus manuāli.`;
+      }
+
+      pushToastGlobally(
+        orphanTotal > 0 ? "info" : "success",
+        toastMsg,
+        orphanTotal > 0 ? 12000 : 7000
+      );
+
+      // Refresh stores so the new statuses show up immediately
+      void refreshBilling();
+      void refreshPayments();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Importēšana neizdevās";
+      pushToastGlobally("error", msg, 9000);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <RobotCard
-      idleLabel="Ielasīt datus no bankas"
-      busyMessages={OPENING_MESSAGES}
-      busyIndex={messageIndex}
-      onClick={handleClick}
-      busy={opening}
-      accent="sky"
-      title="Augšupielādē bankas izrakstu un salīdzini ar rēķiniem"
-    >
-      <BankImportRobot busy={opening} />
-    </RobotCard>
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xml,.csv,.txt,application/xml,text/xml,text/csv,text/plain"
+        onChange={handleFileChange}
+        className="hidden"
+      />
+      <RobotCard
+        idleLabel="Ielasīt datus no bankas"
+        busyMessages={PROCESSING_MESSAGES}
+        busyIndex={messageIndex}
+        onClick={handleClick}
+        busy={busy}
+        accent="sky"
+        title="Augšupielādē bankas izrakstu (FIDAVISTA XML, CSV) un automātiski salīdzini ar rēķiniem"
+      >
+        <BankImportRobot busy={busy} />
+      </RobotCard>
+    </>
   );
 }
 
