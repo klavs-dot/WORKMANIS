@@ -56,6 +56,12 @@ import {
   type ReceivedInvoiceRow,
   type PaymentStatus,
 } from "@/lib/bank-reconciler";
+import {
+  classifyOrphanTransaction,
+  type KnownClient,
+  type KnownSupplier,
+} from "@/lib/orphan-classifier";
+import Anthropic from "@anthropic-ai/sdk";
 
 // 120s — a typical bank statement has 50-300 transactions and we
 // do one Sheet write per matched invoice + one per orphan
@@ -372,39 +378,243 @@ export async function POST(request: Request) {
     }
   }
 
-  // ───── Step 7: tag orphan transactions ─────
+  // ───── Step 7: classify orphan transactions ─────
   //
   // Orphans are bank transactions where money moved but no
-  // matching invoice existed. We mark them with
-  // payment_status = 'maksajums_bez_rekina' on the 35_payments
-  // row so the UI can render them with a red frame and a
-  // 'Augšupielādēt manuāli' button.
+  // matching invoice existed in 30_invoices_out / 31_invoices_in.
   //
-  // Why a separate column instead of inferring from
-  // matched_invoice_id being empty: classified_section can also
-  // be empty for transactions that ARE invoices but haven't been
-  // reconciled yet (e.g. the user uploaded statements before
-  // their invoices arrived in the inbox). Explicit tagging
-  // distinguishes 'we know this has no invoice' from 'not yet
-  // analysed'.
+  // Sesija 5 enhancement: BEFORE marking as
+  // 'maksajums_bez_rekina' (which puts them in the red banner
+  // for manual upload), we run each through the classifier:
+  //
+  //   1. Tier 1 — IBAN match against known clients/suppliers
+  //   2. Tier 2 — Reg/VAT number in bank reference
+  //   3. Tier 3 — AI fuzzy match on counterparty name
+  //
+  // When the classifier returns a HIGH or MEDIUM confidence
+  // match, we automatically:
+  //   - Create a placeholder invoice row in 30_invoices_out
+  //     (for incoming/clients) or 31_invoices_in (for outgoing/
+  //     suppliers) with status='gaida_apmaksu' (mark not paid
+  //     yet — the user will edit + finalize amounts when the
+  //     real invoice arrives via email or upload)
+  //   - Link the 35_payments row to it via matched_invoice_id
+  //   - Set the invoice's payment_status='apmaksats' since the
+  //     bank already confirmed the money moved
+  //
+  // When the classifier returns 'unknown' (no confident match),
+  // we fall back to the original behaviour: tag the transaction
+  // as 'maksajums_bez_rekina' so it appears in the red banner.
+  //
+  // The user can still manually upload an invoice to override
+  // any auto-classification — or delete the auto-created
+  // placeholder if it was wrong.
+
+  // Load known clients + suppliers ONCE for all classifications
+  let knownClients: KnownClient[] = [];
+  let knownSuppliers: KnownSupplier[] = [];
+  try {
+    const clientsRaw = (await sheets.list("10_clients")) as Array<
+      Record<string, unknown>
+    >;
+    knownClients = clientsRaw
+      .filter((r) => r.name)
+      .map((r) => ({
+        id: String(r.id ?? ""),
+        name: String(r.name ?? ""),
+        regNumber: String(r.reg_number ?? ""),
+        vatNumber: String(r.vat_number ?? ""),
+        iban: String(r.iban ?? ""),
+      }));
+    const suppliersRaw = (await sheets.list("12_suppliers")) as Array<
+      Record<string, unknown>
+    >;
+    knownSuppliers = suppliersRaw
+      .filter((r) => r.name)
+      .map((r) => ({
+        id: String(r.id ?? ""),
+        name: String(r.name ?? ""),
+        regNumber: String(r.reg_number ?? ""),
+        vatNumber: String(r.vat_number ?? ""),
+        iban: String(r.iban ?? ""),
+        defaultExplanation: r.default_explanation
+          ? String(r.default_explanation)
+          : undefined,
+        typicalAccountCode: r.typical_account_code
+          ? String(r.typical_account_code)
+          : undefined,
+      }));
+    console.log(
+      `[bank-import] classifier inputs: ${knownClients.length} clients, ${knownSuppliers.length} suppliers`
+    );
+  } catch (err) {
+    console.warn(
+      "[bank-import] failed to load clients/suppliers — orphans will all stay unclassified:",
+      err
+    );
+  }
+
+  // AI is optional — if we can't reach Anthropic, we still do
+  // tier 1+2 deterministic matching, just lose tier 3 fuzzy.
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const anthropic = apiKey ? new Anthropic({ apiKey }) : undefined;
+  if (!anthropic) {
+    console.warn(
+      "[bank-import] ANTHROPIC_API_KEY missing — fuzzy name matching disabled, only IBAN/reg deterministic match will run"
+    );
+  }
+
+  let autoClassifiedCount = 0;
+
   for (const orphan of result.orphans) {
     if (!orphan.transaction.paymentId) continue;
     const expectedUpdatedAt =
       updatedAtBy.get(`35/${orphan.transaction.paymentId}`) ?? "";
+
+    // Try to classify. If known counterparty → create invoice +
+    // link; if unknown → tag as maksajums_bez_rekina (orphan UI).
+    let classification;
     try {
+      classification = await classifyOrphanTransaction({
+        transaction: orphan.transaction,
+        knownClients,
+        knownSuppliers,
+        anthropic,
+      });
+    } catch (err) {
+      console.warn(
+        `Classification failed for ${orphan.transaction.paymentId}:`,
+        err
+      );
+      classification = { kind: "unknown" as const };
+    }
+
+    if (classification.kind === "unknown") {
+      // Tag as orphan — same as old Step 7 behaviour
+      try {
+        await sheets.update(
+          "35_payments",
+          orphan.transaction.paymentId,
+          {
+            payment_status: "maksajums_bez_rekina",
+            expected_updated_at: expectedUpdatedAt,
+          }
+        );
+      } catch (err) {
+        console.warn(
+          `Failed to tag orphan ${orphan.transaction.paymentId}:`,
+          err
+        );
+      }
+      continue;
+    }
+
+    // Auto-classify: create a placeholder invoice row + link
+    // the payment to it. The placeholder is intentionally
+    // sparse — amount + counterparty + date are correct (from
+    // bank), but invoice number / description / due date stay
+    // empty so the user can edit them later when the real
+    // invoice arrives.
+    try {
+      const tx = orphan.transaction;
+      const absAmountCents = Math.abs(tx.amountCents);
+
+      let createdInvoiceId: string;
+      let invoiceTab: "30_invoices_out" | "31_invoices_in";
+
+      if (classification.kind === "client") {
+        // Incoming payment → we issued an invoice to this client
+        invoiceTab = "30_invoices_out";
+        const created = await sheets.create("30_invoices_out", {
+          number: "(automātiski izveidots)",
+          client: classification.entity.name,
+          description: `Automātiski izveidots no bankas: ${tx.reference || tx.counterparty}`,
+          amount_cents: String(absAmountCents),
+          vat_cents: "0",
+          issue_date: tx.date,
+          due_date: tx.date,
+          status: "apmaksats",
+          delivery_note: "",
+          pn_akts: "",
+          pn_akts_source: "",
+          pn_akts_file_name: "",
+          file_drive_id: "",
+          pn_akts_drive_id: "",
+          delivery_note_drive_id: "",
+          payment_status: "apmaksats",
+          payment_id: tx.paymentId ?? "",
+        });
+        createdInvoiceId = (created as unknown as Record<string, unknown>)
+          .id as string;
+      } else {
+        // Outgoing payment → supplier sent us an invoice we paid
+        invoiceTab = "31_invoices_in";
+        const created = await sheets.create("31_invoices_in", {
+          supplier: classification.entity.name,
+          invoice_number: "(automātiski izveidots)",
+          description: `Automātiski izveidots no bankas: ${tx.reference || tx.counterparty}`,
+          amount_cents: String(absAmountCents),
+          iban: classification.entity.iban || "",
+          due_date: tx.date,
+          status: "apmaksats",
+          file_name: "",
+          pn_akts: "",
+          pn_akts_source: "",
+          pn_akts_file_name: "",
+          accounting_category: "",
+          depreciation_period: "",
+          accounting_explanation:
+            classification.entity.defaultExplanation || "",
+          accounting_updated_at: "",
+          source_channel: "auto_bank",
+          payment_evidence: "",
+          file_drive_id: "",
+          pn_akts_drive_id: "",
+          payment_status: "apmaksats",
+          payment_id: tx.paymentId ?? "",
+        });
+        createdInvoiceId = (created as unknown as Record<string, unknown>)
+          .id as string;
+      }
+
+      // Link the 35_payments row back to the new invoice
       await sheets.update(
         "35_payments",
         orphan.transaction.paymentId,
         {
-          payment_status: "maksajums_bez_rekina",
+          matched_invoice_id: createdInvoiceId,
+          classified_section:
+            classification.kind === "client" ? "invoice_out" : "invoice_in",
+          // Don't tag with maksajums_bez_rekina — it's no longer
+          // an orphan after this step. Empty payment_status means
+          // 'matched normally during import'.
+          payment_status: "",
           expected_updated_at: expectedUpdatedAt,
         }
       );
+
+      autoClassifiedCount++;
+      console.log(
+        `[bank-import] auto-classified payment ${orphan.transaction.paymentId} → ${invoiceTab}/${createdInvoiceId} (${classification.kind} ${classification.entity.name}, ${classification.confidence})`
+      );
     } catch (err) {
       console.warn(
-        `Failed to tag orphan ${orphan.transaction.paymentId}:`,
+        `Failed to auto-classify ${orphan.transaction.paymentId}:`,
         err
       );
+      // Fallback: tag as orphan so user can deal with it manually
+      try {
+        await sheets.update(
+          "35_payments",
+          orphan.transaction.paymentId,
+          {
+            payment_status: "maksajums_bez_rekina",
+            expected_updated_at: expectedUpdatedAt,
+          }
+        );
+      } catch {
+        // Ignore — already logged above
+      }
     }
   }
 
@@ -415,6 +625,9 @@ export async function POST(request: Request) {
       format,
       period: { from: periodFrom, to: periodTo },
     },
-    reconciled: result.summary,
+    reconciled: {
+      ...result.summary,
+      autoClassified: autoClassifiedCount,
+    },
   });
 }

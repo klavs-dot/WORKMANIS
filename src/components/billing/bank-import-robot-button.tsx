@@ -121,6 +121,7 @@ export function BankImportRobotButton({
           notReconciled: number;
           orphansIncoming: number;
           orphansOutgoing: number;
+          autoClassified?: number;
         };
       };
 
@@ -129,28 +130,42 @@ export function BankImportRobotButton({
       console.log("Reconciled:", data.reconciled);
       console.groupEnd();
 
-      const { matched, orphansIncoming, orphansOutgoing } = data.reconciled;
-      const orphanTotal = orphansIncoming + orphansOutgoing;
+      const { matched, orphansIncoming, orphansOutgoing, autoClassified } =
+        data.reconciled;
+      const auto = autoClassified ?? 0;
+      // Sesija 5: 'orphansIncoming/Outgoing' from the server
+      // count ALL orphans BEFORE auto-classification — including
+      // ones that got auto-classified. The actual remaining red
+      // banner count is: orphans − autoClassified. We can't know
+      // the per-direction split of auto-classified without server
+      // detail, so we deduct proportionally for the toast text.
+      // This is fine for messaging (close enough); the actual UI
+      // reflects truth from the refreshed store.
+      const remainingOrphans = Math.max(
+        0,
+        orphansIncoming + orphansOutgoing - auto
+      );
 
       const parts: string[] = [];
       parts.push(`${data.parsed.transactionCount} darījumi`);
       if (matched > 0) parts.push(`${matched} apmaksāti`);
-      if (orphanTotal > 0) {
-        parts.push(`${orphanTotal} bez rēķina`);
-      }
+      if (auto > 0)
+        parts.push(`${auto} automātiski sasaistīti`);
+      if (remainingOrphans > 0)
+        parts.push(`${remainingOrphans} bez rēķina`);
 
       let toastMsg = `Importēts: ${parts.join(", ")}.`;
-      if (orphansIncoming > 0) {
-        toastMsg += ` ${orphansIncoming} ienākoši maksājumi bez rēķina — pārbaudi sadaļu Ienākošie.`;
+      if (auto > 0) {
+        toastMsg += ` AI atpazina ${auto} darījumus pēc klientu/piegādātāju saraksta un izveidoja rēķinus automātiski.`;
       }
-      if (orphansOutgoing > 0) {
-        toastMsg += ` ${orphansOutgoing} izejoši maksājumi bez rēķina — augšupielādē rēķinus manuāli.`;
+      if (remainingOrphans > 0) {
+        toastMsg += ` Pārējie ${remainingOrphans} bez atbilstošā rēķina — pārbaudi Ienākošie/Izejošie sadaļas.`;
       }
 
       pushToastGlobally(
-        orphanTotal > 0 ? "info" : "success",
+        remainingOrphans > 0 ? "info" : "success",
         toastMsg,
-        orphanTotal > 0 ? 12000 : 7000
+        remainingOrphans > 0 ? 12000 : 8000
       );
 
       // Refresh stores so the new statuses show up immediately
