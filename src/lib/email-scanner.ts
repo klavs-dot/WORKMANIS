@@ -48,6 +48,11 @@ import {
   SYSTEM_PROMPT,
   type ParsedInvoice,
 } from "@/lib/invoice-extraction";
+import {
+  matchInvoiceToCompany,
+  type CompanyIdentity,
+  type MatchResult,
+} from "@/lib/company-matcher";
 
 // ============================================================
 // Types
@@ -87,6 +92,27 @@ export interface EmailScanInput {
    * unscanned mail. Default 50.
    */
   maxMessages?: number;
+  /**
+   * Identity of the company we're scanning FOR. Used to filter
+   * out invoices addressed to other entities even though they
+   * happen to be in this Gmail inbox (e.g. shared inbox, forwarded
+   * from clients, personal mail mixed in).
+   *
+   * Sesija 2 spec: only invoices where the recipient matches
+   * by VAT, reg number, or 90%+ name fuzzy match are accepted.
+   * Others are recorded in result.unmatched but NOT persisted.
+   *
+   * For SENT mailbox (invoices we ISSUED), matching is reversed
+   * — we check the SUPPLIER fields against the company instead
+   * of recipient. Handled inline in the scan loop.
+   *
+   * Optional only for backwards compatibility during migration;
+   * callers should always pass it. Skipping the check (undefined)
+   * accepts every invoice — we keep that as a fallback rather
+   * than throwing because some legacy code paths haven't been
+   * updated yet.
+   */
+  companyIdentity?: import("./company-matcher").CompanyIdentity;
 }
 
 export interface ParsedAttachment {
@@ -124,6 +150,23 @@ export interface ScanResult {
   messagesProcessed: number;
   invoicesParsed: ScannedInvoice[];
   errors: Array<{ messageId: string; reason: string }>;
+  /**
+   * Invoices that AI extracted successfully but were rejected
+   * because the recipient didn't match the active company.
+   * Sesija 2 spec: only invoices addressed to the current
+   * company are pulled into Drive + Sheet.
+   *
+   * Each entry includes WHY it was rejected (VAT mismatch,
+   * name too dissimilar, etc.) so the user can audit decisions.
+   * Surfaced in the toast summary as "X rēķini citiem
+   * uzņēmumiem" with full details in browser console.
+   */
+  unmatched: Array<{
+    messageId: string;
+    supplier: string;
+    recipient: string;
+    reason: string;
+  }>;
   /** Largest internalDate we saw — feed this back as
    *  sinceInternalDate on the next scan */
   lastMessageInternalDate: number;
@@ -268,6 +311,7 @@ export async function scanGmailForInvoices(
     messagesProcessed: 0,
     invoicesParsed: [],
     errors: [],
+    unmatched: [],
     lastMessageInternalDate: input.sinceInternalDate ?? 0,
   };
 
@@ -507,6 +551,59 @@ export async function scanGmailForInvoices(
           reason: `Nav atpazīts kā rēķins (uzticība ${avgConfidence.toFixed(2)})`,
         });
         continue;
+      }
+
+      // ───── Sesija 2: company-identity match check ─────
+      //
+      // Reject the invoice if its recipient (for INBOX) or supplier
+      // (for SENT) doesn't match the active company. This is what
+      // makes multi-company Gmail accounts work — same inbox can
+      // hold invoices for several entities and we route each to the
+      // right one based on VAT / reg / fuzzy name.
+      //
+      // Skip the check when no companyIdentity was passed (legacy
+      // callers). We never throw here — better to over-include than
+      // crash the scan mid-flight.
+      if (input.companyIdentity) {
+        // For INBOX: invoice was received → check RECIPIENT matches us
+        // For SENT: invoice was issued → check SUPPLIER matches us
+        const matchTarget =
+          input.mailbox === "INBOX"
+            ? {
+                recipient_name: parsed.recipient_name,
+                recipient_reg_number: parsed.recipient_reg_number,
+                recipient_vat_number: parsed.recipient_vat_number ?? "",
+              }
+            : {
+                // Re-use the same matcher by aliasing supplier fields
+                // into the "recipient" slot it expects. Conceptually
+                // both cases ask "is THIS company on the invoice?".
+                recipient_name: parsed.supplier_name,
+                recipient_reg_number: parsed.supplier_reg_number,
+                recipient_vat_number: "", // supplier VAT not extracted
+              };
+        const match: MatchResult = matchInvoiceToCompany(
+          matchTarget,
+          input.companyIdentity
+        );
+        if (!match.matched) {
+          console.log(
+            `[email-scan] UNMATCHED msg=${candidate.messageId} ${match.reason}`
+          );
+          result.unmatched.push({
+            messageId: candidate.messageId,
+            supplier: parsed.supplier_name || "(nav norādīts)",
+            recipient: parsed.recipient_name || "(nav norādīts)",
+            reason: match.reason,
+          });
+          continue;
+        }
+        // Matched — log for audit so user can see HOW it matched.
+        // Useful when fuzzy match accepts a borderline case (88%
+        // looks suspicious but is actually correct after normalize).
+        console.log(
+          `[email-scan] MATCHED msg=${candidate.messageId} via=${match.via} ${match.reason}`
+        );
       }
 
       const item: ScannedInvoice = { candidate, parsed };
@@ -986,8 +1083,14 @@ async function parseInvoiceFromText(
       ? "This is a PAYMENT CONFIRMATION/RECEIPT. Extract the supplier (who got paid), the amount paid, and the date. Mark is_paid: true."
       : "This is an invoice in email body text. Extract the standard invoice fields.";
 
+  // Sesija 2: switched from Sonnet 4.6 to Opus 4.6 — most powerful
+  // model available without 4.7's adaptive-thinking incompatibility
+  // with forced tool_choice. Better extraction precision matters
+  // here because we use the extracted recipient fields downstream
+  // for company-identity matching; misreading a digit in VAT or
+  // reg number causes a wrong rejection.
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-opus-4-6",
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],
@@ -1048,8 +1151,13 @@ async function parseInvoiceWithAI(
           },
         };
 
+  // Sesija 2: PDF/image extraction also bumped to Opus 4.6.
+  // Vision-based parsing of crooked scans, photos, low-res images
+  // benefits even more from the stronger model — Sonnet sometimes
+  // misread digits on receipts shot with a phone camera, leading
+  // to wrong VAT/reg matches downstream.
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-opus-4-6",
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],

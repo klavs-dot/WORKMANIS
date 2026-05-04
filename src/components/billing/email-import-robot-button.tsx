@@ -103,21 +103,41 @@ export function EmailImportRobotButton({
           invoicesCreated: number;
           duplicatesSkipped: number;
           errors: number;
+          unmatchedCount: number;
           summary: string;
           debugErrors?: Array<{ messageId: string; reason: string }>;
+          unmatchedDetails?: Array<{
+            messageId: string;
+            supplier: string;
+            recipient: string;
+            reason: string;
+          }>;
         }>;
       };
 
       console.group("[email-import] scan results");
       for (const scan of scans) {
         console.log(
-          `${scan.mailbox}: found=${scan.messagesFound} processed=${scan.messagesProcessed} created=${scan.invoicesCreated} dup=${scan.duplicatesSkipped} errors=${scan.errors}`
+          `${scan.mailbox}: found=${scan.messagesFound} processed=${scan.messagesProcessed} created=${scan.invoicesCreated} dup=${scan.duplicatesSkipped} errors=${scan.errors} unmatched=${scan.unmatchedCount}`
         );
         console.log(`  ${scan.mailbox} summary: ${scan.summary}`);
         if (scan.debugErrors && scan.debugErrors.length > 0) {
           console.log(`  Errors in ${scan.mailbox}:`);
           for (const err of scan.debugErrors) {
             console.log(`    [${err.messageId}] ${err.reason}`);
+          }
+        }
+        if (scan.unmatchedDetails && scan.unmatchedDetails.length > 0) {
+          // Surfaced verbosely so user can audit AI's match decisions.
+          // Each row: who the invoice was addressed to, who the
+          // supplier was, why it was rejected.
+          console.log(
+            `  Citi uzņēmumi (${scan.unmatchedCount}) — citi uzņēmumi šajā Gmail kontā:`
+          );
+          for (const u of scan.unmatchedDetails) {
+            console.log(
+              `    [${u.messageId}] no '${u.supplier}' uz '${u.recipient}' — ${u.reason}`
+            );
           }
         }
       }
@@ -131,6 +151,8 @@ export function EmailImportRobotButton({
       const totalDup =
         (inbox?.duplicatesSkipped ?? 0) + (sent?.duplicatesSkipped ?? 0);
       const totalErrors = (inbox?.errors ?? 0) + (sent?.errors ?? 0);
+      const totalUnmatched =
+        (inbox?.unmatchedCount ?? 0) + (sent?.unmatchedCount ?? 0);
       const totalFound =
         (inbox?.messagesFound ?? 0) + (sent?.messagesFound ?? 0);
 
@@ -149,13 +171,20 @@ export function EmailImportRobotButton({
         parts.push(`Nosūtīti: ${sent.invoicesCreated} jauni`);
       }
       if (totalDup > 0) parts.push(`dublikāti: ${totalDup}`);
+      if (totalUnmatched > 0)
+        parts.push(`citiem uzņēmumiem: ${totalUnmatched}`);
 
       let toastMessage: string;
       if (totalFound === 0) {
         toastMessage =
           "Nav jaunu vēstuļu e-pastā kopš pēdējās skenēšanas.";
-      } else if (totalCreated === 0 && totalDup === 0) {
+      } else if (totalCreated === 0 && totalDup === 0 && totalUnmatched === 0) {
         toastMessage = `Atradu ${totalFound} vēstules, bet AI nevarēja izvilkt rēķinu datus. Pārbaudi Vercel logus.`;
+      } else if (totalCreated === 0 && totalUnmatched > 0) {
+        // Special case: AI parsed invoices but ALL of them were
+        // for other companies. Tells the user the filter is working
+        // and clicked-on Gmail isn't this company's primary.
+        toastMessage = `Atradu ${totalFound} vēstules, bet visi ${totalUnmatched} rēķini bija citiem uzņēmumiem. Atver browser console (F12) detalizētam sarakstam.`;
       } else {
         toastMessage = `Pievienoti ${totalCreated} rēķini no ${totalFound} vēstulēm${parts.length ? ` (${parts.join(", ")})` : ""}.`;
         if (totalErrors > 0) {

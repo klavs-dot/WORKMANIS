@@ -73,6 +73,12 @@ interface MailboxScanSummary {
   invoicesCreated: number;
   duplicatesSkipped: number;
   errors: number;
+  /**
+   * Sesija 2: count of AI-extracted invoices that were rejected
+   * because the recipient/supplier didn't match the active company.
+   * Always 0 if no company identity was loaded (filter disabled).
+   */
+  unmatchedCount: number;
   summary: string;
   /**
    * Per-error breakdown so the client can show the user WHY each
@@ -81,6 +87,17 @@ interface MailboxScanSummary {
    * through Vercel function logs.
    */
   debugErrors?: Array<{ messageId: string; reason: string }>;
+  /**
+   * Per-rejection breakdown for the company-match filter — surfaced
+   * to the browser console so the user can see exactly which
+   * invoices got filtered out and why.
+   */
+  unmatchedDetails?: Array<{
+    messageId: string;
+    supplier: string;
+    recipient: string;
+    reason: string;
+  }>;
 }
 
 export async function POST(request: Request) {
@@ -215,6 +232,53 @@ export async function POST(request: Request) {
     existingOut.map((r) => `${r.client ?? ""}|${r.number ?? ""}`)
   );
 
+  // Sesija 2: read the active company's identity (legal name, reg
+  // number, VAT number) from 01_requisites so the scanner can
+  // filter out invoices addressed to OTHER companies that happen
+  // to share this Gmail inbox.
+  //
+  // Falls back gracefully if the sheet is empty or the read fails
+  // — undefined identity disables the filter and scanner accepts
+  // every invoice (legacy behaviour). User will see "0 unmatched"
+  // in that case rather than scan failure.
+  let companyIdentity:
+    | { legalName: string; regNumber: string; vatNumber: string }
+    | undefined;
+  try {
+    const requisitesRows = (await sheets.list(
+      "01_requisites"
+    )) as Array<Record<string, unknown>>;
+    const reqRow = requisitesRows[0];
+    if (reqRow) {
+      const legalName =
+        ((reqRow.legal_name as string) || (reqRow.name as string) || "").trim();
+      const regNumber = ((reqRow.reg_number as string) || "").trim();
+      const vatNumber = ((reqRow.vat_number as string) || "").trim();
+      // Only enable the filter if at least ONE identifier is set.
+      // Without any identifiers we couldn't reject anything anyway.
+      if (legalName || regNumber || vatNumber) {
+        companyIdentity = { legalName, regNumber, vatNumber };
+        console.log(
+          `[email-import] company identity loaded — name='${legalName}' reg='${regNumber}' vat='${vatNumber}'`
+        );
+      } else {
+        console.warn(
+          `[email-import] 01_requisites row found but all identifiers empty — filter disabled`
+        );
+      }
+    } else {
+      console.warn(
+        `[email-import] 01_requisites is empty — no company identity, filter disabled`
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[email-import] failed to read 01_requisites for identity match:`,
+      err
+    );
+    // Continue without the filter rather than fail the whole scan
+  }
+
   // Run each mailbox scan
   const summaries: MailboxScanSummary[] = [];
 
@@ -276,6 +340,11 @@ export async function POST(request: Request) {
           gmailClient: cc.gmail,
           mailbox,
           sinceInternalDate: sinceTs,
+          // Sesija 2: identity-filter so we only ingest invoices
+          // addressed TO us (INBOX) or issued BY us (SENT). When
+          // identity is undefined (couldn't read requisites), the
+          // filter is disabled and we accept every invoice.
+          companyIdentity,
           // Lower cap (default 6) — fits in one Vercel function
           // call. Users with more mail click again to continue.
         },
@@ -345,6 +414,7 @@ export async function POST(request: Request) {
         invoicesCreated: 0,
         duplicatesSkipped: 0,
         errors: 1,
+        unmatchedCount: 0,
         summary: `Skenēšanas kļūda: ${errorMsg}`,
         debugErrors: [{ messageId: "scan", reason: errorMsg }],
       });
@@ -352,14 +422,22 @@ export async function POST(request: Request) {
     }
 
     // Final audit row with completed status
+    const unmatchedCount = scanResult.unmatched.length;
     const summaryText =
       `Atrasti ${scanResult.messagesFound}, apstrādāti ${scanResult.messagesProcessed}, ` +
-      `izveidoti ${invoicesCreated}, dublikāti ${duplicatesSkipped}, kļūdas ${scanResult.errors.length}`;
+      `izveidoti ${invoicesCreated}, dublikāti ${duplicatesSkipped}, ` +
+      `citiem uzņēmumiem ${unmatchedCount}, kļūdas ${scanResult.errors.length}`;
 
     console.log(
       `[email-import] FINAL mailbox=${mailbox} ${summaryText}. ` +
         `Errors: ${scanResult.errors.map((e) => e.reason).join("; ")}`
     );
+    if (unmatchedCount > 0) {
+      console.log(
+        `[email-import] UNMATCHED in ${mailbox}:`,
+        scanResult.unmatched.map((u) => `${u.recipient} — ${u.reason}`)
+      );
+    }
 
     try {
       await sheets.create("60_email_imports", {
@@ -386,6 +464,7 @@ export async function POST(request: Request) {
       invoicesCreated,
       duplicatesSkipped,
       errors: scanResult.errors.length,
+      unmatchedCount,
       summary: summaryText,
       // Debug: full error breakdown so we can see in client what's
       // happening (UI surfaces this in a console.log + toast detail)
@@ -393,6 +472,7 @@ export async function POST(request: Request) {
         messageId: e.messageId,
         reason: e.reason,
       })),
+      unmatchedDetails: scanResult.unmatched,
     });
   }
 

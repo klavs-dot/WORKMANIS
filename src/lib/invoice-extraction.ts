@@ -43,6 +43,11 @@ export const EXTRACT_TOOL = {
         description:
           "Latvian registration number of the recipient/buyer (Pircēja Reģ. Nr.) — 11 digits. Empty string if not present.",
       },
+      recipient_vat_number: {
+        type: "string",
+        description:
+          "VAT number of the recipient/buyer. Latvian VAT format: 'LV' + 11 digits (e.g. 'LV40103108904'). May appear as 'PVN reģ. Nr.', 'VAT Nr.', 'PVN maksātāja Nr.'. CRITICAL: this is the BUYER's VAT, not the supplier's. Empty string if not present.",
+      },
       invoice_number: {
         type: "string",
         description:
@@ -218,6 +223,7 @@ export interface ParsedInvoice {
   supplier_reg_number: string;
   recipient_name: string;
   recipient_reg_number: string;
+  recipient_vat_number: string;
   invoice_number: string;
   amount_total: number;
   amount_without_vat: number;
