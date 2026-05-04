@@ -48,6 +48,13 @@ export default function UznemumiPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [deleting, setDeleting] = useState<Company | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  /**
+   * Drive disposition for the delete operation:
+   *   'trash' (default)   → move folder + all contents to Drive Trash
+   *   'keep'              → unregister from WORKMANIS only, leave
+   *                         Drive folder intact
+   */
+  const [driveAction, setDriveAction] = useState<"trash" | "keep">("trash");
   const [deleteInProgress, setDeleteInProgress] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -85,10 +92,17 @@ export default function UznemumiPage() {
     }
     setDeleteInProgress(true);
     try {
-      await deleteCompany(deleting.id);
-      showToast(`${deleting.name} dzēsts`);
+      await deleteCompany(deleting.id, {
+        keepDrive: driveAction === "keep",
+      });
+      showToast(
+        driveAction === "keep"
+          ? `${deleting.name} dzēsts no WORKMANIS · Drive saglabāts`
+          : `${deleting.name} dzēsts · Drive miskastē`
+      );
       setDeleting(null);
       setConfirmText("");
+      setDriveAction("trash"); // reset for next time
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Dzēšana neizdevās";
       showToast(msg);
@@ -161,13 +175,15 @@ export default function UznemumiPage() {
 
       {/* Delete confirmation modal — destructive op gated by
           typing the company name exactly. Modal stays open during
-          the API call so the user sees the spinner. */}
+          the API call so the user sees the spinner. Two-mode
+          delete: trash everything, or keep Drive intact. */}
       <Dialog
         open={!!deleting}
         onOpenChange={(o) => {
           if (!o && !deleteInProgress) {
             setDeleting(null);
             setConfirmText("");
+            setDriveAction("trash");
           }
         }}
       >
@@ -175,24 +191,117 @@ export default function UznemumiPage() {
           <DialogHeader>
             <DialogTitle>Dzēst uzņēmumu?</DialogTitle>
             <DialogDescription>
-              Šī darbība ir <strong>neatgriezeniska</strong>. Visi rēķini,
-              maksājumi, klienti un dokumenti tiks pārvietoti uz Google
-              Drive miskasti. Drive miskaste tiek automātiski iztīrīta
-              pēc 30 dienām.
+              Izvēlies, ko darīt ar Drive datiem. Reģistra ieraksts no
+              WORKMANIS tiks dzēsts abos gadījumos.
             </DialogDescription>
           </DialogHeader>
 
           {deleting && (
             <div className="space-y-4 pt-2">
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] text-red-900">
-                <p className="font-medium mb-1">Tiks dzēsts:</p>
-                <ul className="space-y-0.5 list-disc list-inside text-red-800">
-                  <li>{deleting.name} ({deleting.legalName ?? "—"})</li>
-                  <li>Visi rēķini un maksājumi šajā struktūrvienībā</li>
-                  <li>Drive mape ar visiem PDF un dokumentiem</li>
-                  <li>Logo un rekvizīti</li>
-                </ul>
+              {/* Drive disposition choice */}
+              <div className="space-y-2">
+                <label className="text-[11.5px] font-medium text-graphite-700 block">
+                  Drive datu apstrāde
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setDriveAction("trash")}
+                  disabled={deleteInProgress}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-50",
+                    driveAction === "trash"
+                      ? "border-red-300 bg-red-50"
+                      : "border-graphite-200 bg-white hover:border-graphite-300"
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      className={cn(
+                        "mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                        driveAction === "trash"
+                          ? "border-red-500 bg-red-500"
+                          : "border-graphite-300 bg-white"
+                      )}
+                    >
+                      {driveAction === "trash" && (
+                        <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12.5px] font-medium text-graphite-900">
+                        Dzēst arī Drive datus
+                      </p>
+                      <p className="text-[11.5px] text-graphite-500 mt-0.5 leading-snug">
+                        Mape ar visu saturu pārvietota uz Drive miskasti.
+                        Pieejama atjaunošanai 30 dienas no drive.google.com.
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDriveAction("keep")}
+                  disabled={deleteInProgress}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-50",
+                    driveAction === "keep"
+                      ? "border-emerald-300 bg-emerald-50"
+                      : "border-graphite-200 bg-white hover:border-graphite-300"
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      className={cn(
+                        "mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                        driveAction === "keep"
+                          ? "border-emerald-500 bg-emerald-500"
+                          : "border-graphite-300 bg-white"
+                      )}
+                    >
+                      {driveAction === "keep" && (
+                        <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12.5px] font-medium text-graphite-900">
+                        Saglabāt Drive datus
+                      </p>
+                      <p className="text-[11.5px] text-graphite-500 mt-0.5 leading-snug">
+                        Tikai noņem no WORKMANIS reģistra. Mape, rēķini
+                        un dokumenti paliek tava Drive neskarti.
+                      </p>
+                    </div>
+                  </div>
+                </button>
               </div>
+
+              {/* Affected items summary — content depends on choice */}
+              {driveAction === "trash" ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] text-red-900">
+                  <p className="font-medium mb-1">Tiks dzēsts:</p>
+                  <ul className="space-y-0.5 list-disc list-inside text-red-800">
+                    <li>{deleting.name} ({deleting.legalName ?? "—"})</li>
+                    <li>Visi rēķini un maksājumi šajā struktūrvienībā</li>
+                    <li>Drive mape ar visiem PDF un dokumentiem</li>
+                    <li>Logo un rekvizīti</li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] text-emerald-900">
+                  <p className="font-medium mb-1">Tiks saglabāts:</p>
+                  <ul className="space-y-0.5 list-disc list-inside text-emerald-800">
+                    <li>Drive mape un visi PDF dokumenti</li>
+                    <li>Bankas izraksti un logo</li>
+                    <li>Rēķinu kopijas (atrodamas tava Drive)</li>
+                  </ul>
+                  <p className="mt-1.5 text-[11.5px] text-emerald-700">
+                    Reģistra ieraksts no WORKMANIS tiks dzēsts —
+                    uzņēmums vairs neparādīsies sarakstā.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="text-[11.5px] font-medium text-graphite-700 block mb-1.5">
@@ -219,6 +328,7 @@ export default function UznemumiPage() {
                   onClick={() => {
                     setDeleting(null);
                     setConfirmText("");
+                    setDriveAction("trash");
                   }}
                   disabled={deleteInProgress}
                 >
@@ -241,7 +351,9 @@ export default function UznemumiPage() {
                   ) : (
                     <>
                       <Trash2 className="h-3.5 w-3.5" />
-                      Dzēst neatgriezeniski
+                      {driveAction === "keep"
+                        ? "Dzēst no WORKMANIS"
+                        : "Dzēst neatgriezeniski"}
                     </>
                   )}
                 </Button>

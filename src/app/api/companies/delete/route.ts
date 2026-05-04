@@ -1,24 +1,45 @@
 /**
- * DELETE /api/companies/delete?company_id=X
+ * DELETE /api/companies/delete?company_id=X&keep_drive=true|false
  *
  * Permanently removes a company from WORKMANIS:
  *
- *   1. Move the company's Drive folder (and ALL its contents —
+ *   1. (Conditional) If keep_drive=false (default):
+ *      Move the company's Drive folder (and ALL its contents —
  *      invoices, statements, logos, the company.gsheet itself)
  *      to Drive Trash. The user can manually restore it from
  *      drive.google.com if they change their mind, until they
  *      empty the trash. After 30 days Google auto-purges.
  *
+ *      If keep_drive=true:
+ *      Drive folder is NOT touched. All files stay where they
+ *      are. This lets users "unregister" a company from
+ *      WORKMANIS without losing the underlying data — useful
+ *      for archiving, switching to a different tool while
+ *      keeping the documents accessible, or testing.
+ *
  *   2. Delete the row from account-master.gsheet/01_companies.
  *      We do a HARD delete here (not soft) because the company
- *      is gone — there's no scenario where a soft-deleted entry
- *      would still be useful, and leaving it would mean the
- *      sidebar / dropdown would have to filter on deleted_at.
+ *      is gone from WORKMANIS — there's no scenario where a
+ *      soft-deleted entry would still be useful, and leaving it
+ *      would mean the sidebar / dropdown would have to filter
+ *      on deleted_at.
  *
  *   3. Invalidate the resolveCompany cache for this user so the
  *      next request doesn't return stale data.
  *
- * Why move-to-trash instead of permanent delete:
+ * Why "unregister but keep Drive" is useful:
+ *   - User wants a clean WORKMANIS but isn't ready to delete
+ *     years of historical invoice PDFs
+ *   - User is migrating to a new accountant tool that will
+ *     read those same Drive files
+ *   - User accidentally created a duplicate company entry in
+ *     WORKMANIS and wants to remove the duplicate without
+ *     touching the underlying data
+ *   - User wants to "park" a company they're not using right
+ *     now (e.g. seasonal business) — re-add later by creating
+ *     a new entry; the existing folder/sheet will be reused.
+ *
+ * Why move-to-trash vs permanent delete (when keep_drive=false):
  *   - Google Drive's trash is a built-in 30-day safety net.
  *     Permanent delete (drive.files.delete) is unrecoverable.
  *     Trash is recoverable by the user from drive.google.com.
@@ -26,28 +47,18 @@
  *     Google handles auto-purge. This means a panicked user can
  *     restore mid-30-days by themselves without contacting us.
  *
- * Why hard-delete the master row:
- *   - The company SHEET itself contains all per-company data
- *     (invoices, payments, etc.). Deleting just the master row
- *     would orphan that sheet (still in Drive trash). The master
- *     row is just a registry pointer.
- *   - Even if the user restores the Drive folder later, they'd
- *     need to re-register the company anyway because the master
- *     row pointed at it is gone. That's fine — they create a
- *     new entry with the same name and reconnect.
+ * Why hard-delete the master row (regardless of keep_drive):
+ *   - The master row is just a registry pointer. Removing it is
+ *     what "removes from WORKMANIS" actually means.
+ *   - Even if Drive folder still exists, the master row pointed
+ *     at it is gone. Re-adding the company creates a new master
+ *     row that points to the same (or a fresh) folder.
  *
  * Auth: only the user who owns the company can delete it.
  * resolveCompany() guarantees this — it walks
  * /WORKMANIS/accounts/{userEmail}/_account/account-master,
  * so a different user's session can't see a different account's
  * company.
- *
- * What this DOES NOT do (intentionally):
- *   - Delete invoices from accounting software (we don't talk to
- *     external systems)
- *   - Delete data from connected bank exports (those are owned
- *     by the user's bank, not us)
- *   - Notify the active accountant (no notification system yet)
  *
  * Errors:
  *   401 — not authenticated
@@ -94,6 +105,13 @@ export async function DELETE(request: Request) {
       );
     }
 
+    // Default: trash the Drive folder. Pass ?keep_drive=true to
+    // unregister from WORKMANIS but leave Drive contents intact.
+    // Strict comparison — anything other than 'true' (lowercase)
+    // is treated as false to avoid accidental data preservation
+    // when the user really meant to delete everything.
+    const keepDrive = url.searchParams.get("keep_drive") === "true";
+
     const company = await resolveCompany(
       session.accessToken,
       session.user.email,
@@ -111,41 +129,44 @@ export async function DELETE(request: Request) {
     const drive = google.drive({ version: "v3", auth: oauth2 });
     const sheets = google.sheets({ version: "v4", auth: oauth2 });
 
-    // ───── Step 1: trash the Drive folder ─────
-    // This recursively moves the folder + all contents to trash.
-    // Drive's behavior: trashing a folder marks all descendant
-    // files as effectively trashed too (they can't be opened or
-    // listed normally), but their individual trashed flags don't
-    // change — only the parent folder. After 30 days Drive
-    // auto-purges the whole subtree.
-    try {
-      await withRetry(
-        () =>
-          drive.files.update({
-            fileId: company.folderId,
-            requestBody: { trashed: true },
-            // supportsAllDrives so this works for both My Drive
-            // and Shared Drive locations (we currently use My
-            // Drive but defensive for future)
-            supportsAllDrives: true,
-          }),
-        `trash folder(${company.folderId})`
-      );
-    } catch (err) {
-      // If the folder is already trashed or doesn't exist, that's
-      // fine — proceed to clean up the master row.
-      const msg = err instanceof Error ? err.message : "";
-      const code =
-        err && typeof err === "object" && "code" in err
-          ? (err as { code: number | string }).code
-          : null;
-      if (code === 404 || /not found/i.test(msg)) {
-        console.warn(
-          `Folder ${company.folderId} already gone, continuing with master cleanup`
+    // ───── Step 1 (conditional): trash the Drive folder ─────
+    // Skipped entirely when keep_drive=true. The folder + all
+    // its contents stay exactly where they are; only the
+    // WORKMANIS registry pointer is removed.
+    if (!keepDrive) {
+      try {
+        await withRetry(
+          () =>
+            drive.files.update({
+              fileId: company.folderId,
+              requestBody: { trashed: true },
+              // supportsAllDrives so this works for both My Drive
+              // and Shared Drive locations (we currently use My
+              // Drive but defensive for future)
+              supportsAllDrives: true,
+            }),
+          `trash folder(${company.folderId})`
         );
-      } else {
-        throw err;
+      } catch (err) {
+        // If the folder is already trashed or doesn't exist, that's
+        // fine — proceed to clean up the master row.
+        const msg = err instanceof Error ? err.message : "";
+        const code =
+          err && typeof err === "object" && "code" in err
+            ? (err as { code: number | string }).code
+            : null;
+        if (code === 404 || /not found/i.test(msg)) {
+          console.warn(
+            `Folder ${company.folderId} already gone, continuing with master cleanup`
+          );
+        } else {
+          throw err;
+        }
       }
+    } else {
+      console.log(
+        `[delete-company] keep_drive=true; preserving Drive folder ${company.folderId} for ${company.name}`
+      );
     }
 
     // ───── Step 2: find the account-master sheet ─────
@@ -158,11 +179,13 @@ export async function DELETE(request: Request) {
     );
     if (!accountMasterId) {
       // Master sheet missing — nothing to delete. Folder is
-      // already trashed, so the cleanup is effectively done from
-      // the user's perspective.
+      // already trashed (if keep_drive=false), so the cleanup
+      // is effectively done from the user's perspective.
       return NextResponse.json({
         ok: true,
-        message: `${company.name} dzēsts (account-master nav atrasts, bet Drive mape pārvietota uz miskasti)`,
+        message: keepDrive
+          ? `${company.name} dzēsts no WORKMANIS. Drive mape saglabāta.`
+          : `${company.name} dzēsts (account-master nav atrasts, bet Drive mape pārvietota uz miskasti)`,
       });
     }
 
@@ -179,7 +202,9 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: `${company.name} dzēsts no WORKMANIS un Drive miskastes`,
+      message: keepDrive
+        ? `${company.name} dzēsts no WORKMANIS. Drive mape saglabāta — pieejama tava Drive.`
+        : `${company.name} dzēsts no WORKMANIS un Drive mape pārvietota uz miskasti.`,
     });
   } catch (err) {
     console.error("Delete company failed:", err);

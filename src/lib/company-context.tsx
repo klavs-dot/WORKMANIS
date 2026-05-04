@@ -65,16 +65,28 @@ interface CompanyContextValue {
   /** Replace/add a company in local state (called after successful API create) */
   upsertCompany: (company: Company) => void;
   /**
-   * Permanently delete a company from WORKMANIS:
-   *   - Drive folder + all contents (sheet, invoices, statements,
-   *     logos) move to Drive Trash (recoverable for 30 days from
-   *     drive.google.com)
+   * Permanently delete a company from WORKMANIS.
+   *
+   * Options:
+   *   keepDrive (default false):
+   *     true  → unregister from WORKMANIS but leave Drive folder
+   *             intact. Useful for archiving / migrating to
+   *             another tool while preserving documents.
+   *     false → also move Drive folder + all contents to Drive
+   *             Trash. Recoverable for 30 days from
+   *             drive.google.com.
+   *
+   * Either way:
    *   - Row in account-master.gsheet/01_companies is removed
    *   - Company removed from local state immediately (optimistic),
    *     restored if the API call fails
+   *
    * Throws on error so caller can show a toast.
    */
-  deleteCompany: (id: string) => Promise<void>;
+  deleteCompany: (
+    id: string,
+    options?: { keepDrive?: boolean }
+  ) => Promise<void>;
   /** Force re-fetch from Sheets */
   refresh: () => Promise<void>;
   hydrated: boolean;
@@ -339,10 +351,16 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
    * the API, restore on failure. The Drive trash + master row
    * removal happen server-side; here we just sync local UI.
    *
+   * keepDrive=true skips the Drive trash step server-side. The
+   * registry row is still removed either way.
+   *
    * If the deleted company was active, we clear activeId so the
    * UI doesn't try to load data for a now-gone sheet.
    */
-  const deleteCompany = async (id: string): Promise<void> => {
+  const deleteCompany = async (
+    id: string,
+    options?: { keepDrive?: boolean }
+  ): Promise<void> => {
     let removed: Company | undefined;
     let wasActive = false;
 
@@ -359,8 +377,11 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      const params = new URLSearchParams({ company_id: id });
+      if (options?.keepDrive) params.set("keep_drive", "true");
+
       const res = await fetch(
-        `/api/companies/delete?company_id=${encodeURIComponent(id)}`,
+        `/api/companies/delete?${params.toString()}`,
         { method: "DELETE" }
       );
       if (!res.ok) {
