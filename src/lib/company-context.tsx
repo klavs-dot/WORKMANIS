@@ -64,6 +64,17 @@ interface CompanyContextValue {
   loadRequisites: (id: string) => Promise<Partial<Company>>;
   /** Replace/add a company in local state (called after successful API create) */
   upsertCompany: (company: Company) => void;
+  /**
+   * Permanently delete a company from WORKMANIS:
+   *   - Drive folder + all contents (sheet, invoices, statements,
+   *     logos) move to Drive Trash (recoverable for 30 days from
+   *     drive.google.com)
+   *   - Row in account-master.gsheet/01_companies is removed
+   *   - Company removed from local state immediately (optimistic),
+   *     restored if the API call fails
+   * Throws on error so caller can show a toast.
+   */
+  deleteCompany: (id: string) => Promise<void>;
   /** Force re-fetch from Sheets */
   refresh: () => Promise<void>;
   hydrated: boolean;
@@ -323,6 +334,60 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  /**
+   * Optimistic delete: remove from local state immediately, call
+   * the API, restore on failure. The Drive trash + master row
+   * removal happen server-side; here we just sync local UI.
+   *
+   * If the deleted company was active, we clear activeId so the
+   * UI doesn't try to load data for a now-gone sheet.
+   */
+  const deleteCompany = async (id: string): Promise<void> => {
+    let removed: Company | undefined;
+    let wasActive = false;
+
+    setCompanies((prev) => {
+      removed = prev.find((c) => c.id === id);
+      const next = prev.filter((c) => c.id !== id);
+      writeCache(next);
+      return next;
+    });
+
+    if (activeId === id) {
+      wasActive = true;
+      clearActiveCompany();
+    }
+
+    try {
+      const res = await fetch(
+        `/api/companies/delete?company_id=${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const errBody = await res
+          .json()
+          .catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(
+          typeof errBody?.error === "string"
+            ? errBody.error
+            : `Dzēšana neizdevās (${res.status})`
+        );
+      }
+    } catch (err) {
+      // Roll back local state — the company still exists server-side
+      if (removed) {
+        const restored = removed;
+        setCompanies((prev) => {
+          const next = [...prev, restored];
+          writeCache(next);
+          return next;
+        });
+        if (wasActive) setActiveCompany(restored.id);
+      }
+      throw err;
+    }
+  };
+
   const activeCompany =
     activeId && companies.find((c) => c.id === activeId)
       ? companies.find((c) => c.id === activeId) ?? null
@@ -339,6 +404,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         saveRequisites,
         loadRequisites,
         upsertCompany,
+        deleteCompany,
         refresh,
         hydrated,
         loading,

@@ -8,6 +8,8 @@ import {
   Copy,
   Pencil,
   AlertCircle,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
@@ -18,6 +20,13 @@ import {
   AddCompanyModal,
   type CreatedCompany,
 } from "@/components/business/add-company-modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useCompany } from "@/lib/company-context";
 import {
   formatRequisites,
@@ -33,9 +42,13 @@ export default function UznemumiPage() {
     activeCompany,
     setActiveCompany,
     upsertCompany,
+    deleteCompany,
   } = useCompany();
   const [editing, setEditing] = useState<Company | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [deleting, setDeleting] = useState<Company | null>(null);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -56,6 +69,32 @@ export default function UznemumiPage() {
   const handleSelectActive = (company: Company) => {
     setActiveCompany(company.id);
     showToast(`Aktīvais: ${company.name}`);
+  };
+
+  /**
+   * Confirm delete: user must type the company's exact name.
+   * This is a destructive operation (Drive folder + master row
+   * gone) so we ask for explicit confirmation rather than a
+   * single-click. Native confirm() is too easy to mis-click.
+   */
+  const handleConfirmDelete = async () => {
+    if (!deleting) return;
+    if (confirmText.trim() !== deleting.name) {
+      showToast("Nosaukums neatbilst — pārbaudi pareizrakstību");
+      return;
+    }
+    setDeleteInProgress(true);
+    try {
+      await deleteCompany(deleting.id);
+      showToast(`${deleting.name} dzēsts`);
+      setDeleting(null);
+      setConfirmText("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Dzēšana neizdevās";
+      showToast(msg);
+    } finally {
+      setDeleteInProgress(false);
+    }
   };
 
   return (
@@ -82,6 +121,10 @@ export default function UznemumiPage() {
               onEdit={() => setEditing(c)}
               onCopy={(f) => handleCopy(c, f)}
               onSelectActive={() => handleSelectActive(c)}
+              onDelete={() => {
+                setDeleting(c);
+                setConfirmText("");
+              }}
             />
           ))}
         </div>
@@ -116,6 +159,98 @@ export default function UznemumiPage() {
         }}
       />
 
+      {/* Delete confirmation modal — destructive op gated by
+          typing the company name exactly. Modal stays open during
+          the API call so the user sees the spinner. */}
+      <Dialog
+        open={!!deleting}
+        onOpenChange={(o) => {
+          if (!o && !deleteInProgress) {
+            setDeleting(null);
+            setConfirmText("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Dzēst uzņēmumu?</DialogTitle>
+            <DialogDescription>
+              Šī darbība ir <strong>neatgriezeniska</strong>. Visi rēķini,
+              maksājumi, klienti un dokumenti tiks pārvietoti uz Google
+              Drive miskasti. Drive miskaste tiek automātiski iztīrīta
+              pēc 30 dienām.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleting && (
+            <div className="space-y-4 pt-2">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] text-red-900">
+                <p className="font-medium mb-1">Tiks dzēsts:</p>
+                <ul className="space-y-0.5 list-disc list-inside text-red-800">
+                  <li>{deleting.name} ({deleting.legalName ?? "—"})</li>
+                  <li>Visi rēķini un maksājumi šajā struktūrvienībā</li>
+                  <li>Drive mape ar visiem PDF un dokumentiem</li>
+                  <li>Logo un rekvizīti</li>
+                </ul>
+              </div>
+
+              <div>
+                <label className="text-[11.5px] font-medium text-graphite-700 block mb-1.5">
+                  Lai apstiprinātu, ieraksti uzņēmuma nosaukumu:{" "}
+                  <span className="font-mono text-graphite-900">
+                    {deleting.name}
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  disabled={deleteInProgress}
+                  autoFocus
+                  className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent disabled:bg-graphite-50 disabled:text-graphite-400"
+                  placeholder={deleting.name}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDeleting(null);
+                    setConfirmText("");
+                  }}
+                  disabled={deleteInProgress}
+                >
+                  Atcelt
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleConfirmDelete}
+                  disabled={
+                    deleteInProgress ||
+                    confirmText.trim() !== deleting.name
+                  }
+                >
+                  {deleteInProgress ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Dzēš…
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Dzēst neatgriezeniski
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -145,6 +280,7 @@ function CompanyRow({
   onEdit,
   onCopy,
   onSelectActive,
+  onDelete,
 }: {
   company: Company;
   isActive: boolean;
@@ -152,6 +288,7 @@ function CompanyRow({
   onEdit: () => void;
   onCopy: (f: CopyFormat) => void;
   onSelectActive: () => void;
+  onDelete: () => void;
 }) {
   const filled = hasRequisites(company);
   const initials = company.name
@@ -292,6 +429,15 @@ function CompanyRow({
                 Pievienot rekvizītus
               </>
             )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onDelete}
+            title={`Dzēst ${company.name}`}
+            className="text-graphite-400 hover:text-red-600 hover:bg-red-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </Card>
