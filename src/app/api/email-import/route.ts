@@ -295,6 +295,8 @@ export async function POST(request: Request) {
         }
       );
     } catch (err) {
+      const errorMsg =
+        err instanceof Error ? err.message : "Skenēšanas kļūda";
       console.error(`Email scan ${mailbox} failed:`, err);
       // Even on failure, write a final checkpoint so the cursor
       // we DID advance through is preserved
@@ -313,10 +315,8 @@ export async function POST(request: Request) {
         invoicesCreated: 0,
         duplicatesSkipped: 0,
         errors: 1,
-        summary:
-          err instanceof Error
-            ? `Skenēšanas kļūda: ${err.message}`
-            : "Skenēšanas kļūda",
+        summary: `Skenēšanas kļūda: ${errorMsg}`,
+        debugErrors: [{ messageId: "scan", reason: errorMsg }],
       });
       continue;
     }

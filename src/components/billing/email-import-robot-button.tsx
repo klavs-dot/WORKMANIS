@@ -125,6 +125,11 @@ export function EmailImportRobotButton({
         console.log(
           `${scan.mailbox}: found=${scan.messagesFound} processed=${scan.messagesProcessed} created=${scan.invoicesCreated} dup=${scan.duplicatesSkipped} errors=${scan.errors}`
         );
+        // Always log the summary — it contains the actual error
+        // message when the scan crashed before processing any
+        // emails (e.g. OAuth scope missing, Gmail API not
+        // enabled, rate limit hit on the very first call).
+        console.log(`  ${scan.mailbox} summary: ${scan.summary}`);
         if (scan.debugErrors && scan.debugErrors.length > 0) {
           console.log(`  Errors in ${scan.mailbox}:`);
           for (const err of scan.debugErrors) {
