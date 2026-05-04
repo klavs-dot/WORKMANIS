@@ -99,6 +99,21 @@ export function createDriveClient(config: DriveClientConfig) {
   return new DriveClient(drive, config);
 }
 
+/**
+ * Factory variant that takes a pre-built drive client (from
+ * getCompanyClients) instead of an access token. Used by
+ * endpoints that have migrated to per-company OAuth.
+ */
+export function createDriveClientFromInstance(args: {
+  drive: ReturnType<typeof google.drive>;
+  companyFolderId: string;
+}) {
+  return new DriveClient(args.drive, {
+    accessToken: "<provided-via-instance>",
+    companyFolderId: args.companyFolderId,
+  });
+}
+
 // ============================================================
 // Client implementation
 // ============================================================

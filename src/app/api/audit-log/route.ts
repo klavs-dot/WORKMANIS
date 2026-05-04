@@ -27,8 +27,13 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
-import { createSheetsClient } from "@/lib/sheets-client";
+import {
+  createSheetsClientFromInstance,
+} from "@/lib/sheets-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 
 export const maxDuration = 30;
 
@@ -46,7 +51,7 @@ interface AuditRow extends Record<string, unknown> {
 
 export async function GET(request: Request) {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
@@ -65,33 +70,19 @@ export async function GET(request: Request) {
     200
   );
 
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
   try {
-    const client = createSheetsClient({
-      accessToken: session.accessToken,
-      spreadsheetId: company.sheetId,
+    const cc = await getCompanyClients(companyId);
+    const client = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
       actor: session.user.email,
     });
 
-    // Audit log uses includeDeleted=true because deleted_at isn't
-    // meaningful on audit entries — they're append-only. But the
-    // default list() filter excludes rows with deleted_at set, and
-    // nothing ever sets deleted_at on audit rows, so plain list()
-    // works too. Using includeDeleted for clarity.
     const all = await client.list<AuditRow>("99_audit_log", {
       includeDeleted: true,
     });
 
-    // Sort DESC by timestamp. Fall back to created_at if timestamp
-    // is empty (shouldn't happen but be defensive).
+    // Sort DESC by timestamp.
     const sorted = all.slice().sort((a, b) => {
       const ta = (a.timestamp as string) || (a.created_at as string) || "";
       const tb = (b.timestamp as string) || (b.created_at as string) || "";
@@ -115,6 +106,16 @@ export async function GET(request: Request) {
       entries: recent,
     });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        {
+          error:
+            "Šim uzņēmumam nav pievienots Gmail konts.",
+          oauth_disconnected: true,
+        },
+        { status: 412 }
+      );
+    }
     console.error("Audit log fetch failed:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Unknown error" },

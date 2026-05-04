@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -18,8 +19,6 @@ import { Card } from "@/components/ui/card";
 import { RequisitesModal } from "@/components/business/requisites-modal";
 import {
   AddCompanyModal,
-  type CreatedCompany,
-  type ExtraRequisites,
 } from "@/components/business/add-company-modal";
 import {
   Dialog,
@@ -37,13 +36,36 @@ import { buildDriveFileUrl } from "@/lib/drive-files";
 import { cn } from "@/lib/utils";
 import type { Company, CopyFormat } from "@/lib/types";
 
+/**
+ * Top-level export wraps the real page in Suspense so
+ * useSearchParams() doesn't break static prerender.
+ *
+ * Next.js requires that any client component using
+ * useSearchParams be inside a Suspense boundary at the page
+ * level, otherwise the whole route bails out of static
+ * rendering with a build-time error.
+ *
+ * Our pattern: the inner component does all the work; the
+ * outer just provides the Suspense wrapper. Loading fallback
+ * is invisible because companies + active state load fast.
+ */
 export default function UznemumiPage() {
+  return (
+    <Suspense fallback={null}>
+      <UznemumiPageInner />
+    </Suspense>
+  );
+}
+
+function UznemumiPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     companies,
     activeCompany,
     setActiveCompany,
-    upsertCompany,
     deleteCompany,
+    refresh,
   } = useCompany();
   const [editing, setEditing] = useState<Company | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -65,6 +87,57 @@ export default function UznemumiPage() {
     setToast(msg);
     setTimeout(() => setToast(null), 1800);
   };
+
+  /**
+   * Pick up OAuth callback results from query params.
+   *
+   * After the user completes the per-company OAuth flow, the
+   * server-side callback redirects to /uznemumi with one of:
+   *
+   *   ?created=COMPANY_ID&gmail=ADDRESS  → success
+   *   ?oauth_error=MESSAGE               → user cancelled or
+   *                                         server-side error
+   *
+   * We need to:
+   *   - Show a toast (success or error)
+   *   - Refresh the companies list (the new company isn't in
+   *     local state yet — provisioning happened server-side
+   *     during the OAuth round-trip)
+   *   - Set the new company as active
+   *   - Strip the params from the URL so a refresh doesn't
+   *     re-trigger the toast
+   *
+   * Using router.replace (not router.push) prevents adding the
+   * cleaned URL to history — back button stays useful.
+   */
+  useEffect(() => {
+    const created = searchParams.get("created");
+    const gmail = searchParams.get("gmail");
+    const oauthError = searchParams.get("oauth_error");
+
+    if (oauthError) {
+      // Decode in case the server URL-encoded special chars
+      const message = decodeURIComponent(oauthError);
+      showToast(`OAuth kļūda: ${message}`);
+      router.replace("/uznemumi");
+      return;
+    }
+
+    if (created) {
+      const gmailNote = gmail ? ` · ${decodeURIComponent(gmail)}` : "";
+      showToast(`Uzņēmums izveidots${gmailNote}`);
+      // Refresh companies list to pick up the new one — the
+      // OAuth callback provisioned it server-side, so it's in
+      // the registry but not in local state yet.
+      void refresh().then(() => {
+        setActiveCompany(created);
+      });
+      router.replace("/uznemumi");
+    }
+    // Intentionally only run on mount + when searchParams change.
+    // refresh / setActiveCompany are stable from useCompany().
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleCopy = async (company: Company, format: CopyFormat) => {
     const text = formatRequisites(company, format);
@@ -154,40 +227,17 @@ export default function UznemumiPage() {
         company={editing}
       />
 
-      {/* Add new company modal */}
+      {/* Add new company modal — submission redirects to Google
+          OAuth via window.location.href, so onCreated is never
+          called in the new flow. The useEffect above handles the
+          post-OAuth callback when Google redirects back to
+          /uznemumi?created=ID. We keep the prop for type
+          compatibility but it's effectively dead code. */}
       <AddCompanyModal
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreated={(created: CreatedCompany, extras: ExtraRequisites) => {
-          // Add to local state immediately so sidebar + list update.
-          // Merge in the extras (color, dual addresses, dual emails,
-          // bank, phone, website) which the create endpoint doesn't
-          // know about — those went through the requisites PUT
-          // separately. Without merging here, the user would have
-          // to refresh the page to see them.
-          upsertCompany({
-            id: created.id,
-            name: created.name,
-            legalName: created.legalName,
-            regNumber: created.regNumber,
-            vatNumber: created.vatNumber ?? undefined,
-            folderDriveId: created.folderId,
-            sheetId: created.sheetId,
-            slug: created.slug,
-            brandColor: extras.brandColor,
-            legalAddress: extras.legalAddress,
-            deliveryAddress: extras.deliveryAddress,
-            contactEmail: extras.contactEmail,
-            invoiceEmail: extras.invoiceEmail,
-            iban: extras.iban,
-            bankName: extras.bankName,
-            swift: extras.swift,
-            phone: extras.phone,
-            website: extras.website,
-          });
-          // Auto-activate the newly created company
-          setActiveCompany(created.id);
-          showToast(`Izveidots: ${created.name}`);
+        onCreated={() => {
+          // No-op: handled by useEffect on ?created= param
         }}
       />
 

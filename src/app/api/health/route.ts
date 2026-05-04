@@ -23,10 +23,12 @@
  */
 
 import { NextResponse } from "next/server";
-import { google } from "googleapis";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
-import { createSheetsClient } from "@/lib/sheets-client";
+import { createSheetsClientFromInstance } from "@/lib/sheets-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 import { COMPANY_TABS } from "@/lib/sheets-schema";
 
 // 60s — health check reads ~25 tabs in parallel, but if any tab
@@ -45,14 +47,10 @@ interface TabReport {
 export async function GET(request: Request) {
   // Wrap EVERYTHING in try/catch so the user always gets a
   // proper JSON error response instead of a Vercel-generated
-  // empty 500 page. Previously auth() and resolveCompany() ran
-  // outside the catch — when those threw (e.g. on Drive API
-  // rate limit during resolveCompany's 5 lookups), the user saw
-  // 'Serveris atbildēja tukšu (HTTP 500)' which gave them no
-  // diagnostic info.
+  // empty 500 page.
   try {
     const session = await auth();
-    if (!session?.user?.email || !session.accessToken) {
+    if (!session?.user?.email) {
       return NextResponse.json(
         { error: "Not authenticated" },
         { status: 401 }
@@ -68,21 +66,31 @@ export async function GET(request: Request) {
       );
     }
 
-    const company = await resolveCompany(
-      session.accessToken,
-      session.user.email,
-      companyId
-    );
-    if (!company) {
-      return NextResponse.json(
-        { error: "Company not found" },
-        { status: 404 }
-      );
+    // Per-company OAuth: use the company's own Gmail tokens, not
+    // the login session's tokens. This is what makes the multi-
+    // Gmail architecture actually work — the company sheet lives
+    // in the connected Gmail's Drive, so we need that account's
+    // access token to read it.
+    let cc;
+    try {
+      cc = await getCompanyClients(companyId);
+    } catch (err) {
+      if (err instanceof NoCompanyOAuthError) {
+        return NextResponse.json(
+          {
+            error:
+              "Šim uzņēmumam nav pievienots Gmail konts. Atveriet uzņēmumu un pievienojiet Gmail.",
+            oauth_disconnected: true,
+          },
+          { status: 412 }
+        );
+      }
+      throw err;
     }
 
-    const client = createSheetsClient({
-      accessToken: session.accessToken,
-      spreadsheetId: company.sheetId,
+    const client = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
       actor: session.user.email,
     });
 
@@ -130,14 +138,13 @@ export async function GET(request: Request) {
     const totalRows = reports.reduce((sum, r) => sum + (r.rowCount ?? 0), 0);
     const totalErrors = reports.filter((r) => r.error).length;
 
-    // Check spreadsheet metadata (title, modified time)
+    // Check spreadsheet metadata (title, modified time) using
+    // the company's own Sheets client — same auth as everything
+    // above, no separate OAuth setup needed.
     let sheetTitle: string | undefined;
     try {
-      const oauth2 = new google.auth.OAuth2();
-      oauth2.setCredentials({ access_token: session.accessToken });
-      const sheets = google.sheets({ version: "v4", auth: oauth2 });
-      const meta = await sheets.spreadsheets.get({
-        spreadsheetId: company.sheetId,
+      const meta = await cc.sheets.spreadsheets.get({
+        spreadsheetId: cc.company.sheetId,
         fields: "properties.title",
       });
       sheetTitle = meta.data.properties?.title ?? undefined;
@@ -148,10 +155,11 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       company: {
-        id: company.companyId,
-        name: company.name,
-        sheetId: company.sheetId,
+        id: cc.company.companyId,
+        name: cc.company.name,
+        sheetId: cc.company.sheetId,
         sheetTitle,
+        gmailAddress: cc.gmailAddress,
       },
       summary: {
         tabsChecked: reports.length,

@@ -14,11 +14,26 @@
  *
  * Why these scopes:
  *   - openid + email + profile  → standard sign-in identity
- *   - drive.file                → access ONLY files WORKMANIS creates
- *                                 or the user explicitly opens via Picker.
- *                                 Critically narrower than full 'drive'
- *                                 — we cannot see the user's other docs.
- *   - spreadsheets              → read/write Sheets we own
+ *   - drive.file                → required for resolveCompany() to find
+ *                                 account-master.gsheet in the user's Drive.
+ *                                 'drive.file' only sees files OUR app
+ *                                 created, never the user's other docs.
+ *   - spreadsheets              → read account-master/01_companies registry
+ *                                 and 04_company_oauth tokens
+ *
+ * What is INTENTIONALLY NOT here anymore (moved to per-company
+ * OAuth at /api/companies/oauth/*):
+ *   - gmail.readonly — per-company. Different companies can use
+ *     different Gmail accounts; one shared session-level Gmail
+ *     scope wouldn't let us route invoices correctly.
+ *
+ * The remaining Drive/Sheets scopes are needed because of a
+ * bootstrap problem: resolveCompany() must walk the user's
+ * Drive to find account-master.gsheet BEFORE we know any
+ * company exists, so it can't use per-company OAuth tokens
+ * (those live IN that sheet). Once a company exists,
+ * getCompanyClients(id) takes over and uses the company's
+ * own Drive/Sheets/Gmail tokens for everything else.
  */
 
 import NextAuth, { type DefaultSession } from "next-auth";
@@ -30,11 +45,6 @@ const GOOGLE_SCOPES = [
   "profile",
   "https://www.googleapis.com/auth/drive.file",
   "https://www.googleapis.com/auth/spreadsheets",
-  // Gmail read access for the 'Automātiskie & Internetā' feature.
-  // Read-only — we only search and read message bodies/attachments,
-  // never send or modify. User must reconsent on first login after
-  // deploy because this is a new scope on top of the existing two.
-  "https://www.googleapis.com/auth/gmail.readonly",
 ].join(" ");
 
 export const { handlers, auth, signIn, signOut } = NextAuth({

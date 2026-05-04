@@ -109,6 +109,31 @@ export function createSheetsClient(config: SheetsClientConfig) {
   return new SheetsClient(sheets, config);
 }
 
+/**
+ * Factory variant that takes a pre-built sheets client (from
+ * getCompanyClients) instead of an access token. Used by
+ * endpoints that have migrated to per-company OAuth — they get
+ * { sheets } from getCompanyClients() and just need to wrap
+ * it in a SheetsClient with the right config.
+ *
+ * The two factories exist in parallel during the migration.
+ * Once all endpoints use per-company OAuth, the original
+ * createSheetsClient(accessToken) variant can stay as well —
+ * it's still useful for resolveCompany which uses session
+ * tokens to bootstrap.
+ */
+export function createSheetsClientFromInstance(args: {
+  sheets: ReturnType<typeof google.sheets>;
+  spreadsheetId: string;
+  actor: string;
+}) {
+  return new SheetsClient(args.sheets, {
+    accessToken: "<provided-via-instance>", // unused, but type requires
+    spreadsheetId: args.spreadsheetId,
+    actor: args.actor,
+  });
+}
+
 // ============================================================
 // Client implementation
 // ============================================================

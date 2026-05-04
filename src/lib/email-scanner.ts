@@ -56,8 +56,21 @@ import {
 export type Mailbox = "INBOX" | "SENT";
 
 export interface EmailScanInput {
-  /** OAuth access token from the authenticated user's session */
-  accessToken: string;
+  /**
+   * OAuth access token. Used to construct a Gmail client.
+   *
+   * For Phase 4+ (per-company OAuth), callers can instead pass
+   * `gmailClient` directly to use the company's pre-built client
+   * (with the company's Gmail scope already granted). When both
+   * are provided, gmailClient wins.
+   */
+  accessToken?: string;
+  /**
+   * Pre-built Gmail v1 client, typically from getCompanyClients().
+   * When provided, accessToken is ignored — we use this client
+   * for all Gmail API calls.
+   */
+  gmailClient?: ReturnType<typeof google.gmail>;
   /** Which folder to scan: INBOX (received) or SENT (issued) */
   mailbox: Mailbox;
   /**
@@ -158,9 +171,20 @@ export async function scanGmailForInvoices(
    */
   onCheckpoint?: (snapshot: ScanResult) => Promise<void>
 ): Promise<ScanResult> {
-  const oauth2 = new google.auth.OAuth2();
-  oauth2.setCredentials({ access_token: input.accessToken });
-  const gmail = google.gmail({ version: "v1", auth: oauth2 });
+  // Prefer pre-built client (per-company OAuth), fall back to
+  // building one from accessToken (legacy / session-token path).
+  let gmail;
+  if (input.gmailClient) {
+    gmail = input.gmailClient;
+  } else if (input.accessToken) {
+    const oauth2 = new google.auth.OAuth2();
+    oauth2.setCredentials({ access_token: input.accessToken });
+    gmail = google.gmail({ version: "v1", auth: oauth2 });
+  } else {
+    throw new Error(
+      "EmailScanInput needs either gmailClient or accessToken"
+    );
+  }
   const anthropic = new Anthropic({ apiKey });
 
   // Cap default lowered to 12. Realistic budget per Vercel

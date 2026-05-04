@@ -162,104 +162,94 @@ export function AddCompanyModal({
     !isSubmitting &&
     !isSuccess;
 
+  /**
+   * NEW FLOW (Phase 2/3 OAuth architecture):
+   *
+   *   1. POST form data to /api/companies/oauth/init
+   *      → Server signs the data into a state token + returns
+   *        Google's OAuth consent URL
+   *
+   *   2. We redirect the WHOLE PAGE to that URL
+   *      → User picks which Gmail account owns this company
+   *      → User approves Drive + Sheets + Gmail access
+   *
+   *   3. Google redirects to /api/companies/oauth/callback
+   *      → Callback exchanges code for tokens, provisions the
+   *        company in the chosen Gmail's Drive, saves encrypted
+   *        refresh token, redirects to /uznemumi?created=ID
+   *
+   *   4. /uznemumi page picks up the ?created=ID param and
+   *      activates the new company + shows success toast
+   *
+   * Why full-page redirect instead of popup:
+   *   - Popups get blocked by browsers in many contexts
+   *     (especially after async operations like a fetch call)
+   *   - The state token carries all form data so nothing is
+   *     lost on the round-trip
+   *   - Mobile Safari handles redirects much more reliably
+   *     than popups
+   *
+   * The user briefly leaves the app, sees Google's screen,
+   * and returns. Total round-trip: ~10-30 seconds depending on
+   * how long they spend on consent.
+   */
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitState({ stage: "submitting" });
 
     try {
-      // ─── Step 1: provision Drive + Sheets ───
-      const response = await fetch("/api/companies/create", {
+      // Build the form payload — same data we used to send to
+      // /create, now packaged for the OAuth state token.
+      const payload = {
+        name: name.trim(),
+        legal_name: legalName.trim(),
+        reg_number: regNumber.trim(),
+        vat_number: vatNumber.trim() || undefined,
+        legal_address: legalAddress.trim() || undefined,
+        delivery_address: deliveryAddress.trim() || undefined,
+        contact_email: contactEmail.trim() || undefined,
+        invoice_email: invoiceEmail.trim() || undefined,
+        iban: iban.replace(/\s/g, "").toUpperCase() || undefined,
+        bank_name: bankName.trim() || undefined,
+        swift: swift.trim() || undefined,
+        phone: phone.trim() || undefined,
+        website: website.trim() || undefined,
+        brand_color: brandColor || undefined,
+      };
+
+      const response = await fetch("/api/companies/oauth/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          legal_name: legalName.trim(),
-          reg_number: regNumber.trim(),
-          vat_number: vatNumber.trim() || undefined,
-          // Best-effort initial seeding into 01_requisites' first
-          // row at provisioning time. The richer fields below get
-          // saved in step 2 since the create endpoint only knows
-          // the v1 schema.
-          address: legalAddress.trim() || undefined,
-          iban: iban.replace(/\s/g, "").toUpperCase() || undefined,
-          bic: swift.trim() || undefined,
-          phone: phone.trim() || undefined,
-          email: contactEmail.trim() || undefined,
-          website: website.trim() || undefined,
-          director_name: directorName.trim() || undefined,
-          director_position: directorPosition.trim() || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
+      if (!response.ok) {
+        const errBody = await response
+          .json()
+          .catch(() => ({ error: `HTTP ${response.status}` }));
         setSubmitState({
           stage: "error",
-          message: data.error ?? "Neparedzēta kļūda",
+          message:
+            typeof errBody?.error === "string"
+              ? errBody.error
+              : `Servera kļūda (${response.status})`,
         });
         return;
       }
 
-      // ─── Step 2: save the rich requisites (color, dual
-      //     addresses, dual emails, bank name) ───
-      // These don't fit the create endpoint's v1 schema, so we
-      // PUT them to the dedicated requisites endpoint after the
-      // company exists.
-      setSubmitState({ stage: "saving_requisites" });
-      try {
-        await fetch(
-          `/api/companies/requisites?company_id=${encodeURIComponent(
-            data.company.id
-          )}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: name.trim(),
-              legalName: legalName.trim(),
-              regNumber: regNumber.trim(),
-              vatNumber: vatNumber.trim() || undefined,
-              legalAddress: legalAddress.trim() || undefined,
-              deliveryAddress: deliveryAddress.trim() || undefined,
-              contactEmail: contactEmail.trim() || undefined,
-              invoiceEmail: invoiceEmail.trim() || undefined,
-              iban: iban.replace(/\s/g, "").toUpperCase() || undefined,
-              bankName: bankName.trim() || undefined,
-              swift: swift.trim() || undefined,
-              phone: phone.trim() || undefined,
-              website: website.trim() || undefined,
-              brandColor: brandColor || undefined,
-            }),
-          }
-        );
-        // Best-effort — even if requisites save fails, the company
-        // exists and the user can fix it via the edit modal
-      } catch {
-        console.warn("Requisites save failed but company was created");
+      const data = (await response.json()) as { oauthUrl?: string };
+      if (!data.oauthUrl) {
+        setSubmitState({
+          stage: "error",
+          message: "Servers neatgrieza OAuth URL",
+        });
+        return;
       }
 
-      const extras: ExtraRequisites = {
-        brandColor: brandColor || undefined,
-        legalAddress: legalAddress.trim() || undefined,
-        deliveryAddress: deliveryAddress.trim() || undefined,
-        contactEmail: contactEmail.trim() || undefined,
-        invoiceEmail: invoiceEmail.trim() || undefined,
-        iban: iban.replace(/\s/g, "").toUpperCase() || undefined,
-        bankName: bankName.trim() || undefined,
-        swift: swift.trim() || undefined,
-        phone: phone.trim() || undefined,
-        website: website.trim() || undefined,
-      };
-
-      setSubmitState({ stage: "success", company: data.company });
-      onCreated(data.company, extras);
-
-      // Auto-close after 2s success state
-      setTimeout(() => {
-        onOpenChange(false);
-        resetForm();
-      }, 2000);
+      // Redirect the whole page to Google. We don't reset form
+      // state because the state token already has all the data —
+      // the user will land back on /uznemumi when they're done.
+      window.location.href = data.oauthUrl;
     } catch (err) {
       setSubmitState({
         stage: "error",
@@ -322,13 +312,11 @@ export function AddCompanyModal({
             </div>
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight text-graphite-900">
-                {submitState.stage === "saving_requisites"
-                  ? "Saglabājam rekvizītus…"
-                  : "Izveidojam uzņēmumu…"}
+                Pārvirzām uz Google…
               </h3>
               <p className="mt-1 text-[12.5px] text-graphite-500 max-w-sm mx-auto leading-relaxed">
-                Veidojam Drive mapju struktūru un Sheets failu ar 25 tabām.
-                Tas var aizņemt 10–20 sekundes.
+                Izvēlies, kuru Gmail kontu šim uzņēmumam piesaistīt. Tava
+                uzņēmuma faili tiks izveidoti tā Google Drive kontā.
               </p>
             </div>
             <div className="flex flex-col gap-1.5 items-center text-[11px] text-graphite-400 max-w-xs mx-auto">

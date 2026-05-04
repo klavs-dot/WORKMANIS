@@ -20,42 +20,22 @@
  */
 
 import { NextResponse } from "next/server";
-import { google } from "googleapis";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 import { COMPANY_TABS } from "@/lib/sheets-schema";
-
-// Reuse the private helpers from provisioning.ts by re-implementing
-// them here inline. We can't import private fns and we don't want
-// to export them (they're provisioning-internal). Alternative would
-// be extracting to a shared module; deferred for now since the
-// duplication is small.
-//
-// Actually — let's just export ensureTabsAndHeaders from provisioning.
-// It's a provisioning primitive, and sharing reduces drift.
-
 import { reconcileSchemaForSheet } from "@/lib/provisioning";
 
 // 300s — schema repair iterates through ~25 tabs, each requiring
-// 1-3 Sheets API calls. On a fresh company sheet (Path A — write
-// fresh headers + styling) it's ~25 × 2s = 50s. On an old sheet
-// undergoing migration (Path B — insert missing columns) it's
-// closer to 25 × 4-6s = 100-150s because each missing column needs
-// an insertDimension batchUpdate per tab. The previous 60s was too
-// tight and was failing on production with empty responses
-// (Vercel-killed mid-request) — those surfaced as "Unexpected end
-// of JSON input" errors in the client.
+// 1-3 Sheets API calls.
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
-  // Wrap everything in try/catch so the user always gets JSON
-  // even if auth() or resolveCompany() throws (Drive rate limit,
-  // network blip). Without this they'd see a Vercel-generated
-  // empty 500 with the cryptic 'Unexpected end of JSON input'
-  // error in the client.
   try {
     const session = await auth();
-    if (!session?.user?.email || !session.accessToken) {
+    if (!session?.user?.email) {
       return NextResponse.json(
         { error: "Not authenticated" },
         { status: 401 }
@@ -71,31 +51,34 @@ export async function POST(request: Request) {
       );
     }
 
-    const company = await resolveCompany(
-      session.accessToken,
-      session.user.email,
-      companyId
-    );
-    if (!company) {
-      return NextResponse.json(
-        { error: "Company not found" },
-        { status: 404 }
-      );
+    // Per-company OAuth — schema repair writes to the company
+    // sheet, which lives in the connected Gmail's Drive
+    let cc;
+    try {
+      cc = await getCompanyClients(companyId);
+    } catch (err) {
+      if (err instanceof NoCompanyOAuthError) {
+        return NextResponse.json(
+          {
+            error:
+              "Šim uzņēmumam nav pievienots Gmail konts.",
+            oauth_disconnected: true,
+          },
+          { status: 412 }
+        );
+      }
+      throw err;
     }
 
-    const oauth2 = new google.auth.OAuth2();
-    oauth2.setCredentials({ access_token: session.accessToken });
-    const sheets = google.sheets({ version: "v4", auth: oauth2 });
-
     await reconcileSchemaForSheet(
-      sheets,
-      company.sheetId,
+      cc.sheets,
+      cc.company.sheetId,
       COMPANY_TABS.map((t) => ({ name: t.name, cols: [...t.cols] }))
     );
 
     return NextResponse.json({
       ok: true,
-      message: `Schema reconciled for ${company.name}`,
+      message: `Schema reconciled for ${cc.company.name}`,
     });
   } catch (err) {
     console.error("Repair failed:", err);

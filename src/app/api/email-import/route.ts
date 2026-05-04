@@ -42,9 +42,14 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
-import { createSheetsClient } from "@/lib/sheets-client";
-import { createDriveClient } from "@/lib/drive-client";
+import {
+  createSheetsClientFromInstance,
+} from "@/lib/sheets-client";
+import { createDriveClientFromInstance } from "@/lib/drive-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 import {
   scanGmailForInvoices,
   type Mailbox,
@@ -80,7 +85,7 @@ interface MailboxScanSummary {
 
 export async function POST(request: Request) {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
@@ -112,31 +117,56 @@ export async function POST(request: Request) {
     body = {};
   }
 
-  // Default to scanning both folders. Each is independent — INBOX
-  // for invoices we owe (31_invoices_in), SENT for invoices we
-  // issued through external systems (30_invoices_out).
+  // Default to scanning both folders.
   const mailboxes: Mailbox[] = body.mailboxes?.length
     ? body.mailboxes
     : ["INBOX", "SENT"];
 
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
+  // Per-company OAuth: get fresh clients tied to the connected
+  // Gmail account. This is THE key change — the AI scanner now
+  // reads emails from the Gmail account associated with this
+  // specific company, not from the login user's primary inbox.
+  let cc;
+  try {
+    cc = await getCompanyClients(companyId);
+  } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        {
+          error:
+            "Šim uzņēmumam nav pievienots Gmail konts. Atveriet uzņēmumu, lai pievienotu Gmail.",
+          oauth_disconnected: true,
+        },
+        { status: 412 }
+      );
+    }
+    throw err;
   }
 
-  const sheets = createSheetsClient({
-    accessToken: session.accessToken,
-    spreadsheetId: company.sheetId,
+  // Check that gmail.readonly scope was actually granted at
+  // consent. If user declined Gmail access, fail fast with
+  // a clear message rather than getting a cryptic 403 deep in
+  // the scan.
+  if (!cc.grantedScopes.some((s) => s.includes("gmail"))) {
+    return NextResponse.json(
+      {
+        error:
+          "Gmail piekļuve nav atļauta šim uzņēmumam. Pievieno Gmail kontu vēlreiz un atļauj e-pasta lasīšanu.",
+        scope_missing: "gmail.readonly",
+      },
+      { status: 412 }
+    );
+  }
+
+  const sheets = createSheetsClientFromInstance({
+    sheets: cc.sheets,
+    spreadsheetId: cc.company.sheetId,
     actor: session.user.email,
   });
 
-  const drive = createDriveClient({
-    accessToken: session.accessToken,
-    companyFolderId: company.folderId,
+  const drive = createDriveClientFromInstance({
+    drive: cc.drive,
+    companyFolderId: cc.company.folderId,
   });
 
   // Look up the last scan time per mailbox so we can pass it as
@@ -243,7 +273,7 @@ export async function POST(request: Request) {
     try {
       scanResult = await scanGmailForInvoices(
         {
-          accessToken: session.accessToken,
+          gmailClient: cc.gmail,
           mailbox,
           sinceInternalDate: sinceTs,
           // Lower cap (default 6) — fits in one Vercel function
@@ -377,8 +407,8 @@ export async function POST(request: Request) {
 async function persistOne(
   item: ScannedInvoice,
   mailbox: Mailbox,
-  sheets: ReturnType<typeof createSheetsClient>,
-  drive: ReturnType<typeof createDriveClient>,
+  sheets: ReturnType<typeof createSheetsClientFromInstance>,
+  drive: ReturnType<typeof createDriveClientFromInstance>,
   inDedup: Set<string>,
   outDedup: Set<string>
 ): Promise<"created" | "duplicate"> {

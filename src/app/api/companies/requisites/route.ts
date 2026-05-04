@@ -30,8 +30,13 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { resolveCompany } from "@/lib/resolve-company";
-import { createSheetsClient } from "@/lib/sheets-client";
+import {
+  createSheetsClientFromInstance,
+} from "@/lib/sheets-client";
+import {
+  getCompanyClients,
+  NoCompanyOAuthError,
+} from "@/lib/company-clients";
 
 export const maxDuration = 30;
 
@@ -59,39 +64,35 @@ interface RequisitesBody {
 }
 
 export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
-    return NextResponse.json(
-      { error: "Not authenticated" },
-      { status: 401 }
-    );
-  }
-
-  const url = new URL(request.url);
-  const companyId = url.searchParams.get("company_id");
-  if (!companyId) {
-    return NextResponse.json(
-      { error: "Missing company_id" },
-      { status: 400 }
-    );
-  }
-
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
-  const sheets = createSheetsClient({
-    accessToken: session.accessToken,
-    spreadsheetId: company.sheetId,
-    actor: session.user.email,
-  });
-
   try {
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const url = new URL(request.url);
+    const companyId = url.searchParams.get("company_id");
+    if (!companyId) {
+      return NextResponse.json(
+        { error: "Missing company_id" },
+        { status: 400 }
+      );
+    }
+
+    // Use per-company OAuth: this gets a Sheets client tied to
+    // the company's own Gmail account, NOT the login user's
+    // session. Files in the company sheet are read using the
+    // company's access token.
+    const cc = await getCompanyClients(companyId);
+    const sheets = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
+      actor: session.user.email,
+    });
+
     const rows = await sheets.list("01_requisites");
     const row =
       (rows as Array<Record<string, unknown>>).find(
@@ -107,6 +108,18 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ requisites: rowToApi(row) });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      // Company exists but no Gmail connected — surface for UI
+      // to show "reconnect" CTA. Empty requisites lets the page
+      // render without crashing.
+      return NextResponse.json(
+        {
+          requisites: emptyRequisites(),
+          oauth_disconnected: true,
+        },
+        { status: 200 }
+      );
+    }
     console.error("Failed to read 01_requisites:", err);
     // If the tab doesn't exist yet (user hasn't run schema repair
     // since this feature was added), return empty defaults rather
@@ -117,7 +130,7 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
@@ -143,41 +156,34 @@ export async function PUT(request: Request) {
     );
   }
 
-  const company = await resolveCompany(
-    session.accessToken,
-    session.user.email,
-    companyId
-  );
-  if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 });
-  }
-
-  const sheets = createSheetsClient({
-    accessToken: session.accessToken,
-    spreadsheetId: company.sheetId,
-    actor: session.user.email,
-  });
-
-  // Map API → row columns
-  const rowData: Record<string, string> = {
-    name: (body.name ?? "").trim(),
-    legal_name: (body.legalName ?? "").trim(),
-    reg_number: (body.regNumber ?? "").trim(),
-    vat_number: (body.vatNumber ?? "").trim(),
-    legal_address: (body.legalAddress ?? "").trim(),
-    delivery_address: (body.deliveryAddress ?? "").trim(),
-    contact_email: (body.contactEmail ?? "").trim(),
-    invoice_email: (body.invoiceEmail ?? "").trim(),
-    iban: (body.iban ?? "").trim(),
-    bank_name: (body.bankName ?? "").trim(),
-    swift: (body.swift ?? "").trim(),
-    phone: (body.phone ?? "").trim(),
-    website: (body.website ?? "").trim(),
-    logo_drive_id: (body.logoDriveId ?? "").trim(),
-    brand_color: (body.brandColor ?? "").trim(),
-  };
-
   try {
+    // Per-company OAuth: write happens with company's tokens
+    const cc = await getCompanyClients(companyId);
+    const sheets = createSheetsClientFromInstance({
+      sheets: cc.sheets,
+      spreadsheetId: cc.company.sheetId,
+      actor: session.user.email,
+    });
+
+    // Map API → row columns
+    const rowData: Record<string, string> = {
+      name: (body.name ?? "").trim(),
+      legal_name: (body.legalName ?? "").trim(),
+      reg_number: (body.regNumber ?? "").trim(),
+      vat_number: (body.vatNumber ?? "").trim(),
+      legal_address: (body.legalAddress ?? "").trim(),
+      delivery_address: (body.deliveryAddress ?? "").trim(),
+      contact_email: (body.contactEmail ?? "").trim(),
+      invoice_email: (body.invoiceEmail ?? "").trim(),
+      iban: (body.iban ?? "").trim(),
+      bank_name: (body.bankName ?? "").trim(),
+      swift: (body.swift ?? "").trim(),
+      phone: (body.phone ?? "").trim(),
+      website: (body.website ?? "").trim(),
+      logo_drive_id: (body.logoDriveId ?? "").trim(),
+      brand_color: (body.brandColor ?? "").trim(),
+    };
+
     // Upsert: if a row with our deterministic id exists, update
     // it; otherwise create. We don't use sheets.create here for
     // the update case because that would generate a new id; we
@@ -214,6 +220,16 @@ export async function PUT(request: Request) {
       requisites: { ...rowData, id: REQUISITES_ROW_ID, ...body },
     });
   } catch (err) {
+    if (err instanceof NoCompanyOAuthError) {
+      return NextResponse.json(
+        {
+          error:
+            "Šim uzņēmumam nav pievienots Gmail konts. Ielogojies vēlreiz vai pievieno Gmail.",
+          oauth_disconnected: true,
+        },
+        { status: 412 }
+      );
+    }
     console.error("Failed to upsert 01_requisites:", err);
     return NextResponse.json(
       {
