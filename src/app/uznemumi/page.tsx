@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
+import { SchemaDriftBanner } from "@/components/business/schema-drift-banner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { RequisitesModal } from "@/components/business/requisites-modal";
@@ -201,6 +202,7 @@ function UznemumiPageInner() {
   return (
     <AppShell>
       <div className="space-y-6 max-w-5xl">
+        <SchemaDriftBanner />
         <PageHeader
           title="Uzņēmumi / Struktūrvienības"
           description="Ātri pārslēdzies starp uzņēmumiem un nokopē rekvizītus rēķiniem vai sarakstei"

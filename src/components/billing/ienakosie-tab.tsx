@@ -52,6 +52,7 @@ import {
 import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
 import { OrphanPaymentsBanner, PaymentStatusPill } from "@/components/billing/orphan-payments-banner";
+import { AutoCreatedBadge } from "@/components/billing/auto-created-badge";
 
 // ============================================================
 // FUTURE: Google Sheets integration
@@ -159,8 +160,12 @@ export function IenakosieTab() {
                   <TableRow key={inv.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium text-graphite-900">
-                          {inv.client}
+                        <p className="font-medium text-graphite-900 flex items-center gap-1.5">
+                          <span className="truncate">{inv.client}</span>
+                          <AutoCreatedBadge
+                            invoiceNumber={inv.number}
+                            description={inv.description}
+                          />
                         </p>
                         <p className="text-[11px] text-graphite-500 mt-0.5 truncate max-w-[280px]">
                           {inv.description}

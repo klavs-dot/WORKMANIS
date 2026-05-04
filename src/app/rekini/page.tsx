@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
+import { SchemaDriftBanner } from "@/components/business/schema-drift-banner";
 import { VisiMaksajumiTab } from "@/components/billing/visi-maksajumi-tab";
 import { IzejosieTab } from "@/components/billing/izejosie-tab";
 import { IenakosieTab } from "@/components/billing/ienakosie-tab";
@@ -24,6 +25,7 @@ import { BankExchangePanel } from "@/components/billing/bank-exchange-panel";
 import { EmailImportRobotButton } from "@/components/billing/email-import-robot-button";
 import { BankImportRobotButton } from "@/components/billing/bank-import-robot-button";
 import { BankExportRobotButton } from "@/components/billing/bank-export-robot-button";
+import { FirstTimeHint } from "@/components/billing/first-time-hint";
 import { ReconcileActionsRow } from "@/components/billing/reconcile-actions-row";
 import { useBilling } from "@/lib/billing-store";
 import { usePayments } from "@/lib/payments-store";
@@ -106,6 +108,7 @@ export default function RekiniMaksajumiPage() {
   return (
     <AppShell>
       <div className="space-y-6">
+        <SchemaDriftBanner />
         <PageHeader
           title="Rēķini & Maksājumi"
           description="Visu rēķinu, maksājumu un nodokļu pārvaldība vienuviet"
@@ -125,6 +128,7 @@ export default function RekiniMaksajumiPage() {
             unifies the affordance and signals "these are the
             actions that pull the rest of the page to life". */}
         <div className="space-y-3">
+          <FirstTimeHint />
           <div className="flex items-start gap-3 flex-wrap">
             <EmailImportRobotButton onComplete={handleEmailImportComplete} />
             <BankImportRobotButton />

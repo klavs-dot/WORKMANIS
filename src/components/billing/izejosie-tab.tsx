@@ -72,6 +72,7 @@ import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { EditReceivedModal } from "@/components/billing/edit-received-modal";
 import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
 import { OrphanPaymentsBanner, PaymentStatusPill } from "@/components/billing/orphan-payments-banner";
+import { AutoCreatedBadge } from "@/components/billing/auto-created-badge";
 
 // ============================================================
 // Helpers for matching parsed-invoice data against known parties
@@ -728,8 +729,11 @@ export function IzejosieTab() {
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-graphite-50 text-graphite-700 border border-graphite-100">
                           <Building2 className="h-3 w-3" />
                         </div>
-                        <span className="font-medium text-graphite-900">
-                          {p.supplier}
+                        <span className="font-medium text-graphite-900 flex items-center gap-1.5">
+                          <span>{p.supplier}</span>
+                          <AutoCreatedBadge
+                            invoiceNumber={p.invoiceNumber}
+                          />
                         </span>
                       </div>
                     </TableCell>
