@@ -49,6 +49,7 @@ import {
   parseBankStatementCSV,
   type ParsedTransaction,
 } from "@/lib/bank-exchange";
+import { classifyTransaction } from "@/lib/payment-classifier";
 import {
   reconcileBankAndInvoices,
   type BankTransaction,
@@ -197,6 +198,32 @@ export async function POST(request: Request) {
     try {
       const amountCents = Math.round(tx.amount * 100);
       const direction = amountCents >= 0 ? "incoming" : "outgoing";
+
+      // Extract bank-supplied transaction type code. FIDAVISTA
+      // saves it as raw.TypeCode (e.g. 'PMNTCCRDOTHR-Pirkums'
+      // for online card purchase). This is THE field the
+      // payment-classifier needs to bucket transactions into
+      // automatiskie/fiziskie/izejosie. Without it, the classifier
+      // falls back to counterparty-name pattern matching which
+      // is much less accurate.
+      const txType = tx.raw?.TypeCode ?? "";
+
+      // Run the classifier ONCE during import so the stored
+      // classified_section is correct from the start. Tabs still
+      // re-classify client-side for safety, but having a sensible
+      // initial value means even old payments get bucketed
+      // properly the first time the user views them.
+      const initialSection = classifyTransaction({
+        rawDate: tx.rawDate ?? tx.date ?? "",
+        date: tx.date ?? tx.rawDate ?? "",
+        counterparty: tx.counterparty,
+        counterpartyIban: tx.counterpartyIban,
+        amount: tx.amount,
+        reference: tx.reference,
+        currency: tx.currency,
+        raw: { TypeCode: txType },
+      });
+
       const row = await sheets.create("35_payments", {
         direction,
         category: "",
@@ -212,9 +239,18 @@ export async function POST(request: Request) {
         bank_reference: tx.reference,
         source: "fidavista_import",
         imported_from_csv_filename: file.name,
-        classified_section: "",
+        // Initial bucket from classifier — overridden later if
+        // we match an invoice (Step 5/6) or auto-classify
+        // against known clients/suppliers (Step 7).
+        classified_section: initialSection,
         matched_invoice_id: "",
-        raw_reference: tx.reference,
+        // CRITICAL: saglabājam īsto TypeCode (NEVIS payment
+        // description). Klients-puse re-classify uz šī lauka.
+        // Iepriekš te bija saglabāta tx.reference (tā pati kā
+        // bank_reference) — tas izraisīja, ka kartes maksājumi
+        // visi tika klasificēti kā 'izejosie' jo TypeCode
+        // pattern matching neatrada `PMNTCCRDOTHR` u.tml.
+        raw_reference: txType || tx.reference,
       });
       const id = (row as unknown as Record<string, unknown>).id as string;
       persistedTxs.push({
@@ -225,6 +261,7 @@ export async function POST(request: Request) {
         amountCents,
         reference: tx.reference,
         currency: tx.currency,
+        txType,
       });
     } catch (err) {
       console.error("Failed to persist tx:", err);
@@ -690,7 +727,11 @@ export async function POST(request: Request) {
           {
             employee_id: classification.entity.id,
             payment_category: "salary",
-            classified_section: "salary",
+            // UI tab key is 'algas' (Latvian) — store this same
+            // value in classified_section so the algas-tab can
+            // filter by it. payment_category stays 'salary' as
+            // the bookkeeper-facing label.
+            classified_section: "algas",
             payment_status: "",
             expected_updated_at: expectedUpdatedAt,
           }

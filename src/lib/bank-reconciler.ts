@@ -59,6 +59,17 @@ export interface BankTransaction {
   reference: string;
   /** ISO currency code (typically EUR) */
   currency: string;
+  /**
+   * Bank-supplied transaction type code from FIDAVISTA / camt.053.
+   * Examples: 'PMNTCCRDOTHR-Pirkums' (online card purchase),
+   *           'PMNTCCRDTPOS-Pirkums' (POS card purchase),
+   *           'PMNTCWDLATM-Skaidras nauda' (ATM withdrawal),
+   *           'PMNTICDTSTDR' (issued credit transfer).
+   * Used by payment-classifier to bucket into ienakosie / izejosie /
+   * automatiskie / fiziskie / algas. Empty when CSV import (no
+   * structured type info available).
+   */
+  txType?: string;
 }
 
 export interface IssuedInvoiceRow {

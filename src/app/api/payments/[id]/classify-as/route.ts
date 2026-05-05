@@ -175,7 +175,7 @@ export async function POST(
   const expectedUpdatedAt = (paymentRow.updated_at as string) ?? "";
   const patch: Record<string, string> = {
     payment_category: category,
-    classified_section: body.kind === "partner" ? "partner" : "salary",
+    classified_section: body.kind === "partner" ? "partner" : "algas",
     payment_status: "", // no longer an orphan
     expected_updated_at: expectedUpdatedAt,
   };
