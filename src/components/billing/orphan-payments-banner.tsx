@@ -120,19 +120,33 @@ export function OrphanPaymentsBanner({
   return (
     <div className="mb-4 space-y-2">
       <div className="flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4 text-red-600" />
-        <h3 className="text-[13px] font-semibold text-red-900">
+        {direction === "incoming" ? (
+          <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+        ) : (
+          <AlertTriangle className="h-4 w-4 text-red-600" />
+        )}
+        <h3
+          className={cn(
+            "text-[13px] font-semibold",
+            direction === "incoming" ? "text-emerald-900" : "text-red-900"
+          )}
+        >
           {direction === "incoming"
-            ? "Saņemti maksājumi bez rēķina"
+            ? "Saņemtie maksājumi"
             : "Veikti maksājumi bez rēķina"}
-          <span className="ml-2 text-[11px] font-normal text-red-600">
+          <span
+            className={cn(
+              "ml-2 text-[11px] font-normal",
+              direction === "incoming" ? "text-emerald-600" : "text-red-600"
+            )}
+          >
             ({orphans.length})
           </span>
         </h3>
       </div>
       <p className="text-[11.5px] text-graphite-600 leading-relaxed">
         {direction === "incoming"
-          ? "Šie maksājumi ir saņemti, bet nav atrasts atbilstošs izrakstītais rēķins. Augšupielādē rēķinu manuāli, lai sasaistītu."
+          ? "Klientu samaksāti maksājumi par izrakstītajiem rēķiniem. Sasaisti tos ar atbilstošo izrakstīto rēķinu vai augšupielādē, ja rēķins vēl nav sistēmā."
           : "Šie maksājumi ir veikti, bet nav atrasts atbilstošs piegādātāja rēķins. Augšupielādē rēķinu manuāli, lai sasaistītu."}
         {classified > 0 && aiHints.length > 0 && (
           <span className="block mt-1 text-graphite-500">
@@ -212,8 +226,14 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        "rounded-lg border-2 border-red-300 bg-red-50/40 p-3",
-        "flex items-center gap-3"
+        "rounded-lg border-2 p-3 flex items-center gap-3",
+        // Sesija 7 hotfix — green for incoming (received money is
+        // a positive event, not an error). Red still for outgoing
+        // because outgoing-without-invoice IS a problem (we need
+        // an invoice for accounting).
+        isIncoming
+          ? "border-emerald-300 bg-emerald-50/40"
+          : "border-red-300 bg-red-50/40"
       )}
     >
       <input
@@ -283,16 +303,26 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
             "text-[11.5px] font-medium border transition-colors",
             uploading
               ? "bg-graphite-100 border-graphite-200 text-graphite-500 cursor-wait"
-              : "bg-white border-red-300 text-red-700 hover:bg-red-100 hover:border-red-400"
+              : isIncoming
+                ? "bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400"
+                : "bg-white border-red-300 text-red-700 hover:bg-red-100 hover:border-red-400"
           )}
-          title="Izvēlies rēķina PDF / attēlu"
+          title={
+            isIncoming
+              ? "Augšupielādē izrakstītā rēķina PDF lai sasaistītu ar šo maksājumu"
+              : "Izvēlies rēķina PDF / attēlu"
+          }
         >
           {uploading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <Upload className="h-3.5 w-3.5" />
           )}
-          {uploading ? "Augšupielādē…" : "Augšupielādēt rēķinu"}
+          {uploading
+            ? "Augšupielādē…"
+            : isIncoming
+              ? "Sasaistīt ar rēķinu"
+              : "Augšupielādēt rēķinu"}
         </button>
 
         {/* Sesija 6 — register as partner / employee. Only shown
