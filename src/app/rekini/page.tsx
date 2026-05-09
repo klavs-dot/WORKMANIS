@@ -202,24 +202,27 @@ export default function RekiniMaksajumiPage() {
           </div>
         </div>
 
-        {/* Tab content */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={tab}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            {tab === "visi" && <VisiMaksajumiTab />}
-            {tab === "izejosie" && <IzejosieTab />}
-            {tab === "ienakosie" && <IenakosieTab />}
-            {tab === "automatiskie" && <AutomatiskieTab />}
-            {tab === "veikala" && <VeikalaTab />}
-            {tab === "algas" && <AlgasTab />}
-            {tab === "nodokli" && <NodokliTab />}
-          </motion.div>
-        </AnimatePresence>
+        {/* Tab content
+            Sesija 7 hotfix — removed AnimatePresence + motion.div
+            wrapper. mode="wait" was blocking tab switches: when the
+            user clicked Automātiskie/Fiziskie, the previous tab's
+            exit animation never completed (likely because nested
+            framer-motion children inside the tab components have
+            their own AnimatePresence which interferes). Result:
+            tab button aria-selected updated correctly, but content
+            stayed on the previous tab indefinitely.
+            
+            Plain conditional rendering works fine — each tab has
+            its own internal animations for its rows/cards already. */}
+        <div key={tab}>
+          {tab === "visi" && <VisiMaksajumiTab />}
+          {tab === "izejosie" && <IzejosieTab />}
+          {tab === "ienakosie" && <IenakosieTab />}
+          {tab === "automatiskie" && <AutomatiskieTab />}
+          {tab === "veikala" && <VeikalaTab />}
+          {tab === "algas" && <AlgasTab />}
+          {tab === "nodokli" && <NodokliTab />}
+        </div>
 
         {/* Bank exchange panel — opened by the page header buttons.
             Mode is 'received' (incoming invoices). Section toggles

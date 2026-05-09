@@ -36,9 +36,12 @@ import {
   type OrphanForClassification,
 } from "@/lib/ai-orphan-classifier";
 
-// 60s — typical batch is 30 orphans → 1 AI call → ~10s.
-// Worst case 300 orphans = 10 batches sequential = ~50s.
-export const maxDuration = 60;
+// 300s — Vercel Hobby + Fluid Compute allows up to 300s for
+// long-running operations. With 64 orphans (real user case), 60s
+// was insufficient — the endpoint timed out at 504 before any
+// AI calls completed. Each batch of 30 orphans = ~10-20s AI call,
+// so 300s comfortably handles up to ~450 orphans.
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const session = await auth();

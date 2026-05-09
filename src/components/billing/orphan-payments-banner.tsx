@@ -54,7 +54,47 @@ export function OrphanPaymentsBanner({
     if (p.paymentStatus !== "maksajums_bez_rekina") return false;
     // Direction filter — incoming = money in (positive amount in
     // store's signed convention), outgoing = money out (negative)
-    if (direction === "incoming") return p.amount > 0;
+    if (direction === "incoming") {
+      if (p.amount <= 0) return false;
+
+      // Sesija 7 hotfix — exclude two patterns that look like
+      // 'incoming' but aren't real client payments:
+      //
+      //   1. CARD REFUNDS (atmaksas) — counterparty contains
+      //      'karte' (Latvian for 'card') with a positive amount.
+      //      These are refunds from physical/online stores after
+      //      a returned purchase, NOT a client paying us.
+      //      Example: 'DEPO-VEIKALS-LIEPAJA / 18/04/2026 14:21
+      //               karte...658798' with amount +60.64€.
+      //      User correctly identified these as confusing the tab.
+      //
+      //   2. BANK FEE REVERSALS — counterparty 'SEB banka',
+      //      'Swedbank', 'Citadele', 'Luminor' with tiny amounts
+      //      (under 5€). These are usually fee reversals or
+      //      account rounding, not client payments.
+      const ref = (p.bankReference || p.rawReference || "").toLowerCase();
+      const cp = (p.counterparty || "").toLowerCase();
+
+      // Card-refund detection: 'karte' or 'card' with no IBAN
+      // (real client payments have IBAN; card refunds don't)
+      const looksLikeCardRefund =
+        (ref.includes("karte") || ref.includes(" card") || ref.includes(" pos")) &&
+        !p.counterpartyIban;
+      if (looksLikeCardRefund) return false;
+
+      // Bank-fee reversal: known bank counterparty + small amount
+      const knownBanks = [
+        "seb banka",
+        "swedbank",
+        "citadele",
+        "luminor",
+        "rietumu",
+      ];
+      const isBankCounterparty = knownBanks.some((b) => cp.includes(b));
+      if (isBankCounterparty && p.amount < 5) return false;
+
+      return true;
+    }
     return p.amount < 0;
   });
 
