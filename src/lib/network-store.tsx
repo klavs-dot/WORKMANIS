@@ -294,6 +294,23 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     setContacts(readCache<BusinessContact>(CACHE_PREFIX_CONTACTS, companyId));
     setOnlineLinks(readCache<OnlineLink>(CACHE_PREFIX_LINKS, companyId));
 
+    // Sesija 7 hotfix — lazy load to avoid quota exhaustion.
+    // Same rationale as warehouse-store: 4 parallel Sheets reads
+    // were firing on EVERY page mount (this provider lives in
+    // layout.tsx). Now we only fetch when the user is actually
+    // on a page that displays this data. We still render cached
+    // values immediately (above) so the user sees something
+    // instantly when they navigate to a network page.
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname;
+      const isNetworkPage =
+        path.startsWith("/distributori") ||
+        path.startsWith("/klienti") ||
+        path.startsWith("/partneri") ||
+        path.startsWith("/iepirkumi");
+      if (!isNetworkPage) return;
+    }
+
     void fetchAll(companyId);
   }, [activeCompany, fetchAll]);
 

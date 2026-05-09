@@ -82,6 +82,14 @@ export async function POST(request: Request) {
   let errors = 0;
   const errorMessages: string[] = [];
 
+  // Throttle writes — Google Sheets API allows 60 writes/min/user.
+  // Updating 169 rows at full speed would blow this in the first
+  // 30 seconds and cause cascading 500s from quota exceeded errors
+  // on every other endpoint. We pace at 50 writes/min to leave
+  // headroom for other in-flight requests.
+  const WRITES_PER_MINUTE = 50;
+  const DELAY_MS = Math.ceil(60_000 / WRITES_PER_MINUTE); // ~1200ms each
+
   for (const row of allPayments) {
     try {
       const oldAmount = Number(row.amount_cents ?? 0);
@@ -116,6 +124,9 @@ export async function POST(request: Request) {
         expected_updated_at: String(row.updated_at ?? ""),
       });
       flipped++;
+
+      // Throttle to stay under quota
+      await new Promise((r) => setTimeout(r, DELAY_MS));
     } catch (err) {
       errors++;
       const msg = err instanceof Error ? err.message : String(err);

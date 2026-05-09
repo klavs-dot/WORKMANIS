@@ -594,6 +594,23 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     setSalaries(readCache<Salary>(CACHE_SALARIES, companyId));
     setTaxes(readCache<Tax>(CACHE_TAXES, companyId));
 
+    // Sesija 7 hotfix — lazy load to prevent Sheets API quota
+    // exhaustion. BillingProvider lives in layout.tsx so its
+    // useEffect ran on EVERY page, firing 4 parallel reads
+    // regardless of what the user was looking at. Now we only
+    // fetch on pages that actually display this data.
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname;
+      const isBillingPage =
+        path.startsWith("/rekini") ||
+        path.startsWith("/gramatvediba") ||
+        path.startsWith("/aktivi") ||
+        path.startsWith("/darbinieki") ||
+        path.startsWith("/parskats") ||
+        path.startsWith("/iestatijumi");
+      if (!isBillingPage) return;
+    }
+
     void fetchAll(companyId);
   }, [activeCompany, fetchAll]);
 

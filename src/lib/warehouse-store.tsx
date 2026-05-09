@@ -185,6 +185,26 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Sesija 7 hotfix — lazy load.
+    // WarehouseProvider mounts on every page (in layout.tsx),
+    // so this useEffect previously fired 5 parallel Sheets reads
+    // on EVERY page, regardless of whether warehouse data was
+    // actually shown. Combined with billing/network/payments
+    // stores doing the same, total parallel reads per page nav
+    // exceeded ~25, easily blowing the 300/min Sheets quota.
+    //
+    // Now: only fetch when the user is actually on a page that
+    // shows warehouse data. Other pages get an empty state until
+    // they navigate to /noliktava (etc.) — which is fine because
+    // they wouldn't be displaying anything anyway.
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname;
+    const isWarehousePage =
+      path.startsWith("/noliktava") ||
+      path.startsWith("/demo-produkcija") ||
+      path.startsWith("/gatava-produkcija") ||
+      path.startsWith("/noliktavas-atbildigie");
+    if (!isWarehousePage) return;
     void fetchAll();
   }, [fetchAll]);
 

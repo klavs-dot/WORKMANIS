@@ -162,6 +162,17 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   }, [activeCompany?.id]);
 
   useEffect(() => {
+    // Sesija 7 hotfix — lazy load. PaymentsProvider lives in
+    // layout.tsx and used to fetch on every page. Now we only
+    // fetch on pages that actually need payments data.
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname;
+      const isPaymentsPage =
+        path.startsWith("/rekini") ||
+        path.startsWith("/gramatvediba") ||
+        path.startsWith("/parskats");
+      if (!isPaymentsPage) return;
+    }
     void fetchAll();
   }, [fetchAll]);
 
