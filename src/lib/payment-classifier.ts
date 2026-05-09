@@ -2,8 +2,9 @@
  * Classify a parsed bank transaction into one of the rēķini tabs.
  *
  * Sections:
- *   - 'ienakosie'    — incoming: client paid us (signed amount < 0
- *                      in our convention, since negative = received)
+ *   - 'ienakosie'    — incoming: client paid us (positive amount —
+ *                      unified convention with parser, reconciler,
+ *                      and UI: positive = received)
  *   - 'izejosie'     — outgoing payment that matches an existing
  *                      received invoice (we owed someone, we paid)
  *   - 'automatiskie' — outgoing payment to an online service /
@@ -291,8 +292,10 @@ export function classifyTransaction(
   tx: ParsedTransaction,
   ctx: ClassificationContext = {}
 ): PaymentSection {
-  // 1. Incoming
-  if (tx.amount < 0) return "ienakosie";
+  // 1. Incoming — client paid us. Positive amount in unified
+  //    convention. We don't try to subdivide incoming further;
+  //    everything client-paid goes into 'ienakosie'.
+  if (tx.amount > 0) return "ienakosie";
 
   // Build a haystack of all the text fields we might match on
   const haystack = [

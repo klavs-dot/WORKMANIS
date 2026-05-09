@@ -264,21 +264,22 @@ export function parseBankStatementCSV(csvText: string): ParsedTransaction[] {
     if (dcMarkerIdx >= 0 && accountCurrencyAmountIdx >= 0) {
       const marker = (row[dcMarkerIdx] ?? "").trim().toUpperCase();
       const value = parseNum(row[accountCurrencyAmountIdx] ?? "");
-      // D = debit (we paid out, money LEFT the account → positive
-      // for matching against received invoices we owe).
-      // C = credit (money came IN → negative in our convention,
-      // since this represents incoming, not outgoing payments).
-      amount = marker === "D" ? value : -value;
+      // UNIFIED convention — positive = money received, negative
+      // = money paid out. Used everywhere (parser, reconciler,
+      // bank-import endpoint, UI banner).
+      // D = debit (we paid out) → NEGATIVE
+      // C = credit (we received) → POSITIVE
+      amount = marker === "D" ? -value : value;
     } else if (dcMarkerIdx >= 0 && amountIdx >= 0) {
       // SEB without the account-currency split (rare): use the
       // transaction-currency amount with the D/C marker
       const marker = (row[dcMarkerIdx] ?? "").trim().toUpperCase();
       const value = parseNum(row[amountIdx] ?? "");
-      amount = marker === "D" ? value : -value;
+      amount = marker === "D" ? -value : value;
     } else if (creditIdx >= 0 && debitIdx >= 0) {
       const cr = parseNum(row[creditIdx] ?? "");
       const db = parseNum(row[debitIdx] ?? "");
-      amount = db - cr; // debit positive (we owe / paid out)
+      amount = cr - db; // credit positive (we received), debit negative
     } else if (accountCurrencyAmountIdx >= 0) {
       amount = parseNum(row[accountCurrencyAmountIdx] ?? "");
     } else if (amountIdx >= 0) {

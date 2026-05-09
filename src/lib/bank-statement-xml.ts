@@ -128,8 +128,17 @@ export function isBankStatementXML(text: string): boolean {
  *     </Statement>
  *   </FIDAVISTA>
  *
- * Sign convention matches CSV path: D → positive (we paid),
- * C → negative (we received).
+ * Sign convention (UNIFIED across the codebase):
+ *   D (Debit)  → money LEFT our account (we paid out)  → NEGATIVE
+ *   C (Credit) → money came INTO our account (received) → POSITIVE
+ *
+ * This matches reconciler, bank-import endpoint, UI orphan banner,
+ * and visi-maksajumi-tab — they all treat positive=incoming.
+ *
+ * Earlier versions of this parser had inverted convention which
+ * caused outgoing payments (e.g. supplier wire transfers) to
+ * appear in the Ienākošie tab as if they were client payments.
+ * Hotfix on 2026-05-09 unified the convention.
  */
 function parseFidavista(xml: string): ParsedTransaction[] {
   const out: ParsedTransaction[] = [];
@@ -168,9 +177,14 @@ function parseFidavista(xml: string): ParsedTransaction[] {
     const numericAmount = parseFloat(accAmtStr || amtStr || "0");
     if (isNaN(numericAmount)) continue;
 
-    // D = debit = money LEFT account = we paid out → positive
-    // C = credit = money came IN = we received → negative
-    const signed = corD === "D" ? numericAmount : -numericAmount;
+    // D = debit = money LEFT account = we paid out → NEGATIVE
+    // C = credit = money came IN = we received → POSITIVE
+    //
+    // This convention is shared with the CSV parser, the
+    // reconciler, the bank-import endpoint, and all UI views.
+    // The inverse convention used to live here and caused
+    // outgoing payments to render as 'Saņemtie maksājumi'.
+    const signed = corD === "D" ? -numericAmount : numericAmount;
 
     out.push({
       rawDate,
@@ -263,9 +277,11 @@ function parseCamt053(xml: string): ParsedTransaction[] {
     const numericAmount = parseFloat(amtStr || "0");
     if (isNaN(numericAmount)) continue;
 
-    // DBIT = debit = we paid → positive in our convention
-    // CRDT = credit = we received → negative
-    const signed = cdtDbt === "DBIT" ? numericAmount : -numericAmount;
+    // DBIT = debit = we paid out → NEGATIVE
+    // CRDT = credit = we received → POSITIVE
+    // Unified convention with FIDAVISTA, reconciler, bank-import,
+    // and UI — positive means money came in.
+    const signed = cdtDbt === "DBIT" ? -numericAmount : numericAmount;
 
     out.push({
       rawDate,
