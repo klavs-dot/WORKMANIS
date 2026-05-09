@@ -33,6 +33,7 @@ import {
   Loader2,
   UserCheck,
   X,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useCompany } from "@/lib/company-context";
 import { usePayments, type BankPayment } from "@/lib/payments-store";
@@ -173,10 +174,48 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [classifyOpen, setClassifyOpen] = useState(false);
+  const [flipping, setFlipping] = useState(false);
 
   const isIncoming = payment.amount > 0;
   const Icon = isIncoming ? ArrowDownToLine : ArrowUpFromLine;
   const absAmount = Math.abs(payment.amount);
+
+  const handleFlipSign = async () => {
+    if (flipping || !activeCompany?.id) return;
+    if (
+      !confirm(
+        isIncoming
+          ? `Patiešām pārveidot par izejošo? Maksājums ${payment.counterparty} ${absAmount.toFixed(2)} EUR pārvietosies uz Izejošie tabu.`
+          : `Patiešām pārveidot par ienākošo? Maksājums ${payment.counterparty} ${absAmount.toFixed(2)} EUR pārvietosies uz Ienākošie tabu.`
+      )
+    )
+      return;
+    setFlipping(true);
+    try {
+      const res = await fetch(
+        `/api/payments/${encodeURIComponent(payment.id)}/flip-sign?company_id=${encodeURIComponent(activeCompany.id)}`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const errBody = await res
+          .json()
+          .catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(errBody?.error || `Kļūda ${res.status}`);
+      }
+      pushToastGlobally(
+        "success",
+        isIncoming
+          ? "Pārvietots uz Izejošie tabu."
+          : "Pārvietots uz Ienākošie tabu.",
+        4000
+      );
+      void refreshPayments();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Neizdevās";
+      pushToastGlobally("error", msg, 6000);
+      setFlipping(false);
+    }
+  };
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -277,6 +316,27 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
             {isIncoming ? "+" : "−"}
             {absAmount.toFixed(2)} EUR
           </span>
+          <button
+            type="button"
+            onClick={handleFlipSign}
+            disabled={flipping}
+            className={cn(
+              "shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-md",
+              "transition-colors disabled:opacity-50",
+              "text-graphite-400 hover:text-graphite-700 hover:bg-graphite-100"
+            )}
+            title={
+              isIncoming
+                ? "Patiesībā tas ir izejošais (mainīt zīmi)"
+                : "Patiesībā tas ir ienākošais (mainīt zīmi)"
+            }
+          >
+            {flipping ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <ArrowLeftRight className="h-3 w-3" />
+            )}
+          </button>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-[11px] text-graphite-500">
