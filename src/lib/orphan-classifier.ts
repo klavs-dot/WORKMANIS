@@ -416,6 +416,20 @@ export async function classifyOrphanTransaction(
     return { kind: "unknown" };
   }
 
+  // Sesija 7 — early exit when there's nothing for the AI to match
+  // against. This is the common case for fresh accounts (user
+  // created the company, no clients/suppliers added yet). Without
+  // this exit, every single orphan still costs ~2-3s of Haiku
+  // round-trip just to confirm 'no, that empty list doesn't match
+  // anything'. With 98 orphans that's 200-300s — right at the
+  // Vercel 300s timeout boundary, so the import endpoint runs out
+  // of budget before it can tag any orphan with maksajums_bez_rekina.
+  // Result: all 98 orphans end up with payment_status='' and the
+  // 'AI klasificēt' button can't find them either.
+  if (knownClients.length === 0 && knownSuppliers.length === 0) {
+    return { kind: "unknown" };
+  }
+
   const ai = await aiMatch(
     anthropic,
     transaction,

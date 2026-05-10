@@ -99,7 +99,34 @@ export async function POST(request: Request) {
 
   const orphansToClassify = allPayments.filter((r) => {
     const status = r.payment_status as string;
-    if (status !== "maksajums_bez_rekina") return false;
+    const matchedInvoiceId = String(r.matched_invoice_id ?? "");
+    const classifiedSection = String(r.classified_section ?? "");
+
+    // Sesija 7 — accept BOTH explicitly-tagged orphans
+    // (payment_status='maksajums_bez_rekina') AND payments that
+    // were imported but never tagged because the bank-statement
+    // import hit Vercel's 300s timeout before the orphan-tagging
+    // pass could run.
+    //
+    // Indicators of "this is an unfinished orphan":
+    //   - payment_status is empty (not 'apmaksats', not 'sasaistits')
+    //   - matched_invoice_id is empty (not linked to any invoice)
+    //   - classified_section is one of the bank-flow sections
+    //     (ienakosie, izejosie, automatiskie, fiziskie) — i.e.
+    //     a real payment, not a manually-classified partner/algas
+    const isExplicitOrphan = status === "maksajums_bez_rekina";
+    const isUntaggedOrphan =
+      !status &&
+      !matchedInvoiceId &&
+      [
+        "ienakosie",
+        "izejosie",
+        "automatiskie",
+        "fiziskie",
+      ].includes(classifiedSection);
+
+    if (!isExplicitOrphan && !isUntaggedOrphan) return false;
+
     if (!force && r.ai_category && r.ai_category !== "") {
       return false; // already classified, skip unless forced
     }
