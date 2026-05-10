@@ -94,10 +94,30 @@ export async function GET(request: Request) {
     });
 
     const rows = await sheets.list("01_requisites");
-    const row =
-      (rows as Array<Record<string, unknown>>).find(
-        (r) => r.id === REQUISITES_ROW_ID
-      ) ?? (rows as Array<Record<string, unknown>>)[0];
+
+    // Sesija 7 hotfix — find the canonical req-001 row first.
+    // Falling back to rows[0] (as we did before) was wrong because
+    // it surfaced stale rows from earlier seeds/templates that
+    // never got cleaned up. If a sheet has both an old GWM-template
+    // row (id='req-XXXXXX-1') and a new user-saved row
+    // (id='req-001'), rows[0] would return whichever happened to
+    // be physically first, which is non-deterministic.
+    //
+    // New behavior:
+    //   - If req-001 exists → return it (this is the single source
+    //     of truth, written by every PUT)
+    //   - If no req-001 yet (first-ever GET on a fresh sheet) →
+    //     return empty defaults so the UI shows a blank form for
+    //     the user to fill in. The user's first save will create
+    //     req-001 cleanly.
+    //
+    // This means stale rows from seeds/templates with non-req-001
+    // IDs are effectively orphaned. They're not visible through
+    // the API, but they still occupy sheet rows. A future cleanup
+    // pass could delete them; for now they're just inert.
+    const row = (rows as Array<Record<string, unknown>>).find(
+      (r) => r.id === REQUISITES_ROW_ID
+    );
 
     if (!row) {
       // No requisites set yet — return empty defaults so the UI
