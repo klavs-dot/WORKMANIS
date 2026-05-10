@@ -193,11 +193,43 @@ export async function POST(request: Request) {
   // populated. Classification (which 'section' it belongs to —
   // invoice / salary / tax) is left for downstream code; right
   // now we just want them in the sheet for reconciliation.
+  //
+  // Sesija 7 hotfix — duplicate detection. If the user re-uploads
+  // the same FIDAVISTA file (intentionally, to recover from a
+  // partial import that hit Vercel's 300s timeout, or by mistake),
+  // we skip rows that already exist in 35_payments.
+  //
+  // Match key: payment_date + amount_cents + counterparty.
+  // This handles same-day same-amount duplicates (e.g. two ASANA
+  // subscription charges on the same day for different products)
+  // since the counterparty descriptor differs slightly enough
+  // to avoid false-positive dedupe. If the bank ever issues two
+  // truly identical transactions on the same date, the second
+  // would be skipped — acceptable tradeoff for getting safe
+  // re-import behaviour.
+  const existingPayments = (await sheets.list("35_payments")) as Array<
+    Record<string, unknown>
+  >;
+  const existingKeys = new Set(
+    existingPayments.map(
+      (r) =>
+        `${r.payment_date ?? ""}|${r.amount_cents ?? ""}|${(r.counterparty as string ?? "").trim().toLowerCase()}`
+    )
+  );
+
   const persistedTxs: BankTransaction[] = [];
+  let skippedDuplicates = 0;
   for (const tx of transactions) {
     try {
       const amountCents = Math.round(tx.amount * 100);
       const direction = amountCents >= 0 ? "incoming" : "outgoing";
+
+      // Skip duplicates
+      const key = `${tx.date ?? tx.rawDate}|${amountCents}|${tx.counterparty.trim().toLowerCase()}`;
+      if (existingKeys.has(key)) {
+        skippedDuplicates++;
+        continue;
+      }
 
       // Extract bank-supplied transaction type code. FIDAVISTA
       // saves it as raw.TypeCode (e.g. 'PMNTCCRDOTHR-Pirkums'
@@ -253,6 +285,10 @@ export async function POST(request: Request) {
         raw_reference: txType || tx.reference,
       });
       const id = (row as unknown as Record<string, unknown>).id as string;
+      // Add the new key to the seen set so a same-batch duplicate
+      // (rare but possible if file has same tx twice) doesn't
+      // double-insert
+      existingKeys.add(key);
       persistedTxs.push({
         paymentId: id,
         date: tx.date ?? tx.rawDate,
@@ -766,6 +802,7 @@ export async function POST(request: Request) {
     ok: true,
     parsed: {
       transactionCount: persistedTxs.length,
+      skippedDuplicates,
       format,
       period: { from: periodFrom, to: periodTo },
     },
