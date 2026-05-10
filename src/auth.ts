@@ -1,43 +1,29 @@
 /**
  * Auth.js v5 (NextAuth) configuration.
  *
- * Single source of truth for authentication. Imported by the API route
- * handler at /app/api/auth/[...nextauth]/route.ts and by server components
- * that need to read the current user (e.g. middleware, server actions).
+ * Two providers active simultaneously:
+ *   1. Google OAuth — for the OWNER. Gets Drive + Sheets scopes.
+ *   2. Credentials — for EXTERNAL USERS (accountants, warehouse
+ *      managers) added by the owner. Validated against bcrypt
+ *      hashes in account-master.gsheet/02_external_users.
  *
- * Why JWT strategy (not database):
- *   - We don't have a backend database — Sheets IS our database
- *   - JWT lets us put the Google OAuth access_token + refresh_token
- *     directly into the session, so server-side Sheets/Drive calls
- *     can authenticate as the user without an extra database lookup
- *   - Token refresh happens automatically in the jwt callback below
+ * Session shape additions for Sesija 7:
+ *   role            'owner' | 'accountant' | 'warehouse_manager'
+ *   ownerEmail      For owner: their email. For external users:
+ *                   the email of the owner whose system they
+ *                   were granted access to.
+ *   allowedCompanyIds  Empty = all companies. Restricted otherwise.
  *
- * Why these scopes:
- *   - openid + email + profile  → standard sign-in identity
- *   - drive.file                → required for resolveCompany() to find
- *                                 account-master.gsheet in the user's Drive.
- *                                 'drive.file' only sees files OUR app
- *                                 created, never the user's other docs.
- *   - spreadsheets              → read account-master/01_companies registry
- *                                 and 04_company_oauth tokens
- *
- * What is INTENTIONALLY NOT here anymore (moved to per-company
- * OAuth at /api/companies/oauth/*):
- *   - gmail.readonly — per-company. Different companies can use
- *     different Gmail accounts; one shared session-level Gmail
- *     scope wouldn't let us route invoices correctly.
- *
- * The remaining Drive/Sheets scopes are needed because of a
- * bootstrap problem: resolveCompany() must walk the user's
- * Drive to find account-master.gsheet BEFORE we know any
- * company exists, so it can't use per-company OAuth tokens
- * (those live IN that sheet). Once a company exists,
- * getCompanyClients(id) takes over and uses the company's
- * own Drive/Sheets/Gmail tokens for everything else.
+ * Delegated Sheets access (Faze 2 follow-up): external user
+ * sessions don't have Google tokens. Sheets API calls from
+ * those sessions need to use the owner's tokens — this is
+ * implemented in the API endpoints by looking up the owner
+ * via session.ownerEmail.
  */
 
 import NextAuth, { type DefaultSession } from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 
 const GOOGLE_SCOPES = [
   "openid",
@@ -47,6 +33,8 @@ const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
 ].join(" ");
 
+export type SessionRole = "owner" | "accountant" | "warehouse_manager";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Google({
@@ -55,46 +43,107 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorization: {
         params: {
           scope: GOOGLE_SCOPES,
-          // Force consent screen so we always get a refresh_token on first
-          // login (Google omits it on subsequent logins otherwise)
           access_type: "offline",
           prompt: "consent",
         },
       },
     }),
+    Credentials({
+      id: "external",
+      name: "External user",
+      credentials: {
+        email: { label: "E-pasts", type: "email" },
+        password: { label: "Parole", type: "password" },
+        ownerEmail: { label: "Uzņēmuma e-pasts", type: "email" },
+      },
+      async authorize(credentials) {
+        const email = (credentials?.email as string | undefined)?.trim();
+        const password = (credentials?.password as string | undefined) ?? "";
+        const ownerEmail = (
+          credentials?.ownerEmail as string | undefined
+        )?.trim();
+
+        if (!email || !password || !ownerEmail) {
+          throw new Error(
+            "Aizpildi visus laukus: e-pasts, parole, uzņēmuma e-pasts"
+          );
+        }
+
+        // Dynamic import to keep googleapis out of edge bundle
+        const { validateExternalUserLogin } = await import(
+          "@/lib/external-users-login"
+        );
+        const result = await validateExternalUserLogin({
+          email,
+          password,
+          ownerEmail,
+        });
+        if (!result) {
+          throw new Error(
+            "Nepareizs e-pasts vai parole. Pārbaudi ka uzņēmuma e-pasts ir pareizs."
+          );
+        }
+
+        return {
+          id: result.id,
+          email: result.email,
+          name: result.email,
+          role: result.role,
+          ownerEmail: result.ownerEmail,
+          allowedCompanyIds: result.allowedCompanyIds,
+        } as unknown as { id: string; email: string; name: string };
+      },
+    }),
   ],
   session: { strategy: "jwt" },
   callbacks: {
-    /**
-     * Persist OAuth tokens onto the JWT. Called on sign-in (with `account`)
-     * and on every subsequent request (without `account` — token already set).
-     *
-     * Refresh logic: if the access token expired, exchange the refresh_token
-     * for a new access_token. Refresh failures bubble up to the session
-     * callback as `error: "RefreshAccessTokenError"` so the client can
-     * trigger a re-login.
-     */
-    async jwt({ token, account }) {
-      // Initial sign-in — copy tokens from `account` onto `token`
-      if (account) {
+    async jwt({ token, account, user }) {
+      // Initial sign-in via Google — owner role
+      if (account?.provider === "google") {
         return {
           ...token,
           accessToken: account.access_token,
           refreshToken: account.refresh_token,
-          expiresAt: account.expires_at, // unix seconds
+          expiresAt: account.expires_at,
+          role: "owner",
+          ownerEmail: token.email,
+          allowedCompanyIds: [],
         };
       }
 
-      // Subsequent requests — check if access token still valid
-      const expiresAt = (token as { expiresAt?: number }).expiresAt;
+      // Initial sign-in via Credentials — external user role
+      if (account?.provider === "external" && user) {
+        const u = user as unknown as {
+          role: SessionRole;
+          ownerEmail: string;
+          allowedCompanyIds: string[];
+        };
+        return {
+          ...token,
+          role: u.role,
+          ownerEmail: u.ownerEmail,
+          allowedCompanyIds: u.allowedCompanyIds,
+          accessToken: undefined,
+          refreshToken: undefined,
+        };
+      }
+
+      const t = token as {
+        expiresAt?: number;
+        refreshToken?: string;
+        role?: SessionRole;
+      };
+
+      // External users — no Google token to refresh
+      if (t.role && t.role !== "owner") return token;
+
+      const expiresAt = t.expiresAt;
       if (expiresAt && Date.now() < expiresAt * 1000 - 60_000) {
-        // Token still valid (with 60s buffer for clock skew)
         return token;
       }
 
-      // Token expired — try refresh
       try {
-        const refreshToken = (token as { refreshToken?: string }).refreshToken;
+        const refreshToken = t.refreshToken;
         if (!refreshToken) throw new Error("Missing refresh token");
 
         const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -115,8 +164,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           ...token,
           accessToken: refreshed.access_token,
           expiresAt: Math.floor(Date.now() / 1000) + refreshed.expires_in,
-          // refresh_token is rotated only sometimes; keep the old one if
-          // Google didn't return a new one
           refreshToken: refreshed.refresh_token ?? refreshToken,
         };
       } catch (error) {
@@ -125,19 +172,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
     },
 
-    /**
-     * Expose the access token + any refresh error to the client/server
-     * session object. Server components can call `auth()` to get this.
-     */
     async session({ session, token }) {
       const t = token as {
         accessToken?: string;
         error?: string;
+        role?: SessionRole;
+        ownerEmail?: string;
+        allowedCompanyIds?: string[];
       };
       return {
         ...session,
         accessToken: t.accessToken,
         error: t.error,
+        role: t.role ?? "owner",
+        ownerEmail: t.ownerEmail,
+        allowedCompanyIds: t.allowedCompanyIds ?? [],
       };
     },
   },
@@ -146,11 +195,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 });
 
-// Type augmentation — declare the extra fields we put on Session
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
     error?: string;
+    role?: SessionRole;
+    ownerEmail?: string;
+    allowedCompanyIds?: string[];
     user: DefaultSession["user"];
   }
 }
