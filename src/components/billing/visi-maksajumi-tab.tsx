@@ -159,7 +159,13 @@ export function VisiMaksajumiTab() {
         id: `pay:${p.id}`,
         date: p.paymentDate,
         counterparty: p.counterparty,
-        amount: section === "ienakosie" ? Math.abs(p.amount) : -p.amount,
+        // Sesija 7 hotfix — was `section === "ienakosie" ? Math.abs : -p.amount`.
+        // After the unified-sign-convention parser fix, p.amount is
+        // already correctly signed (positive=incoming, negative=outgoing).
+        // The old `-p.amount` was for the inverted convention and
+        // double-flipped legitimate outgoing payments back to positive
+        // (e.g. ALEX INDUSTRY -3521.83 displayed as +3521.83).
+        amount: p.amount,
         section,
         status: p.matchedInvoiceId ? "matched" : "no_invoice",
         reference: p.bankReference || p.rawReference || "",
