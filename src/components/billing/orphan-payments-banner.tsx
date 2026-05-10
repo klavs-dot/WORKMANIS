@@ -52,32 +52,48 @@ export function OrphanPaymentsBanner({
   const { payments } = usePayments();
 
   const orphans = payments.filter((p) => {
-    if (p.paymentStatus !== "maksajums_bez_rekina") return false;
+    // Sesija 7 hotfix — broaden the filter beyond
+    // payment_status="maksajums_bez_rekina". When AI orphan
+    // classifier auto-recognizes a known client and creates a
+    // placeholder invoice, it CLEARS payment_status and sets
+    // classified_section to "invoice_out". The UI then loses
+    // these payments entirely — they don't show in the orphan
+    // banner (no maksajums_bez_rekina) and the placeholder
+    // invoice doesn't surface in the issued-invoices list
+    // (it's marked apmaksats and (automātiski izveidots)).
+    //
+    // New filter: show every payment that doesn't have a
+    // user-confirmed link yet. A real link means matched_invoice_id
+    // is set AND points to a non-placeholder invoice. Since we
+    // can't easily check the placeholder flag from here, we use
+    // a simpler proxy: payment_status === "apmaksats" means the
+    // user explicitly confirmed this is paid (good — hide it).
+    // Anything else (empty status, maksajums_bez_rekina,
+    // gaida_apmaksu) means the user hasn't confirmed → show.
+    if (p.paymentStatus === "apmaksats") return false;
+    if (p.paymentStatus === "sasaistits") return false;
+
     // Direction filter — incoming = money in (positive amount in
     // store's signed convention), outgoing = money out (negative)
     if (direction === "incoming") {
       if (p.amount <= 0) return false;
 
-      // Sesija 7 hotfix — exclude two patterns that look like
-      // 'incoming' but aren't real client payments:
-      //
-      //   1. CARD REFUNDS (atmaksas) — counterparty contains
-      //      'karte' (Latvian for 'card') with a positive amount.
-      //      These are refunds from physical/online stores after
-      //      a returned purchase, NOT a client paying us.
-      //      Example: 'DEPO-VEIKALS-LIEPAJA / 18/04/2026 14:21
-      //               karte...658798' with amount +60.64€.
-      //      User correctly identified these as confusing the tab.
-      //
-      //   2. BANK FEE REVERSALS — counterparty 'SEB banka',
-      //      'Swedbank', 'Citadele', 'Luminor' with tiny amounts
-      //      (under 5€). These are usually fee reversals or
-      //      account rounding, not client payments.
-      const ref = (p.bankReference || p.rawReference || "").toLowerCase();
-      const cp = (p.counterparty || "").toLowerCase();
+      // Skip if classified as something other than ienakosie
+      // (e.g. fiziskie ATM cash deposits — BRINK'S, etc).
+      // Those are physical, not client payments.
+      if (
+        p.classifiedSection &&
+        p.classifiedSection !== "ienakosie" &&
+        p.classifiedSection !== "invoice_out" &&
+        p.classifiedSection !== ""
+      ) {
+        return false;
+      }
 
       // Card-refund detection: 'karte' or 'card' with no IBAN
       // (real client payments have IBAN; card refunds don't)
+      const ref = (p.bankReference || p.rawReference || "").toLowerCase();
+      const cp = (p.counterparty || "").toLowerCase();
       const looksLikeCardRefund =
         (ref.includes("karte") || ref.includes(" card") || ref.includes(" pos")) &&
         !p.counterpartyIban;
@@ -96,6 +112,10 @@ export function OrphanPaymentsBanner({
 
       return true;
     }
+
+    // Outgoing — only show explicitly-tagged orphans (otherwise
+    // every supplier payment would clutter this banner)
+    if (p.paymentStatus !== "maksajums_bez_rekina") return false;
     return p.amount < 0;
   });
 
