@@ -68,6 +68,7 @@ function UznemumiPageInner() {
     setActiveCompany,
     deleteCompany,
     refresh,
+    loadRequisites,
   } = useCompany();
   const [editing, setEditing] = useState<Company | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -152,7 +153,27 @@ function UznemumiPageInner() {
   }, [searchParams]);
 
   const handleCopy = async (company: Company, format: CopyFormat) => {
-    const text = formatRequisites(company, format);
+    // Sesija 7 — the company list endpoint only returns identity
+    // fields cached in the master sheet (name, legal_name, reg_number,
+    // vat_number). Address, IBAN, phone, email, website etc. live in
+    // the per-company gsheet/01_requisites tab. Fetch those first
+    // so the clipboard text contains EVERYTHING the user filled in,
+    // not just the two cached fields.
+    //
+    // formatRequisites already skips empty fields, so unfilled
+    // optional fields (e.g. website if the user didn't enter one)
+    // are correctly omitted from the output.
+    let merged: Company = company;
+    try {
+      const fresh = await loadRequisites(company.id);
+      merged = { ...company, ...fresh };
+    } catch (err) {
+      // Non-fatal: fall back to cached fields. Worst case the user
+      // gets the same partial output as before, but we don't break
+      // the copy flow on a transient API hiccup.
+      console.warn("handleCopy: loadRequisites failed, using cached", err);
+    }
+    const text = formatRequisites(merged, format);
     try {
       await navigator.clipboard.writeText(text);
       showToast(`Nokopēts · ${company.name}`);
