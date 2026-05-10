@@ -85,6 +85,29 @@ export function RequisitesModal({
   // Load fresh data when modal opens. We use the company's existing
   // fields as initial paint (so the form doesn't flash blank), then
   // fetch the full requisites and update.
+  //
+  // Sesija 7 hotfix — loadRequisites was in the dep array. Since
+  // it's a new function reference every render (defined inline in
+  // CompanyContext without useCallback), this useEffect re-fired
+  // on every render, causing:
+  //   1. Infinite loop: each fire scheduled a state update, which
+  //      re-rendered CompanyContext, which made a new loadRequisites,
+  //      which re-fired the useEffect, ad infinitum.
+  //   2. Form data reset: every fire reset the form values to the
+  //      company list data (KKK), wiping out any GWM data freshly
+  //      fetched from the API.
+  //   3. Stuck loading: setLoadingRequisites(true) fired on every
+  //      render before the previous fetch's .finally(false) ran.
+  //
+  // Fix: depend only on `open` and the company id (a string, stable
+  // between renders unless the user actually switches companies).
+  // Use a ref to access loadRequisites without subscribing to its
+  // identity changes.
+  const loadRequisitesRef = useRef(loadRequisites);
+  useEffect(() => {
+    loadRequisitesRef.current = loadRequisites;
+  }, [loadRequisites]);
+
   useEffect(() => {
     if (!open || !company) return;
 
@@ -107,7 +130,7 @@ export function RequisitesModal({
 
     // Fetch fresh from API (updates form fields if remote has more)
     setLoadingRequisites(true);
-    void loadRequisites(company.id)
+    void loadRequisitesRef.current(company.id)
       .then((fresh) => {
         if (fresh.name) setName(fresh.name);
         if (fresh.legalName) setLegalName(fresh.legalName);
@@ -126,7 +149,8 @@ export function RequisitesModal({
         if (fresh.brandColor) setBrandColor(fresh.brandColor);
       })
       .finally(() => setLoadingRequisites(false));
-  }, [open, company, loadRequisites]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, company?.id]);
 
   const handleLogoFile = async (file: File) => {
     if (!company) return;
