@@ -1,22 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
   User,
   Building2,
-  FileDown,
   Globe,
-  Bell,
-  Landmark,
-  Mail,
-  CheckCircle2,
-  ArrowRight,
   Database,
   Download,
   Upload,
   Trash2,
   AlertTriangle,
+  UserCog,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
@@ -24,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label, Separator } from "@/components/ui/primitives";
-import { Switch } from "@/components/ui/switch-tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -43,15 +38,29 @@ import {
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/lib/company-context";
 
+// Sesija 7 — restructured. Removed sections that duplicated other
+// pages or had no real functionality:
+//   - Eksports → already covered by /gramatvedibai eksporti
+//   - Paziņojumi → no notification system yet, was a stub
+//   - Bankas integrācija → covered by per-company FIDAVISTA import
+//   - E-pasta importēšana → covered by per-company Gmail OAuth
+//
+// Kept (with real data wiring):
+//   - Vispārīgie — name + email from session (Master OAuth)
+//   - Uzņēmumi — list from context, default = active company
+//   - Dati un dublējumi — JSON export/import + clear
+//   - Valoda — UI language picker (LV only for now, but kept
+//     for when EN translations land)
+//
+// Added:
+//   - Grāmatvedība — placeholder for granting accountant access
+//     (full auth implementation comes in a follow-up)
 const sections = [
   { id: "general", label: "Vispārīgie", icon: User },
   { id: "companies", label: "Uzņēmumi", icon: Building2 },
-  { id: "export", label: "Eksports", icon: FileDown },
+  { id: "accountant", label: "Grāmatvedība", icon: UserCog },
   { id: "data", label: "Dati un dublējumi", icon: Database },
   { id: "language", label: "Valoda", icon: Globe },
-  { id: "notifications", label: "Paziņojumi", icon: Bell },
-  { id: "bank", label: "Bankas integrācija", icon: Landmark },
-  { id: "email", label: "E-pasta importēšana", icon: Mail },
 ];
 
 /**
@@ -162,12 +171,9 @@ export default function IestatijumiPage() {
             >
               {active === "general" && <GeneralSettings />}
               {active === "companies" && <CompanySettings />}
-              {active === "export" && <ExportSettings />}
+              {active === "accountant" && <AccountantSettings />}
               {active === "data" && <DataManagementSettings />}
               {active === "language" && <LanguageSettings />}
-              {active === "notifications" && <NotificationSettings />}
-              {active === "bank" && <BankIntegration />}
-              {active === "email" && <EmailImport />}
             </motion.div>
           </div>
         </div>
@@ -227,117 +233,158 @@ function FieldRow({
 }
 
 function GeneralSettings() {
+  // Sesija 7 — wired to actual session (Master OAuth identity)
+  // instead of hardcoded 'Klāvs Bērziņš' / 'klavs@globalwolfmotors.com'.
+  // The fields are READ-ONLY because name + email come from
+  // Google — to change them, the user has to update their Google
+  // account, not WORKMANIS. We make this clear with a hint line.
+  const { data: session, status } = useSession();
+
+  if (status === "loading") {
+    return (
+      <div className="space-y-4">
+        <SettingsCard title="Profils" description="Jūsu personīgā informācija">
+          <p className="text-sm text-muted-foreground">Ielādē profilu…</p>
+        </SettingsCard>
+      </div>
+    );
+  }
+
+  const name = session?.user?.name ?? "—";
+  const email = session?.user?.email ?? "—";
+
   return (
     <div className="space-y-4">
       <SettingsCard
         title="Profils"
-        description="Jūsu personīgā informācija"
+        description="Šie dati nāk no Tava Google konta. Lai mainītu, atjaunini Google profilu."
       >
         <FieldRow label="Vārds, Uzvārds">
-          <Input defaultValue="Klāvs Bērziņš" />
+          <Input value={name} readOnly className="bg-muted" />
         </FieldRow>
         <FieldRow label="E-pasta adrese">
-          <Input defaultValue="klavs@globalwolfmotors.com" type="email" />
+          <Input value={email} type="email" readOnly className="bg-muted" />
         </FieldRow>
-        <FieldRow label="Tālrunis">
-          <Input defaultValue="+371 29 000 000" type="tel" />
-        </FieldRow>
-        <div className="flex justify-end pt-4 gap-2">
-          <Button variant="ghost" size="sm">
-            Atcelt
-          </Button>
-          <Button size="sm">Saglabāt izmaiņas</Button>
-        </div>
       </SettingsCard>
     </div>
   );
 }
 
 function CompanySettings() {
+  // Sesija 7 — wired to real company list from useCompany() context
+  // instead of hardcoded 'gwm/drift/mosphera/visitliepaja'.
+  // The 'Pievienot uzņēmumu' button now links to /uznemumi where
+  // the actual provisioning flow lives, instead of a non-functional
+  // text input.
+  const { companies, activeCompany, setActiveCompany } = useCompany();
+
   return (
     <SettingsCard
       title="Noklusējuma uzņēmums"
       description="Uzņēmums, ar kuru sākt katru sesiju"
     >
       <FieldRow
-        label="Noklusējuma uzņēmums"
+        label="Aktīvais uzņēmums"
         hint="Rēķiniem un maksājumiem, ja nav norādīts cits"
       >
-        <Select defaultValue="gwm">
+        <Select
+          value={activeCompany?.id ?? ""}
+          onValueChange={(id) => setActiveCompany(id)}
+        >
           <SelectTrigger>
-            <SelectValue />
+            <SelectValue placeholder="Izvēlies uzņēmumu" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="gwm">Global Wolf Motors</SelectItem>
-            <SelectItem value="drift">Drift Arena Liepāja</SelectItem>
-            <SelectItem value="mosphera">Mosphera</SelectItem>
-            <SelectItem value="visitliepaja">Visit Liepāja</SelectItem>
+            {companies.length === 0 && (
+              <SelectItem value="__none" disabled>
+                Vēl nav pievienots neviens uzņēmums
+              </SelectItem>
+            )}
+            {companies.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+                {c.legalName ? ` · ${c.legalName}` : ""}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </FieldRow>
       <FieldRow
         label="Pievienot uzņēmumu"
-        hint="Ievadiet reģistrācijas numuru, un automātiski aizpildīsim pārējo"
+        hint="Uzņēmumi tiek pievienoti caur uzņēmumu lapu"
       >
-        <div className="flex gap-2">
-          <Input placeholder="40003000000" />
-          <Button size="sm">Pievienot</Button>
-        </div>
+        <Button asChild size="sm" variant="outline">
+          <a href="/uznemumi">Pārvaldīt uzņēmumus</a>
+        </Button>
       </FieldRow>
     </SettingsCard>
   );
 }
 
-function ExportSettings() {
+/**
+ * Sesija 7 — placeholder for the "grant accountant access" flow.
+ *
+ * Vision (per user spec): the user enters an email + sets a
+ * password, and the accountant can log in via /gramatvediba (or
+ * a dedicated /accountant route) using that email/password to see
+ * EVERYTHING in the user's WORKMANIS — full read access to all
+ * companies, all sheets, all invoices.
+ *
+ * That's a separate auth backend from the Google OAuth used by
+ * the owner — implementing it requires:
+ *   - A new auth provider (credentials-based) wired into Auth.js
+ *   - A new sheet/tab to store accountant credentials (hashed
+ *     passwords, never plaintext)
+ *   - Role-aware middleware to scope what an accountant can see
+ *   - A login page at /atbildigais or /gramatvediba
+ *   - Password generation + secure delivery (one-time link,
+ *     emailed to the accountant)
+ *
+ * For now this section explains the upcoming feature and shows
+ * a 'Coming soon' note. The infrastructure changes are big
+ * enough to warrant their own dedicated session.
+ */
+function AccountantSettings() {
   return (
-    <SettingsCard
-      title="Eksporta iestatījumi"
-      description="Pielāgojiet, kā dati tiek eksportēti"
-    >
-      <FieldRow label="Noklusējuma formāts">
-        <Select defaultValue="xlsx">
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
-            <SelectItem value="csv">CSV</SelectItem>
-            <SelectItem value="pdf">PDF</SelectItem>
-          </SelectContent>
-        </Select>
-      </FieldRow>
-      <FieldRow
-        label="Datumu formāts"
-        hint="Kā datumi tiks attēloti eksportos"
+    <div className="space-y-4">
+      <SettingsCard
+        title="Grāmatvedības piekļuve"
+        description="Piešķir savai grāmatvedei tiesības skatīt VISU Tavu WORKMANIS — visus uzņēmumus, rēķinus un maksājumus — caur atsevišķu paroli."
       >
-        <Select defaultValue="lv">
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="lv">31.12.2026</SelectItem>
-            <SelectItem value="iso">2026-12-31</SelectItem>
-            <SelectItem value="us">12/31/2026</SelectItem>
-          </SelectContent>
-        </Select>
-      </FieldRow>
-      <FieldRow
-        label="Valūtas formāts"
-        hint="Decimālās atdalītājs"
-      >
-        <Select defaultValue="comma">
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="comma">1 234,56 €</SelectItem>
-            <SelectItem value="dot">€1,234.56</SelectItem>
-          </SelectContent>
-        </Select>
-      </FieldRow>
-    </SettingsCard>
+        <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">Drīzumā</p>
+          <p className="mt-1">
+            Šī funkcija ir izstrādes procesā. Tu varēsi pievienot
+            grāmatveža e-pastu un piešķirt paroli — viņa tad
+            ielogosies caur īpašu &ldquo;sētas durvju&rdquo; lapu un
+            redzēs visu Tavu sistēmu read-only režīmā.
+          </p>
+        </div>
+        <FieldRow label="Grāmatveža e-pasts" hint="Vēl nav aktīvs">
+          <Input
+            placeholder="gramatvede@firma.lv"
+            type="email"
+            disabled
+            className="bg-muted"
+          />
+        </FieldRow>
+        <FieldRow label="Pagaidu parole" hint="Vēl nav aktīvs">
+          <Input
+            placeholder="Tiks ģenerēta automātiski"
+            disabled
+            className="bg-muted"
+          />
+        </FieldRow>
+        <div className="flex justify-end pt-4">
+          <Button size="sm" disabled>
+            Piešķirt piekļuvi
+          </Button>
+        </div>
+      </SettingsCard>
+    </div>
   );
 }
+
 
 // ============================================================
 // Data management — backup, restore, reset all localStorage
@@ -1155,203 +1202,3 @@ function LanguageSettings() {
   );
 }
 
-function NotificationSettings() {
-  const notifications = [
-    {
-      label: "Tuvojas apmaksas termiņš",
-      hint: "3 dienas pirms rēķina termiņa",
-      enabled: true,
-    },
-    {
-      label: "Jauns rēķins saņemts",
-      hint: "Kad e-pastā ienāk jauns rēķins",
-      enabled: true,
-    },
-    {
-      label: "Termiņš beidzies",
-      hint: "Kad rēķins kļūst nokavēts",
-      enabled: true,
-    },
-    {
-      label: "Abonementa cenas izmaiņas",
-      hint: "Kad mainās abonementa cena",
-      enabled: false,
-    },
-    {
-      label: "Nedēļas pārskats",
-      hint: "Katru pirmdien 9:00",
-      enabled: true,
-    },
-  ];
-
-  return (
-    <SettingsCard
-      title="Paziņojumi"
-      description="Izvēlieties, par ko jūs vēlaties tikt informēts"
-    >
-      <div className="-mt-2">
-        {notifications.map((n, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between py-3.5 border-b border-graphite-100 last:border-0"
-          >
-            <div>
-              <p className="text-[13.5px] font-medium text-graphite-900">
-                {n.label}
-              </p>
-              <p className="text-[11.5px] text-graphite-500 mt-0.5">{n.hint}</p>
-            </div>
-            <Switch defaultChecked={n.enabled} />
-          </div>
-        ))}
-      </div>
-    </SettingsCard>
-  );
-}
-
-function BankIntegration() {
-  return (
-    <div className="space-y-4">
-      <Card className="p-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-100/50 to-transparent rounded-full blur-2xl" />
-        <div className="relative">
-          <div className="flex items-start justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white">
-                <Landmark className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
-                    SEB banka
-                  </h3>
-                  <Badge variant="muted">Nav pieslēgts</Badge>
-                </div>
-                <p className="text-[12.5px] text-graphite-500 mt-0.5">
-                  Automātiski sinhronizējiet darījumus un kontus
-                </p>
-              </div>
-            </div>
-            <Button size="sm">
-              Pieslēgties
-              <ArrowRight className="h-3 w-3" />
-            </Button>
-          </div>
-          <div className="rounded-xl bg-graphite-50/60 border border-graphite-100 p-3 text-[12px] text-graphite-600 leading-relaxed">
-            <span className="text-graphite-900 font-medium">Nākošais solis:</span>{" "}
-            Pieslēgšanās notiek caur SEB Open Banking API. Tas ļaus WORKMANIS redzēt rēķinu apmaksas statusus un automātiski atzīmēt apmaksātos rēķinus.
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-graphite-100 text-graphite-700 border border-graphite-200">
-              <Landmark className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
-                Swedbank
-              </h3>
-              <p className="text-[12.5px] text-graphite-500 mt-0.5">
-                Pieejams arī Swedbank pieslēgums
-              </p>
-            </div>
-          </div>
-          <Button variant="secondary" size="sm">
-            Pieslēgties
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-function EmailImport() {
-  return (
-    <div className="space-y-4">
-      <Card className="p-6">
-        <div className="flex items-start justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-600 text-white">
-              <Mail className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-[16px] font-semibold tracking-tight text-graphite-900">
-                  E-pasta importēšana
-                </h3>
-                <Badge variant="success">
-                  <CheckCircle2 className="h-2.5 w-2.5" />
-                  Aktīvs
-                </Badge>
-              </div>
-              <p className="text-[12.5px] text-graphite-500 mt-0.5">
-                rekini@workmanis.lv
-              </p>
-            </div>
-          </div>
-          <Button variant="secondary" size="sm">
-            Kopēt adresi
-          </Button>
-        </div>
-        <div className="grid grid-cols-3 gap-3 pt-5 border-t border-graphite-100">
-          <div>
-            <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-              Šomēnes apstrādāti
-            </p>
-            <p className="mt-1.5 text-[22px] font-semibold tabular text-graphite-900">
-              24
-            </p>
-          </div>
-          <div>
-            <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-              Automātiski atpazīti
-            </p>
-            <p className="mt-1.5 text-[22px] font-semibold tabular text-graphite-900">
-              21
-            </p>
-          </div>
-          <div>
-            <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
-              Precizitāte
-            </p>
-            <p className="mt-1.5 text-[22px] font-semibold tabular text-emerald-600">
-              87%
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="p-6">
-        <h3 className="text-[14px] font-semibold tracking-tight text-graphite-900 mb-3">
-          Kā tas strādā
-        </h3>
-        <ol className="space-y-3 text-[12.5px] text-graphite-600 leading-relaxed">
-          <li className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-graphite-900 text-white text-[10px] font-semibold">
-              1
-            </span>
-            Pārsūtiet rēķinu e-pastus uz{" "}
-            <span className="font-mono text-graphite-900">
-              rekini@workmanis.lv
-            </span>
-          </li>
-          <li className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-graphite-900 text-white text-[10px] font-semibold">
-              2
-            </span>
-            AI automātiski nolasa piegādātāju, summu, IBAN un datumus
-          </li>
-          <li className="flex gap-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-graphite-900 text-white text-[10px] font-semibold">
-              3
-            </span>
-            Rēķins tiek pievienots sistēmā gaidot jūsu apstiprinājumu
-          </li>
-        </ol>
-      </Card>
-    </div>
-  );
-}
