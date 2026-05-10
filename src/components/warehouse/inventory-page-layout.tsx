@@ -20,12 +20,20 @@
  */
 
 import { useMemo, useState } from "react";
-import { Plus, Search, ArrowDownAZ, ArrowDown01 } from "lucide-react";
+import { Plus, Search, ArrowDownAZ, ArrowDown01, X } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/business/headers";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/primitives";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +58,16 @@ import {
   type StockChangeAction,
   type WarehouseSection,
 } from "@/lib/warehouse-store";
+import { useCustomCategories } from "@/lib/custom-categories";
+
+// Emoji palette for the custom category picker. Categories aren't
+// shape-coded with lucide icons here (warehouse uses emojis to keep
+// things scannable), so we offer a curated set covering common
+// warehouse use-cases. Users can paste a custom emoji manually.
+const EMOJI_OPTIONS = [
+  "📦", "🔧", "⚙️", "🛠️", "🔩", "🔋", "🎒", "🛞",
+  "🧴", "📐", "🪛", "⚡", "🪜", "🪤", "📏", "🧰",
+];
 
 type SortMode = "name" | "low-stock";
 
@@ -66,22 +84,65 @@ export function InventoryPageLayout({
   section,
   items,
   showCategoryTabs,
+  customCategoryScope,
 }: {
   title: string;
   description: string;
   section: WarehouseSection;
   items: InventoryItem[];
   showCategoryTabs: boolean;
+  /** Scope key for user-defined categories (e.g. 'noliktava').
+   *  When provided, the page shows a 'Jauna kategorija' button
+   *  and merges the user's custom categories with the built-in
+   *  WAREHOUSE_CATEGORIES list. Items can be saved to either
+   *  set of categories. */
+  customCategoryScope?: string;
 }) {
   const { loading, createItem, updateItem, deleteItem, changeStock } =
     useWarehouse();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortMode>("name");
-  const [category, setCategory] = useState<WarehouseCategoryId | "all">("all");
+  const [category, setCategory] = useState<string>("all");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
+  const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
+
+  const {
+    categories: customCategories,
+    add: addCustomCategory,
+    remove: removeCustomCategory,
+  } = useCustomCategories(customCategoryScope ?? "__none");
+
+  // Combined list used by the tab strip and form modal. Built-ins
+  // first (stable order), then user's custom categories at the end.
+  const allCategories = useMemo(
+    () => [
+      ...WAREHOUSE_CATEGORIES.map((c) => ({
+        id: c.id as string,
+        label: c.label,
+        emoji: c.emoji,
+        builtin: true,
+      })),
+      ...(customCategoryScope
+        ? customCategories.map((c) => ({
+            id: c.key,
+            label: c.label,
+            // custom-categories.ts stores 'iconName' but for warehouse
+            // we use emoji — repurpose the field to hold the emoji.
+            emoji: c.iconName,
+            builtin: false,
+          }))
+        : []),
+    ],
+    [customCategories, customCategoryScope]
+  );
+
+  const handleRemoveCategory = (id: string) => {
+    if (category === id) setCategory("all");
+    removeCustomCategory(id);
+  };
 
   const [pendingDelete, setPendingDelete] = useState<InventoryItem | null>(null);
   const [pendingStock, setPendingStock] = useState<PendingStockChange | null>(
@@ -249,9 +310,6 @@ export function InventoryPageLayout({
 
         {showCategoryTabs && (
           <div className="px-3 pb-3 flex gap-1.5 overflow-x-auto items-center">
-            {/* 'Visas' chip — explicitly larger per user request,
-                no stock-alert ring (it shows everything, would
-                always be alarming if anything anywhere is low). */}
             <CategoryChip
               active={category === "all"}
               onClick={() => setCategory("all")}
@@ -259,12 +317,9 @@ export function InventoryPageLayout({
             >
               Visas ({items.length})
             </CategoryChip>
-            {WAREHOUSE_CATEGORIES.map((c) => {
+            {allCategories.map((c) => {
               const itemsInCat = items.filter((i) => i.category === c.id);
               const count = itemsInCat.length;
-              // Compute the worst stock state in this category — that
-              // determines the chip's alert ring color. 'out' (any item
-              // at zero) wins over 'low' (any 1-2) wins over neither.
               const hasZero = itemsInCat.some((i) => i.stock <= 0);
               const hasLow = itemsInCat.some(
                 (i) => i.stock > 0 && i.stock <= 2
@@ -274,18 +329,51 @@ export function InventoryPageLayout({
                 : hasLow
                   ? "low"
                   : undefined;
+              const isActive = category === c.id;
               return (
                 <CategoryChip
                   key={c.id}
-                  active={category === c.id}
+                  active={isActive}
                   onClick={() => setCategory(c.id)}
                   alert={alert}
                   size="lg"
                 >
-                  {c.emoji} {c.label} ({count})
+                  <span className="inline-flex items-center gap-1">
+                    {c.emoji} {c.label} ({count})
+                    {!c.builtin && isActive && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (
+                            window.confirm(
+                              `Dzēst kategoriju «${c.label}»?`
+                            )
+                          ) {
+                            handleRemoveCategory(c.id);
+                          }
+                        }}
+                        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded text-graphite-500 hover:bg-graphite-200 hover:text-graphite-900"
+                      >
+                        <X className="h-3 w-3" />
+                      </span>
+                    )}
+                  </span>
                 </CategoryChip>
               );
             })}
+            {customCategoryScope && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAddCategoryDialog(true)}
+                className="ml-1 shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Jauna kategorija
+              </Button>
+            )}
           </div>
         )}
       </Card>
@@ -329,6 +417,15 @@ export function InventoryPageLayout({
         initialItem={editing}
         showCategory={showCategoryTabs}
         onSubmit={submitForm}
+        extraCategories={
+          customCategoryScope
+            ? customCategories.map((c) => ({
+                id: c.key,
+                label: c.label,
+                emoji: c.iconName,
+              }))
+            : undefined
+        }
       />
 
       <ConfirmDialog
@@ -354,6 +451,18 @@ export function InventoryPageLayout({
         destructive
         onConfirm={confirmDelete}
       />
+
+      {customCategoryScope && (
+        <AddWarehouseCategoryDialog
+          open={showAddCategoryDialog}
+          onOpenChange={setShowAddCategoryDialog}
+          onAdd={(label, emoji) => {
+            const created = addCustomCategory(label, emoji);
+            setCategory(created.key);
+            setShowAddCategoryDialog(false);
+          }}
+        />
+      )}
     </AppShell>
   );
 }
@@ -411,5 +520,101 @@ function CategoryChip({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Sesija 7 — dialog for adding user-defined warehouse categories.
+ * Stored in localStorage via useCustomCategories('noliktava').
+ *
+ * Picker uses emojis (not lucide icons) to match the warehouse
+ * UI's existing 🔩 🔋 🎒 🛞 visual language. The first emoji slot
+ * is auto-selected; user can pick a different one before saving.
+ */
+function AddWarehouseCategoryDialog({
+  open,
+  onOpenChange,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onAdd: (label: string, emoji: string) => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [emoji, setEmoji] = useState(EMOJI_OPTIONS[0]);
+
+  const handleSubmit = () => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    onAdd(trimmed, emoji);
+    setLabel("");
+    setEmoji(EMOJI_OPTIONS[0]);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Jauna kategorija</DialogTitle>
+          <DialogDescription>
+            Pievieno savu kategoriju noliktavas precēm (piem.,
+            &ldquo;Krāsas&rdquo;, &ldquo;Iepakojums&rdquo;, &ldquo;Eļļas&rdquo;).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Nosaukums</Label>
+            <Input
+              autoFocus
+              placeholder="piem. Krāsas"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSubmit();
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Ikona</Label>
+            <div className="grid grid-cols-8 gap-1.5">
+              {EMOJI_OPTIONS.map((e) => {
+                const sel = emoji === e;
+                return (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setEmoji(e)}
+                    className={cn(
+                      "rounded-md border px-2 py-2 text-lg transition-colors",
+                      sel
+                        ? "border-graphite-900 bg-graphite-900/5"
+                        : "border-graphite-200 hover:bg-graphite-50"
+                    )}
+                  >
+                    {e}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+            >
+              Atcelt
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSubmit}
+              disabled={!label.trim()}
+            >
+              Pievienot
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

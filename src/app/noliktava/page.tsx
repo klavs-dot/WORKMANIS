@@ -12,6 +12,7 @@ export default function NoliktavaPage() {
       section="inventory"
       items={inventory}
       showCategoryTabs
+      customCategoryScope="noliktava"
     />
   );
 }

@@ -379,6 +379,7 @@ export function InventoryFormModal({
   initialItem,
   showCategory,
   onSubmit,
+  extraCategories,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -394,8 +395,14 @@ export function InventoryFormModal({
     stock: number;
     notes: string;
   }) => void;
+  /** Sesija 7 — user-defined categories appended to the built-in
+   *  WAREHOUSE_CATEGORIES list inside the picker grid. Each entry:
+   *  { id, label, emoji }. */
+  extraCategories?: Array<{ id: string; label: string; emoji: string }>;
 }) {
-  const [category, setCategory] = useState<WarehouseCategoryId>("standarta");
+  // Allow string instead of strict WarehouseCategoryId so user-defined
+  // category keys are storable here. Default to first built-in.
+  const [category, setCategory] = useState<string>("standarta");
   const [imageUrl, setImageUrl] = useState("");
   const [name, setName] = useState("");
   const [supplier, setSupplier] = useState("");
@@ -438,7 +445,7 @@ export function InventoryFormModal({
   useEffect(() => {
     if (!open) return;
     if (initialItem) {
-      setCategory((initialItem.category as WarehouseCategoryId) || "standarta");
+      setCategory(initialItem.category || "standarta");
       setImageUrl(initialItem.imageUrl);
       setName(initialItem.name);
       setSupplier(initialItem.supplier);
@@ -497,7 +504,14 @@ export function InventoryFormModal({
             <div className="space-y-1.5">
               <Label>Kategorija</Label>
               <div className="grid grid-cols-2 gap-1.5">
-                {WAREHOUSE_CATEGORIES.map((c) => {
+                {[
+                  ...WAREHOUSE_CATEGORIES.map((c) => ({
+                    id: c.id as string,
+                    label: c.label,
+                    emoji: c.emoji,
+                  })),
+                  ...(extraCategories ?? []),
+                ].map((c) => {
                   const selected = category === c.id;
                   return (
                     <button
