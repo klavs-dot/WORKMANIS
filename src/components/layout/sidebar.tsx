@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard,
@@ -83,6 +84,22 @@ export function Sidebar() {
   const pathname = usePathname();
   const notifications = useNotifications();
   const { activeCompany } = useCompany();
+  const { data: session } = useSession();
+
+  // Sesija 7 — derive initials and display name from the OAuth
+  // session. Fallbacks: 'Lietotājs' for the name, '?' for initials.
+  // Two-letter initials work for both 'Klāvs Bērziņš' (KB) and
+  // single-name cases like 'Linda' (LI).
+  const userName = session?.user?.name ?? "Lietotājs";
+  const userEmail = session?.user?.email ?? "";
+  const initials = userName
+    ? userName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((p) => p[0]?.toUpperCase() ?? "")
+        .join("") || userName.slice(0, 2).toUpperCase()
+    : "?";
 
   /**
    * Sidebar tint based on active company's brandColor.
@@ -479,14 +496,20 @@ export function Sidebar() {
         {/* User card */}
         <div className="mt-3 flex items-center gap-2.5 rounded-lg border border-graphite-200/60 bg-white p-2 shadow-soft-xs">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-graphite-900 text-white text-[11px] font-semibold">
-            KB
+            {initials}
           </div>
           <div className="flex-1 min-w-0 leading-tight">
-            <p className="text-[12.5px] font-medium text-graphite-900 truncate">
-              Klāvs Bērziņš
+            <p
+              className="text-[12.5px] font-medium text-graphite-900 truncate"
+              title={userName}
+            >
+              {userName}
             </p>
-            <p className="text-[10.5px] text-graphite-500 truncate">
-              Administrators
+            <p
+              className="text-[10.5px] text-graphite-500 truncate"
+              title={userEmail}
+            >
+              {userEmail || "Administrators"}
             </p>
           </div>
         </div>

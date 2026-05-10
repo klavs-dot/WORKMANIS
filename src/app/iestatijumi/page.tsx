@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
@@ -345,43 +345,371 @@ function CompanySettings() {
  * enough to warrant their own dedicated session.
  */
 function AccountantSettings() {
+  return <ExternalUsersManager role="accountant" />;
+}
+
+/**
+ * Reusable CRUD panel for external users (accountants and
+ * warehouse managers). Both roles share the same
+ * /api/external-users endpoint — they only differ in:
+ *   - Default allowedCompanyIds: accountant gets all (empty array
+ *     means 'all'), warehouse_manager gets a curated subset
+ *   - Description copy + section title
+ *
+ * The panel:
+ *   1. Lists existing users for this role on mount (GET)
+ *   2. Lets owner add a new user (POST → shows plaintext password
+ *      ONCE, never again)
+ *   3. Lets owner remove an existing user (DELETE)
+ *   4. For warehouse_manager: lets owner edit the company access
+ *      list per user (PATCH)
+ */
+function ExternalUsersManager({
+  role,
+}: {
+  role: "accountant" | "warehouse_manager";
+}) {
+  const { companies } = useCompany();
+  const [users, setUsers] = useState<
+    Array<{
+      id: string;
+      email: string;
+      role: "accountant" | "warehouse_manager";
+      allowedCompanyIds: string[];
+      createdAt: string;
+    }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newPassword, setNewPassword] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/external-users");
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+      const all = (data.users ?? []) as Array<{
+        id: string;
+        email: string;
+        role: "accountant" | "warehouse_manager";
+        allowedCompanyIds: string[];
+        createdAt: string;
+      }>;
+      setUsers(all.filter((u) => u.role === role));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
+  const handleDelete = async (id: string) => {
+    if (
+      !window.confirm(
+        "Vai tiešām atņemt piekļuvi? Lietotājs vairs nevarēs ielogoties."
+      )
+    ) {
+      return;
+    }
+    try {
+      const r = await fetch(`/api/external-users?id=${id}`, {
+        method: "DELETE",
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+      void reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete");
+    }
+  };
+
+  const isAccountant = role === "accountant";
+  const title = isAccountant
+    ? "Grāmatvedības piekļuve"
+    : "Noliktavas atbildīgie";
+  const description = isAccountant
+    ? "Piešķir savai grāmatvedei tiesības ielogoties ar atsevišķu paroli un skatīt VISU Tavu WORKMANIS — visus uzņēmumus, rēķinus un maksājumus."
+    : "Pievieno noliktavas atbildīgos. Katrs atbildīgais var ielogoties ar savu paroli un redzēt tikai pieejamās noliktavas (Noliktava, Demo produkcija, Gatavā produkcija).";
+
   return (
     <div className="space-y-4">
-      <SettingsCard
-        title="Grāmatvedības piekļuve"
-        description="Piešķir savai grāmatvedei tiesības skatīt VISU Tavu WORKMANIS — visus uzņēmumus, rēķinus un maksājumus — caur atsevišķu paroli."
-      >
-        <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-medium">Drīzumā</p>
-          <p className="mt-1">
-            Šī funkcija ir izstrādes procesā. Tu varēsi pievienot
-            grāmatveža e-pastu un piešķirt paroli — viņa tad
-            ielogosies caur īpašu &ldquo;sētas durvju&rdquo; lapu un
-            redzēs visu Tavu sistēmu read-only režīmā.
+      <SettingsCard title={title} description={description}>
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+            {error}
+          </div>
+        )}
+
+        {/* List existing users */}
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Ielādē…</p>
+        ) : users.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {isAccountant
+              ? "Vēl nav pievienota neviena grāmatvede."
+              : "Vēl nav pievienots neviens atbildīgais."}
           </p>
-        </div>
-        <FieldRow label="Grāmatveža e-pasts" hint="Vēl nav aktīvs">
-          <Input
-            placeholder="gramatvede@firma.lv"
-            type="email"
-            disabled
-            className="bg-muted"
-          />
-        </FieldRow>
-        <FieldRow label="Pagaidu parole" hint="Vēl nav aktīvs">
-          <Input
-            placeholder="Tiks ģenerēta automātiski"
-            disabled
-            className="bg-muted"
-          />
-        </FieldRow>
-        <div className="flex justify-end pt-4">
-          <Button size="sm" disabled>
-            Piešķirt piekļuvi
+        ) : (
+          <div className="space-y-2">
+            {users.map((u) => (
+              <div
+                key={u.id}
+                className="flex items-center justify-between rounded-lg border border-graphite-200 bg-white px-3 py-2"
+              >
+                <div>
+                  <p className="text-sm font-medium">{u.email}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {isAccountant
+                      ? "Pilna piekļuve visiem uzņēmumiem"
+                      : u.allowedCompanyIds.length === 0
+                        ? "Visi uzņēmumi"
+                        : `${u.allowedCompanyIds.length} ${
+                            u.allowedCompanyIds.length === 1
+                              ? "uzņēmums"
+                              : "uzņēmumi"
+                          }`}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleDelete(u.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <Button size="sm" onClick={() => setShowAdd(true)}>
+            {isAccountant
+              ? "Pievienot grāmatvedi"
+              : "Pievienot atbildīgo"}
           </Button>
         </div>
       </SettingsCard>
+
+      {/* Show plaintext password once after creation */}
+      {newPassword && (
+        <Dialog
+          open={!!newPassword}
+          onOpenChange={(o) => !o && setNewPassword(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Parole izveidota</DialogTitle>
+              <DialogDescription>
+                Saglabā šo paroli — pēc dialoga aizvēršanas tā vairs
+                nebūs redzama.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+              <p className="text-sm font-medium text-amber-900">
+                {newPassword.email}
+              </p>
+              <p className="font-mono text-lg font-semibold text-amber-900">
+                {newPassword.password}
+              </p>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(
+                    `${newPassword.email}\n${newPassword.password}`
+                  );
+                }}
+              >
+                Kopēt e-pastu un paroli
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      <AddExternalUserDialog
+        open={showAdd}
+        onOpenChange={setShowAdd}
+        role={role}
+        companies={companies.map((c) => ({ id: c.id, name: c.name }))}
+        onCreated={(email, password) => {
+          setNewPassword({ email, password });
+          setShowAdd(false);
+          void reload();
+        }}
+      />
     </div>
+  );
+}
+
+function AddExternalUserDialog({
+  open,
+  onOpenChange,
+  role,
+  companies,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  role: "accountant" | "warehouse_manager";
+  companies: Array<{ id: string; name: string }>;
+  onCreated: (email: string, password: string) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isAccountant = role === "accountant";
+
+  const handleSubmit = async () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Ievadi e-pasta adresi");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/external-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: trimmed,
+          role,
+          // Accountant always gets all-companies access (empty array
+          // is the convention for 'all' on read-side checks).
+          // Warehouse manager gets the curated subset.
+          allowedCompanyIds: isAccountant ? [] : selectedCompanies,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+      onCreated(trimmed, data.plaintextPassword);
+      setEmail("");
+      setSelectedCompanies([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {isAccountant
+              ? "Pievienot grāmatvedi"
+              : "Pievienot atbildīgo"}
+          </DialogTitle>
+          <DialogDescription>
+            {isAccountant
+              ? "Grāmatvede saņems pilnu piekļuvi visam Tavam WORKMANIS — visiem uzņēmumiem, rēķiniem, maksājumiem."
+              : "Atbildīgais redzēs tikai pieejamos uzņēmumus un to noliktavas (Noliktava, Demo, Gatavā produkcija)."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>E-pasta adrese</Label>
+            <Input
+              autoFocus
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={
+                isAccountant
+                  ? "gramatvede@firma.lv"
+                  : "atbildigais@firma.lv"
+              }
+            />
+          </div>
+
+          {!isAccountant && (
+            <div className="space-y-1.5">
+              <Label>Pieejamie uzņēmumi</Label>
+              {companies.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nav pievienots neviens uzņēmums. Vispirms pievieno
+                  uzņēmumus &raquo; Uzņēmumi.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {companies.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-2 rounded-md border border-graphite-200 bg-white px-2 py-1.5 cursor-pointer hover:bg-graphite-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedCompanies.includes(c.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedCompanies([
+                              ...selectedCompanies,
+                              c.id,
+                            ]);
+                          } else {
+                            setSelectedCompanies(
+                              selectedCompanies.filter((id) => id !== c.id)
+                            );
+                          }
+                        }}
+                      />
+                      <span className="text-sm">{c.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Ja neizvēlies nevienu, atbildīgais redzēs visus uzņēmumus.
+              </p>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            Parole tiks ģenerēta automātiski un parādīta vienreiz pēc
+            pievienošanas.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            Atcelt
+          </Button>
+          <Button size="sm" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Veido…" : "Pievienot"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
