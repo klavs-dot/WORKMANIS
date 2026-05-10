@@ -52,7 +52,15 @@ import { pushToastGlobally } from "@/lib/toast-context";
 // Types
 // ============================================================
 
-export type AssetCategory = "domeni" | "automasinas" | "citi";
+/**
+ * Category key. Standard tabs are 'domeni' | 'automasinas' | 'citi',
+ * but Sesija 7 added user-defined categories via the Aktīvi page's
+ * '+ Jauna kategorija' button. To keep things simple we widen the
+ * type to plain string at the storage layer; the UI checks against
+ * a known list for default tabs and treats anything else as a
+ * custom category.
+ */
+export type AssetCategory = string;
 export type AssetStatus = "aktivs" | "neaktivs" | "pardots" | "apkalposana";
 export type AssetNoteColor = "sarkana" | "zala" | "pelēka";
 
