@@ -112,6 +112,13 @@ export function EmailImportRobotButton({
             recipient: string;
             reason: string;
           }>;
+          triageSkippedDetails?: Array<{
+            messageId: string;
+            subject: string;
+            type: string;
+            confidence: number;
+            reasoning: string;
+          }>;
         }>;
       };
 
@@ -137,6 +144,22 @@ export function EmailImportRobotButton({
           for (const u of scan.unmatchedDetails) {
             console.log(
               `    [${u.messageId}] no '${u.supplier}' uz '${u.recipient}' — ${u.reason}`
+            );
+          }
+        }
+        // Sesija 7 — surface triage decisions so user can verify
+        // why a scanned email wasn't processed (most common cause
+        // of "Atrasti X, apstrādāti 0").
+        if (
+          scan.triageSkippedDetails &&
+          scan.triageSkippedDetails.length > 0
+        ) {
+          console.log(
+            `  Triage izlaidis (${scan.triageSkippedDetails.length}) — AI atzinis ka tas nav rēķins:`
+          );
+          for (const t of scan.triageSkippedDetails) {
+            console.log(
+              `    [${t.messageId}] type=${t.type} conf=${t.confidence.toFixed(2)} subject="${t.subject}" — ${t.reasoning}`
             );
           }
         }

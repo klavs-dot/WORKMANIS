@@ -98,6 +98,19 @@ interface MailboxScanSummary {
     recipient: string;
     reason: string;
   }>;
+  /**
+   * Sesija 7 — emails that triage classified as non-invoice and
+   * skipped before extraction. Surfaces why an email might have
+   * been skipped ('newsletter', 'personal', etc.) so the user
+   * can verify the AI isn't being too aggressive.
+   */
+  triageSkippedDetails?: Array<{
+    messageId: string;
+    subject: string;
+    type: string;
+    confidence: number;
+    reasoning: string;
+  }>;
 }
 
 export async function POST(request: Request) {
@@ -473,6 +486,7 @@ export async function POST(request: Request) {
         reason: e.reason,
       })),
       unmatchedDetails: scanResult.unmatched,
+      triageSkippedDetails: scanResult.triageSkipped,
     });
   }
 

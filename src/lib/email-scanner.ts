@@ -151,6 +151,21 @@ export interface ScanResult {
   invoicesParsed: ScannedInvoice[];
   errors: Array<{ messageId: string; reason: string }>;
   /**
+   * Sesija 7 — emails that triage classified as non-invoice and
+   * skipped before extraction. Most common reason for "Atrasti
+   * X, apstrādāti 0" in the UI summary. Surfacing the triage
+   * decisions here lets the user see exactly which subjects
+   * were marked as e.g. 'newsletter' or 'personal' so they
+   * can verify the AI isn't being too aggressive.
+   */
+  triageSkipped: Array<{
+    messageId: string;
+    subject: string;
+    type: string;
+    confidence: number;
+    reasoning: string;
+  }>;
+  /**
    * Invoices that AI extracted successfully but were rejected
    * because the recipient didn't match the active company.
    * Sesija 2 spec: only invoices addressed to the current
@@ -311,6 +326,7 @@ export async function scanGmailForInvoices(
     messagesProcessed: 0,
     invoicesParsed: [],
     errors: [],
+    triageSkipped: [],
     unmatched: [],
     lastMessageInternalDate: input.sinceInternalDate ?? 0,
   };
@@ -416,6 +432,13 @@ export async function scanGmailForInvoices(
         console.log(
           `[email-triage] SKIPPED type=${triage.type} conf=${triage.confidence.toFixed(2)}`
         );
+        result.triageSkipped.push({
+          messageId: ref.id ?? "",
+          subject: fetched.subject.slice(0, 100),
+          type: triage.type,
+          confidence: triage.confidence,
+          reasoning: triage.reasoning?.slice(0, 200) ?? "",
+        });
       }
     }
   }
