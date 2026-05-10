@@ -37,6 +37,7 @@ import {
   getCompanyClients,
   NoCompanyOAuthError,
 } from "@/lib/company-clients";
+import { syncCompanyFieldsToMaster } from "@/lib/sync-company-master";
 
 export const maxDuration = 30;
 
@@ -232,6 +233,30 @@ export async function PUT(request: Request) {
         "01_requisites",
         REQUISITES_ROW_ID,
         rowData
+      );
+    }
+
+    // Sesija 7 — sync identity fields to the user's master sheet
+    // so the side-nav company list shows the new name/legal name
+    // without a manual refresh. We only sync the identity trio
+    // (name, legal_name, reg_number, vat_number) — addresses,
+    // emails, bank info etc. are full-requisites territory and
+    // don't surface in the side nav.
+    //
+    // This needs the SESSION token (user's personal OAuth that
+    // owns the master sheet), not the company-scoped OAuth used
+    // for sheets operations above.
+    if (session.accessToken) {
+      await syncCompanyFieldsToMaster(
+        session.accessToken,
+        session.user.email,
+        companyId,
+        {
+          name: rowData.name,
+          legal_name: rowData.legal_name,
+          reg_number: rowData.reg_number,
+          vat_number: rowData.vat_number,
+        }
       );
     }
 
