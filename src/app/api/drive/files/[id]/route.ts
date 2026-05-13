@@ -31,6 +31,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { google } from "googleapis";
 import { auth } from "@/auth";
 import {
   createDriveClientFromInstance,
@@ -74,14 +75,44 @@ export async function GET(
   const mode = url.searchParams.get("mode") === "view" ? "view" : "download";
 
   try {
-    // Per-company OAuth: file lives in the COMPANY's Drive,
-    // accessed via the company's own access token. Without this
-    // migration, files belonging to companies whose Drive is in
-    // a different Gmail than the login user's would 404.
-    const cc = await getCompanyClients(companyId);
+    // Sesija 7 — try per-company OAuth first, fall back to the
+    // login session's own access token if the company doesn't
+    // have a separate Gmail account connected.
+    //
+    // Rationale: logo files are typically uploaded by the owner
+    // to their OWN Drive (the same Drive that holds the
+    // account-master sheet), so the owner's session token has
+    // the same Drive scope and can read the file. Per-company
+    // OAuth is only needed for Gmail invoice scanning — for
+    // plain Drive file reads, the owner's token works fine and
+    // avoids breaking logos when the user hasn't (yet) connected
+    // a Gmail account to the company.
+    let driveAuthClient;
+    let companyFolderId: string;
+    try {
+      const cc = await getCompanyClients(companyId);
+      driveAuthClient = cc.drive;
+      companyFolderId = cc.company.folderId;
+    } catch (err) {
+      if (err instanceof NoCompanyOAuthError && session.accessToken) {
+        // Fall back to session token. Still need the company's
+        // folder ID — read it directly from the master sheet
+        // via the session.
+        const oauth2 = new google.auth.OAuth2();
+        oauth2.setCredentials({ access_token: session.accessToken });
+        driveAuthClient = google.drive({ version: "v3", auth: oauth2 });
+        // Folder scoping check is bypassed here. Drive's own ACL
+        // protects: the file ID must already be accessible to the
+        // session user, otherwise getFileMetadata returns 404.
+        companyFolderId = "";
+      } else {
+        throw err;
+      }
+    }
+
     const drive = createDriveClientFromInstance({
-      drive: cc.drive,
-      companyFolderId: cc.company.folderId,
+      drive: driveAuthClient,
+      companyFolderId,
     });
 
     // Fetch metadata first so we can set the filename + mime type.

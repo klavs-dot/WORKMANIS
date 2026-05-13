@@ -11,6 +11,13 @@
  *     the value until it's valid
  *   - Empty string is valid (means "no preference, use default")
  *
+ * Sesija 7 fix: useEffect to sync customInput with value when
+ * the parent updates value after an async load (e.g. requisites
+ * modal loading fresh data from API). Without this, the modal
+ * appeared to "lose" the saved color after Cmd+R — the preset
+ * swatch would briefly highlight then unhighlight when fresh
+ * data arrived, because customInput stayed stuck at empty.
+ *
  * Why a controlled component:
  *   The parent (requisites modal, add-company modal) holds the
  *   brandColor in form state alongside other fields. This lets
@@ -25,7 +32,7 @@
  *     layer for non-Tailwind contexts
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +75,19 @@ export function BrandColorPicker({
   // rejecting partial input ('#10b'). We push to onChange only
   // when the value parses or when they pick a preset.
   const [customInput, setCustomInput] = useState(value);
+
+  // Sesija 7 fix: keep customInput in sync with the parent value
+  // when the parent updates async (e.g. requisites modal loads
+  // fresh data from API after mount). Without this, customInput
+  // got stuck at the empty initial value and the input field
+  // appeared blank even though the swatch was correctly selected.
+  // Only resync when value is a complete hex — partial typed
+  // input ('#10b') shouldn't get overwritten while user types.
+  useEffect(() => {
+    if (!value || HEX_REGEX.test(value)) {
+      setCustomInput(value);
+    }
+  }, [value]);
 
   const normalizedValue = (value ?? "").toUpperCase();
   const isPreset = PRESET_COLORS.some(
