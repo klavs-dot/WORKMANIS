@@ -345,7 +345,178 @@ function CompanySettings() {
  * enough to warrant their own dedicated session.
  */
 function AccountantSettings() {
-  return <ExternalUsersManager role="accountant" />;
+  return (
+    <div className="space-y-4">
+      <ExternalAuthSetupWizard />
+      <ExternalUsersManager role="accountant" />
+    </div>
+  );
+}
+
+/**
+ * Sesija 7 Faze 2 — onboarding wizard for the delegated-access
+ * setup. Walks the owner through:
+ *   1. Confirming the service account is configured server-side
+ *   2. Sharing their account-master sheet with the service
+ *      account email (one click → copy email to clipboard)
+ *   3. Adding the sheet ID to OWNER_SHEET_REGISTRY env var
+ *
+ * Steps that are already done show a green check. Pending steps
+ * show the action needed with copy-to-clipboard helpers.
+ *
+ * The wizard hides itself entirely once status='ready' — no
+ * point bothering the owner with setup info after it's all
+ * configured. It also surfaces if they're using a stale Vercel
+ * deployment that doesn't have the service account env yet
+ * (status='no-service-account').
+ */
+function ExternalAuthSetupWizard() {
+  const [data, setData] = useState<{
+    ownerEmail: string;
+    sheetId: string | null;
+    serviceAccountEmail: string | null;
+    registeredSheetId: string | null;
+    status: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch("/api/owner-setup");
+        if (r.ok) setData(await r.json());
+      } catch {
+        // ignore — wizard hides on failure
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return null;
+  if (!data) return null;
+  if (data.status === "ready") return null; // all set
+
+  const copy = (text: string) => {
+    void navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-amber-900">
+          Lai grāmatvedis un noliktavas atbildīgais varētu ielogoties
+        </h3>
+        <p className="text-xs text-amber-800 mt-1">
+          Veic šos soļus vienreiz, lai aktivizētu ārējo lietotāju
+          piekļuvi. Pēc tam šis bloks pazudīs.
+        </p>
+      </div>
+
+      {data.status === "no-service-account" && (
+        <div className="space-y-1.5 text-xs text-amber-900">
+          <p className="font-medium">
+            Solis 1 — Service account nav konfigurēts
+          </p>
+          <p>
+            Sazinies ar sistēmas administratoru, lai pievienotu{" "}
+            <code className="bg-amber-100 px-1 rounded">
+              GOOGLE_SERVICE_ACCOUNT_KEY
+            </code>{" "}
+            Vercel environment variable.
+          </p>
+        </div>
+      )}
+
+      {data.status === "no-sheet" && (
+        <div className="space-y-1.5 text-xs text-amber-900">
+          <p className="font-medium">
+            Solis 1 — WORKMANIS folderis nav atrasts
+          </p>
+          <p>
+            Vispirms izveido uzņēmumu sadaļā &laquo;Uzņēmumi&raquo;,
+            lai sistēma izveido account-master sheet.
+          </p>
+        </div>
+      )}
+
+      {data.serviceAccountEmail &&
+        data.sheetId &&
+        data.status === "needs-env-var" && (
+          <>
+            <div className="space-y-1.5 text-xs text-amber-900">
+              <p className="font-medium">
+                Solis 1 — Pievieno service account savai sheet
+              </p>
+              <p>
+                Atver{" "}
+                <a
+                  href={`https://docs.google.com/spreadsheets/d/${data.sheetId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-medium"
+                >
+                  account-master sheet
+                </a>
+                , klikšķi <strong>Share</strong>, un pievieno šo
+                e-pastu kā <em>Editor</em>:
+              </p>
+              <div className="flex gap-2 items-center bg-white rounded border border-amber-300 px-2 py-1.5">
+                <code className="flex-1 text-[11px] font-mono break-all">
+                  {data.serviceAccountEmail}
+                </code>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => copy(data.serviceAccountEmail!)}
+                >
+                  Kopēt
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 text-xs text-amber-900">
+              <p className="font-medium">
+                Solis 2 — Pievieno sheet ID Vercel env variable
+              </p>
+              <p>
+                Vercel projekta iestatījumos, pievieno{" "}
+                <code className="bg-amber-100 px-1 rounded">
+                  OWNER_SHEET_REGISTRY
+                </code>{" "}
+                ar šādu vērtību:
+              </p>
+              <div className="flex gap-2 items-start bg-white rounded border border-amber-300 px-2 py-1.5">
+                <code className="flex-1 text-[11px] font-mono break-all">
+                  {JSON.stringify({
+                    [data.ownerEmail]: data.sheetId,
+                  })}
+                </code>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() =>
+                    copy(
+                      JSON.stringify({
+                        [data.ownerEmail]: data.sheetId,
+                      })
+                    )
+                  }
+                >
+                  Kopēt
+                </Button>
+              </div>
+              <p>
+                Pēc env vērtības pievienošanas, Vercel veiks redeploy.
+                Tad varēsi pievienot grāmatvedi un atbildīgo.
+              </p>
+            </div>
+          </>
+        )}
+    </div>
+  );
 }
 
 /**

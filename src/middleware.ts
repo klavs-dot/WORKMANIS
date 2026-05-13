@@ -1,50 +1,41 @@
 /**
- * Auth.js v5 middleware — auth gate + role-aware page scoping.
+ * Auth.js v5 middleware — edge-runtime safe.
  *
- * Public paths (no auth required):
+ * Imports auth.config.ts (edge-safe, no Credentials provider)
+ * directly to avoid pulling googleapis/bcrypt into the edge
+ * bundle. The Credentials provider only runs during sign-in
+ * which is a Node.js API route — the middleware never invokes
+ * authorize().
+ *
+ * Public paths:
  *   /login            → owner Google sign-in
  *   /atbildigais      → warehouse manager login
  *   /gramatvediba     → accountant login
  *   /api/auth/*       → NextAuth callback URLs
  *
- * Role-based page scoping (Sesija 7):
- *   - owner             → all pages
- *   - accountant        → all pages (read-only via API checks; same
- *                         routes as owner so they can audit everything)
- *   - warehouse_manager → only /noliktava, /demo-produkcija,
- *                         /gatava-produkcija, and shared routes
- *                         (logout, profile-ish)
- *
- * When a warehouse_manager tries to access a forbidden page, we
- * redirect to /noliktava (their default landing). This avoids
- * 403-like dead ends.
- *
- * Note: Auth.js v5 middleware is edge-runtime; cannot import
- * server-only libraries here. We do the bare minimum check (role
- * from session.role) and let server components do data-level
- * checks themselves.
+ * Role scoping:
+ *   warehouse_manager → only /noliktava, /demo-produkcija,
+ *                       /gatava-produkcija, /api/*
+ *   accountant + owner → all pages
  */
 
-import { auth } from "@/auth";
+import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
+import authConfig from "./auth.config";
+
+const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = ["/login", "/atbildigais", "/gramatvediba"];
 
-// Pages a warehouse_manager IS allowed to see. Anything not on
-// this list (and not under /api/...) gets redirected to /noliktava.
 const WAREHOUSE_MANAGER_ALLOWED_PREFIXES = [
   "/noliktava",
   "/demo-produkcija",
   "/gatava-produkcija",
-  // Don't allow /noliktavas-atbildigie — that's owner-only
-  // management of warehouse manager accounts. A manager
-  // shouldn't be adding peers.
 ];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
 
-  // Allow public paths and NextAuth API routes
   if (
     PUBLIC_PATHS.some(
       (p) => pathname === p || pathname.startsWith(p + "/")
@@ -54,19 +45,14 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // No session → bounce to login, preserving intended destination
   if (!req.auth) {
     const loginUrl = new URL("/login", req.nextUrl.origin);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Role-aware scoping for warehouse managers
   const role = (req.auth as { role?: string }).role;
   if (role === "warehouse_manager") {
-    // Allow API routes — server-side handlers do their own
-    // role checks. Blocking all APIs at the edge would break
-    // the warehouse pages they DO need.
     if (pathname.startsWith("/api/")) {
       return NextResponse.next();
     }

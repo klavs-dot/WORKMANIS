@@ -1,42 +1,37 @@
 /**
- * External user login validation.
+ * External user login validation via service account.
  *
- * Validates an email + password + ownerEmail against the owner's
+ * Validates email + password + ownerEmail against the owner's
  * account-master.gsheet/02_external_users tab. Returns the user
- * record on success, null on any failure (wrong password, user
- * doesn't exist, owner sheet not found, etc).
+ * record on success, null on any failure.
  *
- * ═══ Why this is a placeholder ═══
+ * How it works:
+ *   1. Look up owner sheet ID from OWNER_SHEET_REGISTRY env var.
+ *      (Populated by the owner during service-account setup.)
+ *   2. Get a Sheets API client authenticated as the service
+ *      account (must have read access to the owner's sheet —
+ *      owner explicitly shares it during setup).
+ *   3. Read 02_external_users rows from that sheet.
+ *   4. Find the row matching email (case-insensitive).
+ *   5. Verify the row is not soft-deleted.
+ *   6. bcrypt.compare(password, row.password_hash).
+ *   7. On match: return the user record (id, email, role,
+ *      ownerEmail, allowedCompanyIds).
  *
- * To validate the password, this function needs to read the
- * owner's Sheet — which requires the owner's OAuth tokens. But
- * the external user logging in DOESN'T HAVE the owner's tokens.
- *
- * The proper solution is one of:
- *   1. Service account (owner shares Sheet with service account,
- *      system uses service account creds to read for all logins)
- *   2. Vercel KV / Postgres storing owner refresh tokens, indexed
- *      by ownerEmail
- *   3. Encrypted shared cookie carrying owner tokens
- *
- * None of these are wired up yet. So this function currently
- * always returns null — external user login will fail with
- * "Login vēl tiek izstrādāts" until Faze 2 of the auth feature.
- *
- * Once Faze 2 lands, this function will:
- *   1. Look up owner refresh token by ownerEmail
- *   2. Use it to read 02_external_users
- *   3. Find row matching email
- *   4. bcrypt.compare(password, row.password_hash)
- *   5. Return the user record on match
- *
- * Why isolate this in its own file: it's a server-only concern
- * with bcrypt + Sheets imports. Keeping it out of auth.ts means
- * auth.ts stays light enough for the edge runtime where Auth.js
- * runs middleware checks.
+ * Returns null on ANY failure — wrong password, user doesn't
+ * exist, owner not registered, service account misconfigured.
+ * The login UI shows a generic "Nepareizs e-pasts vai parole"
+ * to avoid information leakage about which step failed.
  */
 
+import * as bcrypt from "bcryptjs";
 import type { SessionRole } from "@/auth";
+import {
+  getServiceAccountSheetsClient,
+  getOwnerSheetId,
+} from "./service-account";
+
+const TAB_NAME = "02_external_users";
 
 export interface ExternalUserLoginResult {
   id: string;
@@ -51,14 +46,95 @@ export async function validateExternalUserLogin(args: {
   password: string;
   ownerEmail: string;
 }): Promise<ExternalUserLoginResult | null> {
-  // PLACEHOLDER — actual validation requires delegated Sheets
-  // access for the owner. See module docstring above for what
-  // Faze 2 will do.
-  //
-  // For now we always return null so logins fail safely. The
-  // login UI shows a clear error message about this being WIP.
-  console.log(
-    `[external-login] Validation requested for ${args.email} (owner: ${args.ownerEmail}) — placeholder, always rejects`
-  );
-  return null;
+  const email = args.email.trim().toLowerCase();
+  const ownerEmail = args.ownerEmail.trim().toLowerCase();
+
+  // 1. Look up owner sheet ID
+  const sheetId = getOwnerSheetId(ownerEmail);
+  if (!sheetId) {
+    console.log(
+      `[external-login] Owner ${ownerEmail} not in OWNER_SHEET_REGISTRY`
+    );
+    return null;
+  }
+
+  // 2. Get Sheets client as service account
+  const sheets = await getServiceAccountSheetsClient();
+  if (!sheets) {
+    console.error(
+      "[external-login] Service account not configured — login will fail"
+    );
+    return null;
+  }
+
+  // 3. Read 02_external_users rows
+  let rows: string[][];
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `${TAB_NAME}!A:H`,
+    });
+    rows = (res.data.values ?? []) as string[][];
+  } catch (err) {
+    console.error(
+      `[external-login] Failed to read ${TAB_NAME} from ${sheetId}:`,
+      err
+    );
+    return null;
+  }
+
+  if (rows.length < 2) {
+    // No users registered yet
+    return null;
+  }
+
+  // 4. Find row by email (skip header at index 0)
+  // Row schema: id | email | password_hash | role | allowed_company_ids
+  //              | created_at | updated_at | deleted_at
+  const matched = rows.slice(1).find((r) => {
+    const rowEmail = (r[1] ?? "").trim().toLowerCase();
+    const deletedAt = (r[7] ?? "").trim();
+    return rowEmail === email && !deletedAt;
+  });
+
+  if (!matched) {
+    return null;
+  }
+
+  // 5. bcrypt verify
+  const passwordHash = matched[2] ?? "";
+  if (!passwordHash) return null;
+
+  let isValid = false;
+  try {
+    isValid = await bcrypt.compare(args.password, passwordHash);
+  } catch (err) {
+    console.error("[external-login] bcrypt.compare failed:", err);
+    return null;
+  }
+
+  if (!isValid) {
+    console.log(`[external-login] Wrong password for ${email}@${ownerEmail}`);
+    return null;
+  }
+
+  // 6. Success — build login result
+  const role = (matched[3] as SessionRole) ?? "warehouse_manager";
+  if (role !== "accountant" && role !== "warehouse_manager") {
+    console.error(`[external-login] Invalid role for ${email}: ${role}`);
+    return null;
+  }
+
+  const allowedCompanyIds = (matched[4] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return {
+    id: matched[0] ?? "",
+    email: matched[1] ?? "",
+    role,
+    ownerEmail,
+    allowedCompanyIds,
+  };
 }
