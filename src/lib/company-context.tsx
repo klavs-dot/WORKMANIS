@@ -127,6 +127,10 @@ interface ApiCompany {
   folderId: string;
   sheetId: string;
   status: string;
+  // Sesija 7 — branding fields now included from list endpoint
+  // so sidebar/topbar can show accent color and logo immediately.
+  brandColor?: string;
+  logoDriveId?: string;
 }
 
 function apiToCompany(a: ApiCompany): Company {
@@ -139,6 +143,8 @@ function apiToCompany(a: ApiCompany): Company {
     folderDriveId: a.folderId,
     sheetId: a.sheetId,
     slug: a.slug,
+    brandColor: a.brandColor || undefined,
+    logoDriveId: a.logoDriveId || undefined,
   };
 }
 

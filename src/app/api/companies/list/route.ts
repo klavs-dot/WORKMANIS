@@ -160,6 +160,8 @@ interface CompanyRow {
   folderId: string;
   sheetId: string;
   status: string;
+  brandColor: string;
+  logoDriveId: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
@@ -188,6 +190,12 @@ function parseCompanyRow(
     folderId: col("folder_drive_id"),
     sheetId: col("sheet_id"),
     status: col("status"),
+    // Sesija 7 — include branding so sidebar/topbar can show
+    // accent color and logo immediately after page load.
+    // Without these, useCompany() context had brandColor=undefined
+    // until the requisites modal triggered a fresh load.
+    brandColor: col("brand_color"),
+    logoDriveId: col("logo_drive_id"),
     createdAt: col("created_at"),
     updatedAt: col("updated_at"),
     deletedAt: col("deleted_at"),

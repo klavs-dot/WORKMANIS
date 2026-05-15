@@ -117,9 +117,17 @@ const ACCOUNT_MASTER_TABS = [
       "name",
       "legal_name",
       "reg_number",
+      "vat_number",
       "folder_drive_id",
       "sheet_id",
       "status",
+      // Sesija 7 — branding fields on 01_companies so the list
+      // endpoint can serve sidebar/topbar accent + logo without
+      // a per-company requisites fetch. Auto-added by
+      // sync-company-master.ts for existing sheets that pre-date
+      // these columns; new provisioning starts with them present.
+      "brand_color",
+      "logo_drive_id",
       "created_by",
       "last_activity_at",
     ],

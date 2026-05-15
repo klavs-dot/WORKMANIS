@@ -256,6 +256,10 @@ export async function PUT(request: Request) {
           legal_name: rowData.legal_name,
           reg_number: rowData.reg_number,
           vat_number: rowData.vat_number,
+          // Sesija 7 — sync branding so list endpoint serves
+          // current values (used by sidebar/topbar across reloads)
+          brand_color: rowData.brand_color,
+          logo_drive_id: rowData.logo_drive_id,
         }
       );
     }

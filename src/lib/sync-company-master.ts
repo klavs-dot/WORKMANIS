@@ -29,6 +29,12 @@ interface SyncFields {
   legal_name?: string;
   reg_number?: string;
   vat_number?: string;
+  // Sesija 7 — branding fields need to flow to master 01_companies
+  // so the list endpoint (and consequently sidebar/topbar) can
+  // show the accent color and logo without an extra requisites
+  // fetch per company.
+  brand_color?: string;
+  logo_drive_id?: string;
 }
 
 /**
@@ -137,8 +143,35 @@ export async function syncCompanyFieldsToMaster(
       return;
     }
 
-    const header = rows[0] as string[];
+    let header = rows[0] as string[];
     const dataRows = rows.slice(1);
+
+    // Sesija 7 — auto-add missing columns to the header. Older
+    // account-master sheets were provisioned before brand_color
+    // and logo_drive_id were fields on 01_companies. Without
+    // these columns, sync silently dropped updates. Detect and
+    // append them on the fly so existing accounts get retro-
+    // upgraded the first time they save branding.
+    const requestedKeys = Object.keys(fields).filter(
+      (k) => fields[k as keyof SyncFields] !== undefined
+    );
+    const missingKeys = requestedKeys.filter(
+      (k) => !header.includes(k)
+    );
+    if (missingKeys.length > 0) {
+      const newHeader = [...header, ...missingKeys];
+      console.log(
+        `[sync-master] auto-adding columns to ${tabName}: ${missingKeys.join(", ")}`
+      );
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: masterId,
+        range: `${tabName}!A1:${columnLetter(newHeader.length)}1`,
+        valueInputOption: "RAW",
+        requestBody: { values: [newHeader] },
+      });
+      header = newHeader;
+    }
+
     const idCol = header.indexOf("id");
     if (idCol < 0) {
       console.warn(`[sync-master] no 'id' column in ${tabName} header`);
