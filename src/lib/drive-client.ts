@@ -37,6 +37,7 @@
 
 import { google, type drive_v3 } from "googleapis";
 import { Readable } from "stream";
+import { withRetry } from "./sheets-client";
 
 // ============================================================
 // Types
@@ -144,18 +145,26 @@ export class DriveClient {
     const folderId = await this.ensureFolderPath(input.subPath);
 
     try {
-      const response = await this.drive.files.create({
-        requestBody: {
-          name: input.filename,
-          parents: [folderId],
-          mimeType: input.mimeType,
-        },
-        media: {
-          mimeType: input.mimeType,
-          body: bufferToStream(input.content),
-        },
-        fields: "id,webViewLink,webContentLink",
-      });
+      // Wrap in retry — bulk uploads from the email scanner can trip
+      // Drive's per-user quota (403 userRateLimitExceeded). Without
+      // retry, the first hit bubbles up to the user as a generic
+      // "Upload failed: <filename>" with no recovery path.
+      const response = await withRetry(
+        () =>
+          this.drive.files.create({
+            requestBody: {
+              name: input.filename,
+              parents: [folderId],
+              mimeType: input.mimeType,
+            },
+            media: {
+              mimeType: input.mimeType,
+              body: bufferToStream(input.content),
+            },
+            fields: "id,webViewLink,webContentLink",
+          }),
+        `drive.files.create ${input.filename}`
+      );
 
       const fileId = response.data.id;
       if (!fileId) {
@@ -322,24 +331,32 @@ export class DriveClient {
     ].join(" and ");
 
     try {
-      const search = await this.drive.files.list({
-        q: query,
-        fields: "files(id)",
-        pageSize: 1,
-      });
+      const search = await withRetry(
+        () =>
+          this.drive.files.list({
+            q: query,
+            fields: "files(id)",
+            pageSize: 1,
+          }),
+        `drive.files.list ${name}`
+      );
 
       const existing = search.data.files?.[0];
       if (existing?.id) return existing.id;
 
       // Not found — create
-      const created = await this.drive.files.create({
-        requestBody: {
-          name,
-          parents: [parentId],
-          mimeType: FOLDER_MIME_TYPE,
-        },
-        fields: "id",
-      });
+      const created = await withRetry(
+        () =>
+          this.drive.files.create({
+            requestBody: {
+              name,
+              parents: [parentId],
+              mimeType: FOLDER_MIME_TYPE,
+            },
+            fields: "id",
+          }),
+        `drive.files.create folder ${name}`
+      );
 
       if (!created.data.id) {
         throw new DriveError(`Folder creation returned no ID: ${name}`);

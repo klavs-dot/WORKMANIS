@@ -1055,8 +1055,22 @@ async function triageEmailWithAI(
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 512,
-      system: TRIAGE_SYSTEM_PROMPT,
-      tools: [TRIAGE_TOOL as Anthropic.Messages.Tool],
+      // Cache the triage system prompt + tool schema. Every email in
+      // a scan hits this same prefix → ephemeral cache amortises it
+      // across the whole 12-message default batch.
+      system: [
+        {
+          type: "text",
+          text: TRIAGE_SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: [
+        {
+          ...(TRIAGE_TOOL as Anthropic.Messages.Tool),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       tool_choice: { type: "tool", name: "classify_email" },
       messages: [{ role: "user", content: userContent }],
     });
@@ -1106,17 +1120,31 @@ async function parseInvoiceFromText(
       ? "This is a PAYMENT CONFIRMATION/RECEIPT. Extract the supplier (who got paid), the amount paid, and the date. Mark is_paid: true."
       : "This is an invoice in email body text. Extract the standard invoice fields.";
 
-  // Sesija 2: switched from Sonnet 4.6 to Opus 4.6 — most powerful
-  // model available without 4.7's adaptive-thinking incompatibility
-  // with forced tool_choice. Better extraction precision matters
-  // here because we use the extracted recipient fields downstream
-  // for company-identity matching; misreading a digit in VAT or
-  // reg number causes a wrong rejection.
+  // Opus 4.7 — adaptive-thinking + forced tool_choice are now
+  // compatible (this combo was broken in earlier 4.7 builds but is
+  // supported in current). Better extraction precision matters here
+  // because we use the extracted recipient fields downstream for
+  // company-identity matching; misreading a digit in VAT or reg
+  // number causes a wrong rejection.
   const response = await anthropic.messages.create({
-    model: "claude-opus-4-6",
+    model: "claude-opus-4-7",
     max_tokens: 2048,
-    system: SYSTEM_PROMPT,
-    tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],
+    // Cache the extraction system prompt + tool schema (~5 KB
+    // combined). Email scans run extraction on every invoice email
+    // in a batch — caching cuts repeated input tokens dramatically.
+    system: [
+      {
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    tools: [
+      {
+        ...(EXTRACT_TOOL as Anthropic.Messages.Tool),
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     tool_choice: { type: "tool", name: "save_invoice_data" },
     messages: [
       {
@@ -1174,16 +1202,29 @@ async function parseInvoiceWithAI(
           },
         };
 
-  // Sesija 2: PDF/image extraction also bumped to Opus 4.6.
-  // Vision-based parsing of crooked scans, photos, low-res images
-  // benefits even more from the stronger model — Sonnet sometimes
-  // misread digits on receipts shot with a phone camera, leading
-  // to wrong VAT/reg matches downstream.
+  // PDF/image extraction also runs on Opus 4.7. Vision-based parsing
+  // of crooked scans, photos, low-res images benefits especially from
+  // the stronger model — earlier Sonnet builds sometimes misread
+  // digits on phone-shot receipts, causing wrong VAT/reg matches.
   const response = await anthropic.messages.create({
-    model: "claude-opus-4-6",
+    model: "claude-opus-4-7",
     max_tokens: 2048,
-    system: SYSTEM_PROMPT,
-    tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],
+    // Same SYSTEM_PROMPT + EXTRACT_TOOL as the text path — the cache
+    // is shared between text and PDF/image extraction calls, so
+    // running both in the same scan benefits each other's hits.
+    system: [
+      {
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    tools: [
+      {
+        ...(EXTRACT_TOOL as Anthropic.Messages.Tool),
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     tool_choice: { type: "tool", name: "save_invoice_data" },
     messages: [
       {

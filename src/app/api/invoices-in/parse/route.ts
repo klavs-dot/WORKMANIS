@@ -174,8 +174,23 @@ export async function POST(request: Request) {
     response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      tools: [EXTRACT_TOOL as Anthropic.Messages.Tool],
+      // Cache SYSTEM_PROMPT + EXTRACT_TOOL — manual invoice uploads
+      // tend to come in batches (user drops several PDFs at once),
+      // so the ephemeral cache amortises the prefix across uploads
+      // landing within the 5-min TTL.
+      system: [
+        {
+          type: "text",
+          text: SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: [
+        {
+          ...(EXTRACT_TOOL as Anthropic.Messages.Tool),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       tool_choice: { type: "tool", name: "save_invoice_data" },
       messages: [
         {

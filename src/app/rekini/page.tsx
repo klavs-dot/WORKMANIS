@@ -215,7 +215,9 @@ export default function RekiniMaksajumiPage() {
             Plain conditional rendering works fine — each tab has
             its own internal animations for its rows/cards already. */}
         <div key={tab}>
-          {tab === "visi" && <VisiMaksajumiTab />}
+          {tab === "visi" && (
+            <VisiMaksajumiTab onSwitchTab={(t) => setTab(t)} />
+          )}
           {tab === "izejosie" && <IzejosieTab />}
           {tab === "ienakosie" && <IenakosieTab />}
           {tab === "automatiskie" && <AutomatiskieTab />}

@@ -316,8 +316,22 @@ async function aiMatch(
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 512,
-      system: CLASSIFY_SYSTEM_PROMPT,
-      tools: [CLASSIFY_TOOL as Anthropic.Messages.Tool],
+      // Cache the system prompt + tool schema; per-orphan classify
+      // calls are made one-at-a-time in a tight loop, so caching is
+      // a big win even though Haiku is already cheap.
+      system: [
+        {
+          type: "text",
+          text: CLASSIFY_SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: [
+        {
+          ...(CLASSIFY_TOOL as Anthropic.Messages.Tool),
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       tool_choice: { type: "tool", name: "classify_counterparty" },
       messages: [{ role: "user", content: userContent }],
     });

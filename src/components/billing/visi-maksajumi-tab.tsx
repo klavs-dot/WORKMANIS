@@ -4,18 +4,29 @@
  * Visi maksājumi — unified payments view.
  *
  * Aggregates rows from across the billing tabs (issued + received +
- * salaries + taxes) into a single chronological list. Read-only —
- * for editing/marking-paid, the user opens the underlying tab.
+ * salaries + taxes) into a single chronological list. Read-only for
+ * editing — clicking a row jumps to the source tab where edit/
+ * mark-paid actions live.
  *
  * Why a separate tab vs. a dashboard widget: at-a-glance totals are
  * cheap, but the user explicitly asked for this as the FIRST tab so
  * 'Visi maksājumi' carries the implication of being the home view —
  * what you see when you open Rēķini & Maksājumi without choosing.
  *
- * Each row gets a small section badge so the user knows which tab
- * to jump to for actions. Clicking a row navigates there in a
- * future iteration; for now it's display-only.
+ * Each row gets a small section badge; clicking the row asks the
+ * parent /rekini page to switch tabs via the `onSwitchTab` prop.
  */
+
+/** Tab keys the row navigation can target. Mirrors TabKey in
+ *  /rekini/page.tsx. Kept inline so this file doesn't depend on the
+ *  page module's internal types. */
+type RekiniTabKey =
+  | "izejosie"
+  | "ienakosie"
+  | "automatiskie"
+  | "veikala"
+  | "algas"
+  | "nodokli";
 
 import { useMemo } from "react";
 import {
@@ -104,7 +115,13 @@ const SECTION_META: Record<
   },
 };
 
-export function VisiMaksajumiTab() {
+export function VisiMaksajumiTab({
+  onSwitchTab,
+}: {
+  /** Called when the user clicks a row — should switch the parent
+   *  page's active tab. If omitted, rows render as non-interactive. */
+  onSwitchTab?: (tab: RekiniTabKey) => void;
+} = {}) {
   const { received, issued, salaries, taxes, loading } = useBilling();
   const { payments: bankPayments, loading: paymentsLoading } = usePayments();
 
@@ -328,10 +345,44 @@ export function VisiMaksajumiTab() {
               {rows.map((r) => {
                 const meta = SECTION_META[r.section];
                 const Icon = meta.icon;
+                // Map the aggregated row's section back onto the
+                // parent page's tab key. Both 'izejosie' variants
+                // collapse onto the single 'izejosie' tab; 'fiziskie'
+                // is the legacy name for the 'veikala' tab.
+                const targetTab: RekiniTabKey =
+                  r.section === "izejosie" || r.section === "izejosie_actual"
+                    ? "izejosie"
+                    : r.section === "fiziskie"
+                      ? "veikala"
+                      : r.section;
+                const isClickable = !!onSwitchTab;
                 return (
                   <TableRow
                     key={r.id}
+                    onClick={
+                      isClickable
+                        ? () => onSwitchTab?.(targetTab)
+                        : undefined
+                    }
+                    tabIndex={isClickable ? 0 : undefined}
+                    role={isClickable ? "button" : undefined}
+                    aria-label={
+                      isClickable
+                        ? `Atvērt ${meta.label} tabu`
+                        : undefined
+                    }
+                    onKeyDown={
+                      isClickable
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onSwitchTab?.(targetTab);
+                            }
+                          }
+                        : undefined
+                    }
                     className={cn(
+                      isClickable && "cursor-pointer",
                       r.isMissingInvoice &&
                         "bg-red-50/60 hover:bg-red-50 border-l-2 border-l-red-400"
                     )}

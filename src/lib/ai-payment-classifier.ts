@@ -196,8 +196,20 @@ async function classifyBatch(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    tools: [CLASSIFY_TOOL],
+    // Cache the system prompt + tool schema. Both are reused across
+    // every batch in a multi-batch import (and across imports for the
+    // same merchant fingerprint), so the 5-minute ephemeral cache
+    // cuts repeated input tokens by ~80%.
+    system: [
+      {
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    tools: [
+      { ...CLASSIFY_TOOL, cache_control: { type: "ephemeral" } },
+    ],
     tool_choice: { type: "tool", name: "classify_card_payments" },
     messages: [
       {

@@ -206,8 +206,21 @@ async function classifyBatch(
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    tools: [CLASSIFY_TOOL as Anthropic.Messages.Tool],
+    // Cache the system prompt + tool schema (~3 KB combined) so
+    // multi-batch orphan classification reuses the cached prefix.
+    system: [
+      {
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    tools: [
+      {
+        ...(CLASSIFY_TOOL as Anthropic.Messages.Tool),
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     tool_choice: { type: "tool", name: "classify_orphans" },
     messages: [{ role: "user", content: userContent }],
   });
