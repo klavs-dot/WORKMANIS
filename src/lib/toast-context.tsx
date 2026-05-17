@@ -151,7 +151,16 @@ function ToastContainer({
 }) {
   return (
     <div
-      className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"
+      // Mobile: full-width band at the bottom, respecting iOS
+      // safe-area-inset (home indicator) and adding side padding so
+      // the toast doesn't kiss the screen edge.
+      // Desktop (sm+): anchor bottom-right with a fixed max width.
+      className={
+        "fixed bottom-0 inset-x-0 z-[9999] flex flex-col gap-2 px-4 pb-4 " +
+        "pb-[max(1rem,env(safe-area-inset-bottom))] " +
+        "sm:inset-x-auto sm:right-4 sm:bottom-4 sm:px-0 sm:pb-0 sm:max-w-sm " +
+        "pointer-events-none"
+      }
       aria-live="polite"
       aria-atomic="false"
     >
@@ -194,7 +203,9 @@ function ToastItem({
   return (
     <div
       role="alert"
-      className={`flex items-start gap-2.5 pl-3 pr-2 py-2.5 rounded-lg border shadow-sm min-w-[280px] max-w-[420px] ${styles}`}
+      // Width: stretches to fill the mobile band (px-4 on the parent
+      // gives breathing room), clamps to a card width on desktop.
+      className={`flex items-start gap-2.5 pl-3 pr-2 py-2.5 rounded-lg border shadow-sm w-full sm:min-w-[280px] sm:max-w-[420px] ${styles}`}
     >
       <Icon data-icon className="h-4 w-4 shrink-0 mt-0.5" />
       <div className="flex-1 text-[12.5px] leading-snug pt-0.5">
