@@ -37,6 +37,10 @@ import {
   getCompanyClients,
   NoCompanyOAuthError,
 } from "@/lib/company-clients";
+import {
+  getReadOnlySheetsForCompany,
+  NoCompanyAccessError,
+} from "@/lib/session-sheets";
 import { syncCompanyFieldsToMaster } from "@/lib/sync-company-master";
 
 export const maxDuration = 30;
@@ -83,16 +87,41 @@ export async function GET(request: Request) {
       );
     }
 
-    // Use per-company OAuth: this gets a Sheets client tied to
-    // the company's own Gmail account, NOT the login user's
-    // session. Files in the company sheet are read using the
-    // company's access token.
-    const cc = await getCompanyClients(companyId);
-    const sheets = createSheetsClientFromInstance({
-      sheets: cc.sheets,
-      spreadsheetId: cc.company.sheetId,
-      actor: session.user.email,
-    });
+    // Sesija 7 Faze 2 — branch by role.
+    // External users (accountant / warehouse_manager) read via
+    // service account against a known company sheet ID. Owner
+    // continues to use the per-company OAuth flow that supports
+    // the multi-Gmail architecture.
+    let sheets;
+    try {
+      const external = await getReadOnlySheetsForCompany(
+        session,
+        companyId
+      );
+      if (external) {
+        sheets = createSheetsClientFromInstance({
+          sheets: external.sheets,
+          spreadsheetId: external.spreadsheetId,
+          actor: session.user.email,
+        });
+      } else {
+        // Owner path — existing flow
+        const cc = await getCompanyClients(companyId);
+        sheets = createSheetsClientFromInstance({
+          sheets: cc.sheets,
+          spreadsheetId: cc.company.sheetId,
+          actor: session.user.email,
+        });
+      }
+    } catch (err) {
+      if (err instanceof NoCompanyAccessError) {
+        return NextResponse.json(
+          { error: err.message },
+          { status: 403 }
+        );
+      }
+      throw err;
+    }
 
     const rows = await sheets.list("01_requisites");
 
@@ -155,6 +184,17 @@ export async function PUT(request: Request) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
+    );
+  }
+
+  // Sesija 7 — only the owner can mutate requisites. External
+  // users (accountant / warehouse_manager) are strictly read-only.
+  // Accountant role might be granted write access in the future,
+  // but for now they can audit/copy data, not change it.
+  if (session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Tev nav tiesību mainīt rekvizītus" },
+      { status: 403 }
     );
   }
 
