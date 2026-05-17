@@ -129,3 +129,69 @@ export function getServiceAccountEmail(): string | null {
     return null;
   }
 }
+
+/**
+ * Reserved settings key for the warehouse sheet ID stored on the
+ * `03_settings` tab of the owner's account-master sheet. Once
+ * populated (by `getOrCreateWarehouseSheet` during owner-side
+ * provisioning), a service-account-authenticated caller can read
+ * this value to learn which sheet to query on behalf of an external
+ * warehouse_manager session that has no Google OAuth credentials.
+ *
+ * Not yet wired end-to-end — see docs/EXTERNAL_USERS_GAP.md. This
+ * helper exists so the data-storage side can land independently of
+ * the route-handler refactor.
+ */
+export const WAREHOUSE_SHEET_SETTING_KEY = "warehouse_sheet_id";
+
+/**
+ * Read a single key from the owner's `03_settings` tab using service
+ * account credentials. Returns null when:
+ *   - service account isn't configured,
+ *   - the owner doesn't have a registered account-master sheet,
+ *   - the `03_settings` tab is empty / missing,
+ *   - the key is absent.
+ *
+ * All failures degrade silently (return null) — the calling code is
+ * expected to fall back to the legacy owner-OAuth path.
+ */
+export async function getOwnerSettingViaServiceAccount(
+  ownerEmail: string,
+  key: string
+): Promise<string | null> {
+  if (!ownerEmail || !key) return null;
+
+  const sheetId = getOwnerSheetId(ownerEmail);
+  if (!sheetId) return null;
+
+  const sheets = await getServiceAccountSheetsClient();
+  if (!sheets) return null;
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "03_settings!A:Z",
+    });
+    const rows = response.data.values ?? [];
+    if (rows.length < 2) return null;
+
+    const header = rows[0].map((c) => String(c).trim().toLowerCase());
+    const keyCol = header.indexOf("key");
+    const valueCol = header.indexOf("value");
+    if (keyCol === -1 || valueCol === -1) return null;
+
+    for (const row of rows.slice(1)) {
+      if (String(row[keyCol] ?? "").trim() === key) {
+        const value = row[valueCol];
+        return value ? String(value) : null;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.warn(
+      `[service-account] Failed reading ${key} from owner ${ownerEmail}'s 03_settings:`,
+      err
+    );
+    return null;
+  }
+}
