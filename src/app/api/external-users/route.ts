@@ -61,6 +61,12 @@ export async function POST(request: Request) {
       { status: 401 }
     );
   }
+  if (session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Only the owner may manage external users" },
+      { status: 403 }
+    );
+  }
 
   let body: {
     email?: string;
@@ -132,6 +138,12 @@ export async function DELETE(request: Request) {
       { status: 401 }
     );
   }
+  if (session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Only the owner may manage external users" },
+      { status: 403 }
+    );
+  }
 
   const url = new URL(request.url);
   const id = url.searchParams.get("id");
@@ -161,6 +173,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
+    );
+  }
+  if (session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Only the owner may manage external users" },
+      { status: 403 }
     );
   }
 

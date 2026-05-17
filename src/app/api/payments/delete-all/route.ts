@@ -42,6 +42,15 @@ export async function POST(request: Request) {
       { status: 401 }
     );
   }
+  if (session.role !== "owner") {
+    console.warn(
+      `[delete-all] Forbidden attempt by ${session.user.email} role=${session.role}`
+    );
+    return NextResponse.json(
+      { error: "Only the owner may bulk-delete payments" },
+      { status: 403 }
+    );
+  }
 
   const url = new URL(request.url);
   const companyId = url.searchParams.get("company_id");

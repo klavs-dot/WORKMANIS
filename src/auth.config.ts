@@ -30,6 +30,23 @@ const GOOGLE_SCOPES = [
 
 export type SessionRole = "owner" | "accountant" | "warehouse_manager";
 
+/**
+ * Allowlist for Google sign-in. Only emails in this comma-separated
+ * env var may sign in as `owner`. If the env var is unset OR empty,
+ * the allowlist is disabled (fail-open) — set ALLOWED_OWNER_EMAILS
+ * on Vercel to enforce. Whitespace and case are ignored.
+ */
+function isEmailAllowed(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const raw = process.env.ALLOWED_OWNER_EMAILS;
+  if (!raw || raw.trim() === "") return true; // allowlist disabled
+  const allowed = raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return allowed.includes(email.trim().toLowerCase());
+}
+
 export default {
   providers: [
     Google({
@@ -47,6 +64,18 @@ export default {
   ],
   session: { strategy: "jwt" },
   callbacks: {
+    async signIn({ account, profile }) {
+      // External (Credentials) users are validated in auth.ts.
+      if (account?.provider !== "google") return true;
+      const email = profile?.email;
+      if (!isEmailAllowed(email)) {
+        console.warn(
+          `[auth] Google sign-in rejected for ${email ?? "<no email>"} — not in ALLOWED_OWNER_EMAILS`
+        );
+        return false;
+      }
+      return true;
+    },
     async jwt({ token, account, user }) {
       // Initial sign-in via Google — owner role
       if (account?.provider === "google") {
