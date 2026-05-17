@@ -25,7 +25,7 @@ import { PageHeader } from "@/components/business/headers";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/primitives";
+import { Label, Skeleton } from "@/components/ui/primitives";
 import {
   Dialog,
   DialogContent,
@@ -123,8 +123,19 @@ export default function NoliktavasAtbildigieePage() {
 
         <Card className="bg-white/85 backdrop-blur-sm">
           {loading ? (
-            <div className="p-12 text-center text-[13px] text-graphite-500">
-              Ielādē…
+            <div className="divide-y divide-graphite-200">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between px-4 py-3"
+                >
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-3.5 w-[180px]" />
+                    <Skeleton className="h-2.5 w-[120px]" />
+                  </div>
+                  <Skeleton className="h-7 w-7" />
+                </div>
+              ))}
             </div>
           ) : users.length === 0 ? (
             <div className="p-12 text-center space-y-2">
