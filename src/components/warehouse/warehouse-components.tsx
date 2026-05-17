@@ -355,10 +355,22 @@ function ItemThumbnail({ src }: { src: string }) {
       </div>
     );
   }
+
+  // Sesija 7 — legacy drive.google.com/uc?export=view URLs no
+  // longer load reliably in <img> tags (Google returns an HTML
+  // interstitial for most hotlinks). Convert them on the fly to
+  // /thumbnail?id=X&sz=w800 which still serves the raw image
+  // bytes. Old items don't need a re-upload — the file IDs are
+  // still valid, just the URL format changed.
+  const normalizedSrc = src.replace(
+    /^https:\/\/drive\.google\.com\/uc\?export=view&id=([^&]+)/,
+    "https://drive.google.com/thumbnail?id=$1&sz=w800"
+  );
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={normalizedSrc}
       alt=""
       className="h-32 w-32 shrink-0 rounded-lg object-cover bg-graphite-100"
       onError={(e) => {

@@ -59,6 +59,7 @@ import {
   type WarehouseSection,
 } from "@/lib/warehouse-store";
 import { useCustomCategories } from "@/lib/custom-categories";
+import { LoadingRobot } from "./loading-robot";
 
 // Emoji palette for the custom category picker. Categories aren't
 // shape-coded with lucide icons here (warehouse uses emojis to keep
@@ -381,9 +382,7 @@ export function InventoryPageLayout({
       {/* Results */}
       {loading ? (
         <Card className="bg-white/85 backdrop-blur-sm">
-          <div className="p-12 text-center text-[13px] text-graphite-500">
-            Ielādē…
-          </div>
+          <LoadingRobot />
         </Card>
       ) : visibleItems.length === 0 ? (
         items.length === 0 ? (

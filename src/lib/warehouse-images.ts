@@ -98,10 +98,13 @@ export async function uploadWarehouseImage(
     },
   });
 
-  // The /uc?export=view URL serves the file as direct image bytes
-  // (with appropriate content-type). The /file/d/X/view URL serves
-  // an HTML wrapper page, which is wrong for <img src>.
-  const imageUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+  // Sesija 7 — switched from /uc?export=view URL (deprecated;
+  // Google now returns an HTML interstitial for most requests
+  // instead of the raw file) to /thumbnail?sz= which serves the
+  // image directly and works in <img src>. sz=w800 caps width to
+  // 800px which is plenty for thumbnails and avoids fetching the
+  // full-size file on every grid render.
+  const imageUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
 
   return { fileId, imageUrl };
 }

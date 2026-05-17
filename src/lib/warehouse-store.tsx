@@ -266,6 +266,16 @@ export function WarehouseProvider({ children }: { children: ReactNode }) {
       });
 
       pushToastGlobally("success", "Prece pievienota.", 3500);
+
+      // Sesija 7 — re-fetch after create to defeat Sheets API's
+      // eventual-consistency read-after-write window. Without this,
+      // a Cmd+R immediately after creating an item sometimes
+      // returned stale data and the user had to refresh a second
+      // time to see their new item. 300ms delay gives Sheets time
+      // to settle before the read.
+      setTimeout(() => {
+        void fetchAll();
+      }, 300);
     } catch (err) {
       console.error("Create item failed:", err);
       pushToastGlobally("error", "Kļūda saglabājot datus.", 7000);

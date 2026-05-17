@@ -11,6 +11,7 @@ import { OrdersProvider } from "@/lib/orders-store";
 import { DocumentsProvider } from "@/lib/documents-store";
 import { WarehouseProvider } from "@/lib/warehouse-store";
 import { PaymentsProvider } from "@/lib/payments-store";
+import { LoggerInstaller } from "@/components/debug/logger-installer";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="lv">
       <body>
         <SessionProvider>
+          <LoggerInstaller />
           <ToastProvider>
             <CompanyProvider>
               <BillingProvider>

@@ -18,6 +18,7 @@ import {
   IdCard,
   Warehouse,
   Sparkles,
+  Bug,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,7 @@ const navGroups: NavGroup[] = [
 
 const bottomNav: NavItem[] = [
   { href: "/iestatijumi", label: "Iestatījumi", icon: Settings },
+  { href: "/debug-log", label: "Diagnostika", icon: Bug },
 ];
 
 export function Sidebar() {
