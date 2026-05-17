@@ -17,9 +17,36 @@
  */
 
 import * as bcrypt from "bcryptjs";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { makeWarehouseListCreateHandlers } from "@/lib/warehouse-routes";
 
 export const maxDuration = 30;
+
+/**
+ * Mutations on warehouse credentials require owner role — these rows
+ * grant warehouse_manager login access to the entire noliktava sheet,
+ * so an unprivileged user creating one would be a privilege
+ * escalation. Reads are owner-only too (the list contains
+ * credential hashes' metadata even though the hash itself is stripped
+ * from the API response).
+ */
+async function requireOwner(): Promise<NextResponse | null> {
+  const session = await auth();
+  if (!session?.user?.email) {
+    return NextResponse.json(
+      { error: "Not authenticated" },
+      { status: 401 }
+    );
+  }
+  if (session.role && session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Only the owner may manage warehouse employees" },
+      { status: 403 }
+    );
+  }
+  return null;
+}
 
 interface EmployeeRow extends Record<string, string> {
   email: string;
@@ -67,12 +94,21 @@ function rowToApi(row: Record<string, unknown>): ApiEmployee {
   };
 }
 
-export const { GET, POST } = makeWarehouseListCreateHandlers<
-  EmployeeRow,
-  ApiEmployee
->({
+const handlers = makeWarehouseListCreateHandlers<EmployeeRow, ApiEmployee>({
   tab: "04_warehouse_employees",
   responseKey: "employees",
   parseCreateBody,
   rowToApi,
 });
+
+export async function GET() {
+  const forbidden = await requireOwner();
+  if (forbidden) return forbidden;
+  return handlers.GET();
+}
+
+export async function POST(request: Request) {
+  const forbidden = await requireOwner();
+  if (forbidden) return forbidden;
+  return handlers.POST(request);
+}

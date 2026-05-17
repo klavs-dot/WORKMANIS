@@ -96,11 +96,21 @@ export async function POST(request: Request) {
   >;
 
   const DELAY_MS = 1200; // 50 deletes/min
+  // Leave ~10s of headroom before Vercel kills the function so we can
+  // return a clean truncation result instead of timing out mid-loop
+  // and hiding which rows were actually deleted.
+  const STARTED_AT = Date.now();
+  const BUDGET_MS = (maxDuration - 10) * 1000;
   let deleted = 0;
   let errors = 0;
+  let truncated = false;
   const errorMessages: string[] = [];
 
   for (const row of allPayments) {
+    if (Date.now() - STARTED_AT > BUDGET_MS) {
+      truncated = true;
+      break;
+    }
     try {
       await sheets.softDelete(
         "35_payments",
@@ -120,6 +130,12 @@ export async function POST(request: Request) {
     ok: true,
     deleted,
     errors,
+    truncated,
+    totalRows: allPayments.length,
+    remaining: truncated ? allPayments.length - deleted - errors : 0,
     errorMessages: errorMessages.slice(0, 10),
+    ...(truncated && {
+      message: `Process truncated after ${deleted} of ${allPayments.length} rows due to time limit — re-run to continue.`,
+    }),
   });
 }

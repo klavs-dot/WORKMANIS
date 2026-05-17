@@ -17,11 +17,28 @@
  */
 
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { checkCompanyConnection } from "@/lib/company-clients";
 
 export const maxDuration = 30;
 
 export async function GET(request: Request) {
+  const session = await auth();
+  if (!session?.user?.email) {
+    return NextResponse.json(
+      { error: "Not authenticated" },
+      { status: 401 }
+    );
+  }
+  if (session.role && session.role !== "owner") {
+    // External users (accountant / warehouse_manager) don't need to
+    // see Gmail connection state — only the owner manages OAuth.
+    return NextResponse.json(
+      { error: "Owner role required" },
+      { status: 403 }
+    );
+  }
+
   const url = new URL(request.url);
   const companyId = url.searchParams.get("company_id");
   if (!companyId) {

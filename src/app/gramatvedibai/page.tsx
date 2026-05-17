@@ -398,16 +398,10 @@ function PrimaryExportCard({
   count: number;
   periodLabel: string;
 }) {
-  const [state, setState] = useState<"idle" | "running" | "done">("idle");
-
-  const run = () => {
-    if (state !== "idle") return;
-    setState("running");
-    setTimeout(() => {
-      setState("done");
-      setTimeout(() => setState("idle"), 2000);
-    }, 1400);
-  };
+  // ZIP export pipeline is not implemented yet — the button is shown
+  // as disabled with a "Drīzumā" label rather than running a fake
+  // setTimeout success that misled users into believing a download
+  // had succeeded.
 
   return (
     <Card className="p-5 bg-gradient-to-br from-graphite-900 to-graphite-800 border-graphite-800 text-white">
@@ -437,26 +431,12 @@ function PrimaryExportCard({
         <Button
           variant="default"
           size="default"
-          onClick={run}
-          disabled={count === 0 || state !== "idle"}
-          className="bg-white text-graphite-900 hover:bg-graphite-100 shrink-0"
+          disabled
+          className="bg-white/20 text-white/60 cursor-not-allowed shrink-0"
+          title="ZIP eksports vēl nav ieviests"
         >
-          {state === "running" ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Sagatavo…
-            </>
-          ) : state === "done" ? (
-            <>
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-              Gatavs
-            </>
-          ) : (
-            <>
-              <Download className="h-3.5 w-3.5" />
-              Lejupielādēt ZIP
-            </>
-          )}
+          <Download className="h-3.5 w-3.5" />
+          Drīzumā
         </Button>
       </div>
     </Card>
@@ -508,16 +488,9 @@ function ExportCard({
   icon: LucideIcon;
   tone: "violet" | "graphite" | "emerald" | "sky" | "amber" | "red";
 }) {
-  const [state, setState] = useState<"idle" | "running" | "done">("idle");
-
-  const run = () => {
-    if (state !== "idle" || count === 0) return;
-    setState("running");
-    setTimeout(() => {
-      setState("done");
-      setTimeout(() => setState("idle"), 1800);
-    }, 1100);
-  };
+  // Individual export cards are not implemented yet — show the
+  // category card as disabled with a "Drīzumā" hint instead of
+  // running a fake setTimeout that previously misled the user.
 
   const toneBg: Record<typeof tone, string> = {
     violet: "bg-violet-50 text-violet-600 border-violet-100",
@@ -528,17 +501,10 @@ function ExportCard({
     red: "bg-red-50 text-red-600 border-red-100",
   };
 
-  const isEmpty = count === 0;
-
   return (
     <Card
-      className={cn(
-        "p-4 transition-all",
-        isEmpty
-          ? "opacity-60 cursor-not-allowed"
-          : "cursor-pointer hover:shadow-soft-sm hover:border-graphite-300"
-      )}
-      onClick={run}
+      className="p-4 opacity-70 cursor-not-allowed"
+      title="Šis eksports vēl nav ieviests"
     >
       <div className="flex items-start gap-3">
         <div
@@ -560,31 +526,11 @@ function ExportCard({
             <span className="text-graphite-500 uppercase tracking-wider text-[9.5px] font-semibold">
               Failu daudzums:
             </span>
-            <span
-              className={cn(
-                "tabular",
-                isEmpty ? "text-graphite-500" : "text-graphite-900"
-              )}
-            >
-              {count}
+            <span className="tabular text-graphite-900">{count}</span>
+            <span className="ml-2 inline-flex items-center rounded-full bg-graphite-100 px-2 py-0.5 text-[9.5px] font-medium text-graphite-600 uppercase tracking-wider">
+              Drīzumā
             </span>
           </div>
-        </div>
-        <div className="shrink-0">
-          {state === "running" && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-graphite-400" />
-          )}
-          {state === "done" && (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-          )}
-          {state === "idle" && (
-            <Download
-              className={cn(
-                "h-3.5 w-3.5",
-                isEmpty ? "text-graphite-300" : "text-graphite-500"
-              )}
-            />
-          )}
         </div>
       </div>
     </Card>

@@ -1680,31 +1680,31 @@ function DataManagementSettings() {
 }
 
 function LanguageSettings() {
+  // Internationalisation pipeline (i18next / next-intl + LV/EN/RU
+  // string tables) is not yet implemented. Until it lands, expose
+  // the section as a read-only badge instead of a dropdown that
+  // silently does nothing.
   return (
-    <SettingsCard title="Valoda" description="Izvēlieties WORKMANIS valodu">
+    <SettingsCard
+      title="Valoda un reģions"
+      description="Saskarne pašlaik pieejama tikai latviski."
+    >
       <FieldRow label="Interfeisa valoda">
-        <Select defaultValue="lv">
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="lv">Latviešu</SelectItem>
-            <SelectItem value="en">English</SelectItem>
-            <SelectItem value="ru">Русский</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-md border border-graphite-200 bg-graphite-50 px-2.5 py-1 text-[12.5px] font-medium text-graphite-900">
+            Latviešu
+          </span>
+          <span className="inline-flex items-center rounded-full bg-graphite-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-graphite-600">
+            Drīzumā: EN, RU
+          </span>
+        </div>
       </FieldRow>
       <FieldRow label="Reģions">
-        <Select defaultValue="lv">
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="lv">Latvija</SelectItem>
-            <SelectItem value="ee">Igaunija</SelectItem>
-            <SelectItem value="lt">Lietuva</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-md border border-graphite-200 bg-graphite-50 px-2.5 py-1 text-[12.5px] font-medium text-graphite-900">
+            Latvija (lv-LV)
+          </span>
+        </div>
       </FieldRow>
     </SettingsCard>
   );

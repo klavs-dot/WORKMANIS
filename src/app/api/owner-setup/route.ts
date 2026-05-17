@@ -80,7 +80,22 @@ export async function GET() {
   oauth2.setCredentials({ access_token: session.accessToken });
   const drive = google.drive({ version: "v3", auth: oauth2 });
 
-  const sheetId = await findAccountMasterSheetId(drive, session.user.email);
+  // Drive errors (auth expired, quota, network) used to surface as an
+  // unhandled 500 — wrap the walk in try/catch so we return a useful
+  // status code and message instead.
+  let sheetId: string | null;
+  try {
+    sheetId = await findAccountMasterSheetId(drive, session.user.email);
+  } catch (err) {
+    console.error("[owner-setup] Drive walk failed:", err);
+    const message =
+      err instanceof Error ? err.message : "Drive lookup failed";
+    return NextResponse.json(
+      { error: `Neizdevās piekļūt Google Drive: ${message}` },
+      { status: 502 }
+    );
+  }
+
   const serviceAccountEmail = getServiceAccountEmail();
   const registeredSheetId = getOwnerSheetId(session.user.email);
 

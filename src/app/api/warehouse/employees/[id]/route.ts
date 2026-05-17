@@ -1,7 +1,26 @@
 import * as bcrypt from "bcryptjs";
+import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { makeWarehouseUpdateDeleteHandlers } from "@/lib/warehouse-routes";
 
 export const maxDuration = 30;
+
+async function requireOwner(): Promise<NextResponse | null> {
+  const session = await auth();
+  if (!session?.user?.email) {
+    return NextResponse.json(
+      { error: "Not authenticated" },
+      { status: 401 }
+    );
+  }
+  if (session.role && session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Only the owner may manage warehouse employees" },
+      { status: 403 }
+    );
+  }
+  return null;
+}
 
 interface ApiEmployee {
   id: string;
@@ -48,8 +67,26 @@ function rowToApi(row: Record<string, unknown>): ApiEmployee {
   };
 }
 
-export const { PATCH, DELETE } = makeWarehouseUpdateDeleteHandlers<ApiEmployee>({
+const handlers = makeWarehouseUpdateDeleteHandlers<ApiEmployee>({
   tab: "04_warehouse_employees",
   parseUpdateBody,
   rowToApi,
 });
+
+export async function PATCH(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const forbidden = await requireOwner();
+  if (forbidden) return forbidden;
+  return handlers.PATCH(request, ctx);
+}
+
+export async function DELETE(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const forbidden = await requireOwner();
+  if (forbidden) return forbidden;
+  return handlers.DELETE(request, ctx);
+}

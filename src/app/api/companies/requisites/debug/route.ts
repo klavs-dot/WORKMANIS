@@ -16,6 +16,12 @@ export async function GET(request: Request) {
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+  if (session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Owner role required for debug data" },
+      { status: 403 }
+    );
+  }
 
   const url = new URL(request.url);
   const companyId = url.searchParams.get("company_id");
