@@ -33,6 +33,17 @@ import {
 
 const TAB_NAME = "02_external_users";
 
+/**
+ * A pre-computed bcrypt hash used to equalise timing between "user
+ * exists" and "user doesn't exist" code paths. Without this, an
+ * attacker can probe valid emails by measuring response latency:
+ * existing users → ~100 ms (bcrypt.compare), missing users → ~5 ms.
+ * Hashing a throwaway password against this fixed hash burns the
+ * same CPU so both branches finish in similar time.
+ */
+const DUMMY_HASH =
+  "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
+
 export interface ExternalUserLoginResult {
   id: string;
   email: string;
@@ -97,24 +108,24 @@ export async function validateExternalUserLogin(args: {
     return rowEmail === email && !deletedAt;
   });
 
-  if (!matched) {
-    return null;
-  }
-
-  // 5. bcrypt verify
-  const passwordHash = matched[2] ?? "";
-  if (!passwordHash) return null;
-
+  // 5. bcrypt verify — always run a compare to equalise timing
+  // between matched/unmatched users (timing-oracle hardening).
+  const passwordHash = matched?.[2] ?? "";
   let isValid = false;
   try {
-    isValid = await bcrypt.compare(args.password, passwordHash);
+    isValid = await bcrypt.compare(
+      args.password,
+      passwordHash || DUMMY_HASH
+    );
   } catch (err) {
     console.error("[external-login] bcrypt.compare failed:", err);
     return null;
   }
 
-  if (!isValid) {
-    console.log(`[external-login] Wrong password for ${email}@${ownerEmail}`);
+  if (!matched || !passwordHash || !isValid) {
+    // Don't differentiate between missing user / missing hash /
+    // wrong password — the response time is identical (we ran
+    // bcrypt.compare in every branch).
     return null;
   }
 

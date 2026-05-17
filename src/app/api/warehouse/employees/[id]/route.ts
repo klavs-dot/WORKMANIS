@@ -1,3 +1,4 @@
+import * as bcrypt from "bcryptjs";
 import { makeWarehouseUpdateDeleteHandlers } from "@/lib/warehouse-routes";
 
 export const maxDuration = 30;
@@ -5,7 +6,6 @@ export const maxDuration = 30;
 interface ApiEmployee {
   id: string;
   email: string;
-  password: string;
   role: string;
   active: boolean;
   createdAt: string;
@@ -26,7 +26,11 @@ function parseUpdateBody(
   };
 
   if (typeof b.email === "string") patch.email = b.email.trim().toLowerCase();
-  if (typeof b.password === "string") patch.password = b.password;
+  if (typeof b.password === "string" && b.password.trim()) {
+    // Hash before persisting; we never store plaintext (see comment
+    // in parent route's file header).
+    patch.password = bcrypt.hashSync(b.password, 10);
+  }
   if (typeof b.role === "string") patch.role = b.role;
   if (typeof b.active === "boolean") patch.active = b.active ? "1" : "0";
 
@@ -37,7 +41,6 @@ function rowToApi(row: Record<string, unknown>): ApiEmployee {
   return {
     id: row.id as string,
     email: (row.email as string) ?? "",
-    password: (row.password as string) ?? "",
     role: (row.role as string) ?? "Noliktavas atbildīgais",
     active: row.active === "1" || row.active === "true",
     createdAt: (row.created_at as string) ?? "",

@@ -37,9 +37,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             credentials?.ownerEmail as string | undefined
           )?.trim();
 
-          console.log(
-            `[auth/external] attempt email=${email} owner=${ownerEmail}`
-          );
+          // Redact PII in logs — keep enough to debug auth flows
+          // without leaking full email addresses in aggregated logs.
+          const redact = (s: string) => {
+            const [local, domain] = s.split("@");
+            if (!domain) return "***";
+            return `${local.slice(0, 2)}***@${domain}`;
+          };
 
           if (!email || !password || !ownerEmail) {
             console.warn("[auth/external] missing field");
@@ -56,13 +60,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
           if (!result) {
             console.warn(
-              `[auth/external] validation failed for ${email}`
+              `[auth/external] validation failed for ${redact(email)}`
             );
             return null;
           }
 
           console.log(
-            `[auth/external] OK ${email} role=${result.role}`
+            `[auth/external] OK ${redact(email)} role=${result.role}`
           );
 
           return {

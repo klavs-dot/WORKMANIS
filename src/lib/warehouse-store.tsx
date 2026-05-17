@@ -48,7 +48,13 @@ export interface InventoryItem {
 export interface Employee {
   id: string;
   email: string;
-  password: string;
+  /**
+   * Always empty in API responses — passwords are stored as bcrypt
+   * hashes server-side and never returned. Present here only so
+   * create/update payloads can carry the plaintext password from the
+   * UI to the server, where it gets hashed before persisting.
+   */
+  password?: string;
   role: string;
   active: boolean;
   createdAt: string;
