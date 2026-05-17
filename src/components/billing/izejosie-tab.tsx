@@ -636,7 +636,7 @@ export function IzejosieTab() {
                     <span>Saglabājas automātiski</span>
                   )}
                 {parsingItems.length === 0 && (
-                  <span className="text-graphite-400 ml-2">
+                  <span className="text-graphite-500 ml-2">
                     · Saglabājas automātiski
                   </span>
                 )}
@@ -752,7 +752,7 @@ export function IzejosieTab() {
                       {hasMeta ? (
                         <AccountingMetaTag meta={p.accountingMeta!} />
                       ) : (
-                        <span className="text-[11px] text-graphite-400 italic">
+                        <span className="text-[11px] text-graphite-500 italic">
                           Nav aizpildīts
                         </span>
                       )}
@@ -802,6 +802,7 @@ export function IzejosieTab() {
                           size="icon-sm"
                           onClick={() => setOpenedInvoice(p)}
                           title="Apskatīt detaļas"
+                          aria-label="Apskatīt detaļas"
                         >
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
@@ -811,6 +812,7 @@ export function IzejosieTab() {
                             size="icon-sm"
                             onClick={() => markReceivedPaid(p.id)}
                             title="Atzīmēt kā apmaksātu"
+                            aria-label="Atzīmēt kā apmaksātu"
                           >
                             <Check className="h-3.5 w-3.5" />
                           </Button>
@@ -876,7 +878,7 @@ export function IzejosieTab() {
                   PDF priekšskatījums
                 </span>
                 {openedInvoice.fileName && (
-                  <span className="text-[11px] text-graphite-400 font-mono">
+                  <span className="text-[11px] text-graphite-500 font-mono">
                     {openedInvoice.fileName}
                   </span>
                 )}
@@ -1092,7 +1094,7 @@ function ParsedField({
   return (
     <div>
       <div className="flex items-center gap-1.5">
-        <Label className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium">
+        <Label className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-medium">
           {label}
         </Label>
         {isLowConfidence && (
@@ -1115,7 +1117,7 @@ function ParsedField({
         {value}
       </p>
       {source && (
-        <p className="mt-1 text-[10.5px] text-graphite-400 italic">
+        <p className="mt-1 text-[10.5px] text-graphite-500 italic">
           {source}
         </p>
       )}
@@ -1268,7 +1270,7 @@ function AccountingMetaModal({
               </div>
 
               <div className="rounded-lg border border-graphite-100 bg-graphite-50/50 p-3 flex items-start gap-2.5">
-                <Info className="h-3.5 w-3.5 text-graphite-400 mt-0.5 shrink-0" />
+                <Info className="h-3.5 w-3.5 text-graphite-500 mt-0.5 shrink-0" />
                 <p className="text-[11.5px] text-graphite-500 leading-relaxed">
                   Šī informācija vēlāk tiks sinhronizēta ar Google Sheets
                   reģistriem un būs pieejama grāmatvedim kā lejupielādējams
@@ -1420,7 +1422,7 @@ function FunnyParsingState({ count }: { count: number }) {
                 transition={{ duration: 0.3, ease: "easeOut" }}
               />
             </div>
-            <span className="text-[10px] text-graphite-400 font-mono shrink-0 w-8 text-right">
+            <span className="text-[10px] text-graphite-500 font-mono shrink-0 w-8 text-right">
               {Math.round(progress)}%
             </span>
           </div>
@@ -1719,6 +1721,7 @@ function InvoiceDraftCard({
             size="icon-sm"
             onClick={onRemove}
             title="Noņemt no melnrakstiem"
+            aria-label="Noņemt no melnrakstiem"
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -1753,6 +1756,7 @@ function InvoiceDraftCard({
             size="icon-sm"
             onClick={onRemove}
             title="Noņemt no melnrakstiem"
+            aria-label="Noņemt no melnrakstiem"
             className="shrink-0"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -1811,6 +1815,7 @@ function InvoiceDraftCard({
           size="icon-sm"
           onClick={onRemove}
           title="Noņemt no melnrakstiem"
+          aria-label="Noņemt no melnrakstiem"
           className="shrink-0"
         >
           <X className="h-3.5 w-3.5" />
@@ -1983,7 +1988,7 @@ function InvoiceDraftCard({
               <Sparkles className="h-3 w-3 text-violet-500" />
               Grāmatvedības kategorija
               {p.suggestedCategory && (
-                <span className="text-[10.5px] text-graphite-400 font-normal italic">
+                <span className="text-[10.5px] text-graphite-500 font-normal italic">
                   · AI ierosināja
                 </span>
               )}

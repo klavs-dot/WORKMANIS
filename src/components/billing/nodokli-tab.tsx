@@ -140,7 +140,7 @@ export function NodokliTab() {
                                   ? "text-red-600"
                                   : days <= 3
                                   ? "text-amber-600"
-                                  : "text-graphite-400"
+                                  : "text-graphite-500"
                               )}
                             >
                               {days < 0

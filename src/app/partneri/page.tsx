@@ -1024,11 +1024,11 @@ function DetailField({
   return (
     <div>
       <Label className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-medium flex items-center gap-1.5">
-        {Icon && <Icon className="h-3 w-3 text-graphite-400" />}
+        {Icon && <Icon className="h-3 w-3 text-graphite-500" />}
         {label}
       </Label>
       <p className="mt-1.5 text-[13px] text-graphite-800 whitespace-pre-wrap">
-        {value || <span className="text-graphite-400">—</span>}
+        {value || <span className="text-graphite-500">—</span>}
       </p>
     </div>
   );

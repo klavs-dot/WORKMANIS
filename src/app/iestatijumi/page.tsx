@@ -154,7 +154,7 @@ export default function IestatijumiPage() {
                   <Icon
                     className={cn(
                       "h-3.5 w-3.5",
-                      isActive ? "text-graphite-900" : "text-graphite-400"
+                      isActive ? "text-graphite-900" : "text-graphite-500"
                     )}
                   />
                   {s.label}
@@ -1143,7 +1143,11 @@ function DataManagementSettings() {
     setImportOpen(false);
     setPendingImport(null);
     setImportPreview(null);
-    // Reload so all stores re-hydrate from the imported localStorage
+    // Full reload is intentional — every *-store provider reads
+    // localStorage exactly once at mount, so router.refresh() (which
+    // only re-renders server components) would leave stale state in
+    // the client tree. The cost is a one-time scroll/animation loss,
+    // acceptable after a destructive import.
     window.location.reload();
   };
 
@@ -1319,14 +1323,14 @@ function DataManagementSettings() {
                         <>
                           <td className="px-3 py-1.5 text-right tabular-nums">
                             {t.rowCount === 0 ? (
-                              <span className="text-graphite-400">0</span>
+                              <span className="text-graphite-500">0</span>
                             ) : (
                               <span className="font-medium text-graphite-900">
                                 {t.rowCount}
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-1.5 text-right tabular-nums text-graphite-400">
+                          <td className="px-3 py-1.5 text-right tabular-nums text-graphite-500">
                             {t.deletedCount || ""}
                           </td>
                         </>

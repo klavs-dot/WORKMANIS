@@ -292,7 +292,7 @@ export function SchemaDriftBanner() {
           <button
             type="button"
             onClick={() => setState({ kind: "dismissed" })}
-            className="shrink-0 text-graphite-400 hover:text-graphite-700 p-1"
+            className="shrink-0 text-graphite-500 hover:text-graphite-700 p-1"
             title="Aizvērt — nepatiks"
             aria-label="Aizvērt brīdinājumu"
           >

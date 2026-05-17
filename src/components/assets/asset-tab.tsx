@@ -188,7 +188,7 @@ export function AssetTab({
                         <TableCell className="text-graphite-600 max-w-[320px]">
                           <span className="line-clamp-1">
                             {asset.comment || (
-                              <span className="text-graphite-400">—</span>
+                              <span className="text-graphite-500">—</span>
                             )}
                           </span>
                         </TableCell>

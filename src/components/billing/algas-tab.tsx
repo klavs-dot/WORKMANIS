@@ -210,7 +210,7 @@ export function AlgasTab() {
                 <TableRow>
                   <TableCell
                     colSpan={6}
-                    className="text-center py-12 text-graphite-400 text-[13px]"
+                    className="text-center py-12 text-graphite-500 text-[13px]"
                   >
                     Vēl nav neviena algas maksājuma. Spied{" "}
                     <span className="text-graphite-700 font-medium">
@@ -356,7 +356,7 @@ function NewSalaryModal({
                       <SelectItem key={e.id} value={e.id}>
                         {fullName(e)}
                         {e.position && (
-                          <span className="text-graphite-400 text-[11px]">
+                          <span className="text-graphite-500 text-[11px]">
                             {" · "}
                             {e.position}
                           </span>

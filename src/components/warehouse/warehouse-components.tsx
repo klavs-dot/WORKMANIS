@@ -269,7 +269,7 @@ export function InventoryCard({
             mono
           />
           <div className="flex flex-col gap-1 lg:items-center">
-            <span className="text-[11px] uppercase tracking-wider text-graphite-400 font-medium">
+            <span className="text-[11px] uppercase tracking-wider text-graphite-500 font-medium">
               Atlikums
             </span>
             <div className="flex items-center gap-2">
@@ -332,7 +332,7 @@ function DataCell({
 }) {
   return (
     <div className="flex flex-col gap-1 min-w-0">
-      <span className="text-[11px] uppercase tracking-wider text-graphite-400 font-medium truncate">
+      <span className="text-[11px] uppercase tracking-wider text-graphite-500 font-medium truncate">
         {label}
       </span>
       <span
@@ -624,7 +624,7 @@ export function InventoryFormModal({
                 )}
               </div>
             </div>
-            <p className="text-[10.5px] text-graphite-400 leading-relaxed">
+            <p className="text-[10.5px] text-graphite-500 leading-relaxed">
               Bildes glabājas Drive mapē &ldquo;Workmanis_noliktava_attēli&rdquo;.
               Atļauti: JPEG, PNG, WebP, HEIC. Max 5 MB.
             </p>

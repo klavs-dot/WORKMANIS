@@ -110,7 +110,7 @@ export function VeikalaTab() {
               <h3 className="text-[13px] font-semibold text-graphite-900 flex items-center gap-2">
                 <ShoppingBag className="h-4 w-4 text-graphite-600" />
                 Fiziskie maksājumi
-                <span className="text-graphite-400 font-normal">
+                <span className="text-graphite-500 font-normal">
                   ({fiziskiePayments.length})
                 </span>
               </h3>

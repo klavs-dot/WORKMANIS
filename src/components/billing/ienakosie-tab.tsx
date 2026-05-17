@@ -179,7 +179,7 @@ export function IenakosieTab() {
                     <TableCell className="font-mono text-[12px] text-graphite-600">
                       Rēķins Nr. {inv.number}
                       {inv.deliveryNote && (
-                        <div className="text-[10.5px] text-graphite-400 mt-0.5">
+                        <div className="text-[10.5px] text-graphite-500 mt-0.5">
                           Pavadz. {inv.deliveryNote}
                         </div>
                       )}
@@ -238,7 +238,11 @@ export function IenakosieTab() {
                         />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Atvērt rēķina darbības"
+                            >
                               <MoreHorizontal className="h-3.5 w-3.5" />
                             </Button>
                           </DropdownMenuTrigger>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SessionProvider } from "next-auth/react";
+import { ReducedMotionProvider } from "@/components/layout/reduced-motion-provider";
 import { ToastProvider } from "@/lib/toast-context";
 import { ConfirmProvider } from "@/lib/confirm-context";
 import { CompanyProvider } from "@/lib/company-context";
@@ -30,6 +31,7 @@ export default function RootLayout({
     <html lang="lv">
       <body>
         <SessionProvider>
+         <ReducedMotionProvider>
           <LoggerInstaller />
           <ToastProvider>
            <ConfirmProvider>
@@ -54,6 +56,7 @@ export default function RootLayout({
             </CompanyProvider>
            </ConfirmProvider>
           </ToastProvider>
+         </ReducedMotionProvider>
         </SessionProvider>
       </body>
     </html>

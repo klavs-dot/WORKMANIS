@@ -168,7 +168,7 @@ export function ClientPicker({
                         <p className="text-[13px] font-medium text-graphite-900 truncate">
                           {c.name}
                         </p>
-                        <span className="text-[10px] font-mono text-graphite-400">
+                        <span className="text-[10px] font-mono text-graphite-500">
                           {c.countryCode}
                         </span>
                       </div>

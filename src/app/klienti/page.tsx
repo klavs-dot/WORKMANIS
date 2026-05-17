@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/business/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TableSkeleton } from "@/components/ui/primitives";
 import {
   Table,
   TableHeader,
@@ -62,7 +63,7 @@ import type { Client, ClientStatus, ClientType } from "@/lib/billing-types";
 
 export default function KlientiPage() {
   const router = useRouter();
-  const { clients, deleteClient } = useClients();
+  const { clients, deleteClient, loading } = useClients();
   const { issued, received } = useBilling();
 
   const [search, setSearch] = useState("");
@@ -207,7 +208,26 @@ export default function KlientiPage() {
           transition={{ duration: 0.5, delay: 0.05 }}
         >
           <Card className="overflow-hidden">
-            {filtered.length === 0 ? (
+            {loading && clients.length === 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Nosaukums / Vārds</TableHead>
+                    <TableHead>Tips</TableHead>
+                    <TableHead>Reģ. nr.</TableHead>
+                    <TableHead>PVN nr.</TableHead>
+                    <TableHead>Valsts</TableHead>
+                    <TableHead>Pēdējais rēķins</TableHead>
+                    <TableHead className="text-right">Pēdējā summa</TableHead>
+                    <TableHead>Statuss</TableHead>
+                    <TableHead className="w-10"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableSkeleton rows={6} columns={9} />
+                </TableBody>
+              </Table>
+            ) : filtered.length === 0 ? (
               <EmptyState
                 icon={User}
                 title={
@@ -275,7 +295,7 @@ export default function KlientiPage() {
                                 {c.name}
                               </p>
                               {c.keywords.length > 0 && (
-                                <p className="text-[11px] text-graphite-400 truncate max-w-[200px]">
+                                <p className="text-[11px] text-graphite-500 truncate max-w-[200px]">
                                   {c.keywords.slice(0, 3).map((k) => `#${k}`).join(" ")}
                                 </p>
                               )}

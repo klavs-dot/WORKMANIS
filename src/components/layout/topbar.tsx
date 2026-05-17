@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCompany } from "@/lib/company-context";
 import { buildDriveFileUrl } from "@/lib/drive-files";
+import { MobileNav } from "./mobile-nav";
 
 /**
  * CompanyAvatar — square 5x5 avatar showing logo if uploaded,
@@ -59,6 +60,7 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-30 h-14 glass border-b border-graphite-100">
       <div className="flex h-full items-center gap-3 px-4 lg:px-6">
+        <MobileNav />
         <div className="flex items-center gap-1.5 ml-auto">
           {activeCompany && (
             <DropdownMenu>
@@ -71,7 +73,7 @@ export function Topbar() {
                 <span className="truncate max-w-[160px]">
                   {activeCompany.name}
                 </span>
-                <ChevronDown className="h-3 w-3 text-graphite-400" />
+                <ChevronDown className="h-3 w-3 text-graphite-500" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuLabel>Pārslēgt uzņēmumu</DropdownMenuLabel>

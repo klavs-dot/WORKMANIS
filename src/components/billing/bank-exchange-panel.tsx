@@ -564,6 +564,7 @@ export function BankExchangePanel({
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => onOpenChange(false)}
+                aria-label="Aizvērt"
               >
                 <X className="h-3.5 w-3.5" />
               </Button>
@@ -752,7 +753,7 @@ export function BankExchangePanel({
                           : "border-graphite-200 bg-graphite-50/40 hover:border-graphite-300 hover:bg-graphite-50"
                       )}
                     >
-                      <Upload className="h-5 w-5 text-graphite-400 mx-auto mb-2" />
+                      <Upload className="h-5 w-5 text-graphite-500 mx-auto mb-2" />
                       <p className="text-[12.5px] font-medium text-graphite-900">
                         {isDraggingOver
                           ? "Atlaid failu šeit"

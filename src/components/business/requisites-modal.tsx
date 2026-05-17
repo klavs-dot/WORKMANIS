@@ -310,14 +310,14 @@ export function RequisitesModal({
                   Logo saglabāts
                 </span>
               )}
-              <p className="text-[11px] text-graphite-400 ml-auto">
+              <p className="text-[11px] text-graphite-500 ml-auto">
                 .png, .svg, .jpg · max 5 MB
               </p>
             </div>
           </div>
 
           {loadingRequisites && (
-            <p className="text-[11.5px] text-graphite-400 italic">
+            <p className="text-[11.5px] text-graphite-500 italic">
               Ielādē rekvizītus no Sheets…
             </p>
           )}
@@ -482,7 +482,7 @@ function Section({
 }) {
   return (
     <div>
-      <h3 className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium mb-2">
+      <h3 className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-medium mb-2">
         {title}
       </h3>
       <div className="space-y-3">{children}</div>

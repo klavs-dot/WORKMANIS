@@ -4,83 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
-import {
-  LayoutDashboard,
-  FileText,
-  Building2,
-  Settings,
-  Package,
-  Users,
-  Handshake,
-  Boxes,
-  Briefcase,
-  Calculator,
-  IdCard,
-  Warehouse,
-  Sparkles,
-  Bug,
-  type LucideIcon,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/lib/notifications";
 import { useCompany } from "@/lib/company-context";
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-interface NavGroup {
-  /** Optional section title shown above the items. When omitted,
-   *  the group renders as a quiet block separated only by a divider. */
-  label?: string;
-  items: NavItem[];
-}
-
-// Visually separated blocks. Groups with a `label` get a small uppercase
-// header above them; groups without just sit inside dividers.
-//   1) Company context
-//   2) Financial & operational workflows
-//   3) Production (warehouse, demo, finished goods)
-//   4) Relationships & external partners
-const navGroups: NavGroup[] = [
-  {
-    items: [
-      { href: "/uznemumi", label: "Uzņēmumi / Struktūrvienības", icon: Building2 },
-      { href: "/parskats", label: "Pārskats", icon: LayoutDashboard },
-    ],
-  },
-  {
-    items: [
-      { href: "/rekini", label: "Rēķini & Maksājumi", icon: FileText },
-      { href: "/gramatvedibai", label: "Grāmatvedībai & Lietvedībai", icon: Calculator },
-      { href: "/aktivi", label: "Aktīvi", icon: Package },
-      { href: "/darbinieki", label: "Darbinieki", icon: IdCard },
-    ],
-  },
-  {
-    label: "Noliktava",
-    items: [
-      { href: "/noliktava", label: "Noliktava", icon: Warehouse },
-      { href: "/demo", label: "Demo produkcija", icon: Boxes },
-      { href: "/gatava-produkcija", label: "Gatavā produkcija", icon: Sparkles },
-      { href: "/noliktavas-atbildigie", label: "Noliktavas atbildīgie", icon: Users },
-    ],
-  },
-  {
-    items: [
-      { href: "/distributori", label: "Distributori & Aģenti", icon: Handshake },
-      { href: "/partneri", label: "Iepirkumi", icon: Briefcase },
-      { href: "/klienti", label: "Klienti & Partneri", icon: Users },
-    ],
-  },
-];
-
-const bottomNav: NavItem[] = [
-  { href: "/iestatijumi", label: "Iestatījumi", icon: Settings },
-  { href: "/debug-log", label: "Diagnostika", icon: Bug },
-];
+import { navGroups, bottomNav } from "./nav-config";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -384,7 +311,7 @@ export function Sidebar() {
           <span className="text-[21px] font-semibold tracking-tight text-graphite-900">
             WORKMANIS
           </span>
-          <span className="text-[10.5px] text-graphite-400 mt-1">
+          <span className="text-[10.5px] text-graphite-500 mt-1">
             Komandcentrs. Seko biznesam.
           </span>
         </div>
@@ -393,7 +320,7 @@ export function Sidebar() {
       {/* Main nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         <div className="px-2 mb-2">
-          <span className="text-[10.5px] font-medium uppercase tracking-wider text-graphite-400">
+          <span className="text-[10.5px] font-medium uppercase tracking-wider text-graphite-500">
             Galvenā
           </span>
         </div>
@@ -407,7 +334,7 @@ export function Sidebar() {
           >
             {group.label && (
               <div className="px-2 mb-2">
-                <span className="text-[10.5px] font-medium uppercase tracking-wider text-graphite-400">
+                <span className="text-[10.5px] font-medium uppercase tracking-wider text-graphite-500">
                   {group.label}
                 </span>
               </div>
@@ -436,7 +363,7 @@ export function Sidebar() {
                           "h-4 w-4 transition-colors",
                           isActive
                             ? "text-graphite-900"
-                            : "text-graphite-400 group-hover:text-graphite-600"
+                            : "text-graphite-500 group-hover:text-graphite-700"
                         )}
                         strokeWidth={2}
                       />
@@ -484,7 +411,7 @@ export function Sidebar() {
                       "h-4 w-4",
                       isActive
                         ? "text-graphite-900"
-                        : "text-graphite-400 group-hover:text-graphite-600"
+                        : "text-graphite-500 group-hover:text-graphite-700"
                     )}
                     strokeWidth={2}
                   />

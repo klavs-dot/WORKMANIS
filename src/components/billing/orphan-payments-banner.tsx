@@ -345,7 +345,7 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
             className={cn(
               "shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-md",
               "transition-colors disabled:opacity-50",
-              "text-graphite-400 hover:text-graphite-700 hover:bg-graphite-100"
+              "text-graphite-500 hover:text-graphite-700 hover:bg-graphite-100"
             )}
             title={
               isIncoming
@@ -600,7 +600,7 @@ function ClassifyPopover({
         <button
           type="button"
           onClick={onClose}
-          className="text-graphite-400 hover:text-graphite-700"
+          className="text-graphite-500 hover:text-graphite-700"
           aria-label="Aizvērt"
         >
           <X className="h-3.5 w-3.5" />

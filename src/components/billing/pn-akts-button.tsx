@@ -50,7 +50,7 @@ export function PnAktsButton({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[200px]">
-          <DropdownMenuItem disabled className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-semibold">
+          <DropdownMenuItem disabled className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-semibold">
             PN akts pievienots
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -103,7 +103,7 @@ export function PnAktsButton({
             <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
             <div className="flex flex-col items-start leading-tight">
               <span className="text-[12.5px] font-medium">Ģenerēt PN aktu</span>
-              <span className="text-[10.5px] text-graphite-400">
+              <span className="text-[10.5px] text-graphite-500">
                 Izveidot jaunu ar automātisku numuru
               </span>
             </div>
@@ -115,7 +115,7 @@ export function PnAktsButton({
               <span className="text-[12.5px] font-medium">
                 Augšupielādēt PN aktu
               </span>
-              <span className="text-[10.5px] text-graphite-400">
+              <span className="text-[10.5px] text-graphite-500">
                 Pievienot esošu PDF failu
               </span>
             </div>
@@ -140,7 +140,7 @@ export function PnAktsButton({
             className="mt-2 rounded-lg border-2 border-dashed border-graphite-200 bg-graphite-50/40 p-6 text-center cursor-pointer hover:border-graphite-300 hover:bg-graphite-50 transition-colors"
             onClick={() => fileInputRef.current?.click()}
           >
-            <Upload className="h-6 w-6 text-graphite-400 mx-auto mb-2" />
+            <Upload className="h-6 w-6 text-graphite-500 mx-auto mb-2" />
             <p className="text-[13px] font-medium text-graphite-900">
               Izvēlies failu
             </p>

@@ -63,7 +63,7 @@ export default function CompanySelectorPage() {
               <span className="text-[15px] font-semibold tracking-tight text-graphite-900">
                 WORKMANIS
               </span>
-              <span className="text-[10.5px] text-graphite-400 mt-0.5">
+              <span className="text-[10.5px] text-graphite-500 mt-0.5">
                 Uzņēmumu pārvaldība
               </span>
             </div>

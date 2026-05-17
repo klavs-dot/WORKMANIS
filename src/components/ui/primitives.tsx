@@ -40,6 +40,48 @@ export function Skeleton({
   );
 }
 
+/**
+ * Renders N rows of M skeleton cells for use inside a <TableBody>
+ * while the underlying data fetch is in flight. Heights and column
+ * widths roughly match the real rows so the layout doesn't jump
+ * once the data arrives.
+ */
+export function TableSkeleton({
+  rows = 6,
+  columns = 5,
+}: {
+  rows?: number;
+  columns?: number;
+}) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, rowIdx) => (
+        <tr
+          key={rowIdx}
+          className="border-b border-graphite-100/60 last:border-0"
+        >
+          {Array.from({ length: columns }).map((__, colIdx) => (
+            <td key={colIdx} className="px-3 py-3.5">
+              <Skeleton
+                className={cn(
+                  "h-3.5",
+                  // Vary width slightly to look organic instead of
+                  // a flat grid of identical bars.
+                  colIdx === 0
+                    ? "w-[60%]"
+                    : colIdx === columns - 1
+                      ? "w-[40%]"
+                      : "w-[80%]"
+                )}
+              />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
 export const Label = React.forwardRef<
   React.ElementRef<typeof LabelPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>

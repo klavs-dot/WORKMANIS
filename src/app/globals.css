@@ -207,3 +207,24 @@
     animation: amber-pulse 2.4s ease-in-out infinite;
   }
 }
+
+/*
+ * Honour the OS-level reduced-motion preference. Cuts CSS
+ * animations, transitions, and smooth scrolling to a near-zero
+ * duration without removing them entirely (some animations carry
+ * state — e.g. progress bars — and need a final frame to apply).
+ *
+ * Framer Motion is configured separately via <MotionConfig
+ * reducedMotion="user"> in the root layout — that layer disables
+ * library-driven physics animations.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -566,7 +566,7 @@ function CompanyRow({
             </p>
             <p className="text-[12px] text-graphite-500 truncate mt-0.5 leading-tight">
               {company.legalName || (
-                <span className="italic text-graphite-400">
+                <span className="italic text-graphite-500">
                   Juridiskais nosaukums nav norādīts
                 </span>
               )}
@@ -662,7 +662,7 @@ function CompanyRow({
             size="icon-sm"
             onClick={onDelete}
             title={`Dzēst ${company.name}`}
-            className="text-graphite-400 hover:text-red-600 hover:bg-red-50"
+            className="text-graphite-500 hover:text-red-600 hover:bg-red-50"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

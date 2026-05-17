@@ -48,7 +48,7 @@ export default function GramatvedibaiError({
               Mēģini atjaunot lapu — ja problēma turpinās, sazinies ar mums.
             </p>
             {error.digest && (
-              <p className="mt-2 text-[11px] font-mono text-graphite-400">
+              <p className="mt-2 text-[11px] font-mono text-graphite-500">
                 Kļūdas kods: {error.digest}
               </p>
             )}

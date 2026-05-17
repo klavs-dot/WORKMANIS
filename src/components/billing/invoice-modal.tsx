@@ -333,7 +333,7 @@ export function InvoiceModal({
                         onClick={() => applyTemplate(tpl)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-graphite-200 bg-white px-2.5 py-1 text-[12px] font-medium text-graphite-700 hover:border-graphite-900 hover:bg-graphite-50 transition-colors"
                       >
-                        <Bookmark className="h-3 w-3 text-graphite-400" />
+                        <Bookmark className="h-3 w-3 text-graphite-500" />
                         {tpl.keyword}
                       </button>
                     ))}
@@ -794,7 +794,7 @@ function VATSummary({
         <p className="mt-1.5 text-[12px] text-graphite-700 leading-relaxed">
           {legalRef}
         </p>
-        <p className="mt-2 text-[10.5px] text-graphite-400 italic">
+        <p className="mt-2 text-[10.5px] text-graphite-500 italic">
           Šī atsauce ir automātiski ģenerēta un pārbaudāma. Gala juridisko
           formulējumu apstipriniet ar grāmatvedi.
         </p>

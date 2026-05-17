@@ -135,7 +135,7 @@ export function BrandColorPicker({
 
       {/* Custom hex input */}
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-graphite-400 shrink-0">vai</span>
+        <span className="text-[11px] text-graphite-500 shrink-0">vai</span>
         <div className="relative flex-1">
           <input
             type="text"
@@ -170,7 +170,7 @@ export function BrandColorPicker({
           )}
         </div>
         {!isPreset && value && customIsValidish && (
-          <span className="text-[10.5px] text-graphite-400 shrink-0">
+          <span className="text-[10.5px] text-graphite-500 shrink-0">
             Pielāgots
           </span>
         )}

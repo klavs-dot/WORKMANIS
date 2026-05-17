@@ -153,6 +153,7 @@ export function InvoiceFileActions({
             size="icon-sm"
             onClick={handleView}
             title={fileName ? `Skatīt: ${fileName}` : "Skatīt rēķinu"}
+            aria-label={fileName ? `Skatīt: ${fileName}` : "Skatīt rēķinu"}
           >
             <Eye className="h-3.5 w-3.5" />
           </Button>
@@ -161,6 +162,7 @@ export function InvoiceFileActions({
             size="icon-sm"
             onClick={handleDownload}
             title="Lejupielādēt rēķinu"
+            aria-label="Lejupielādēt rēķinu"
           >
             <Download className="h-3.5 w-3.5" />
           </Button>
@@ -213,6 +215,7 @@ export function InvoiceFileActions({
           size="icon-sm"
           disabled
           title="Rēķina PDF nav pievienots"
+          aria-label="Rēķina PDF nav pievienots"
         >
           <Eye className="h-3.5 w-3.5 opacity-40" />
         </Button>
@@ -221,6 +224,7 @@ export function InvoiceFileActions({
           size="icon-sm"
           disabled
           title="Rēķina PDF nav pievienots"
+          aria-label="Rēķina PDF nav pievienots"
         >
           <Download className="h-3.5 w-3.5 opacity-40" />
         </Button>
@@ -229,7 +233,7 @@ export function InvoiceFileActions({
   }
   return (
     <span
-      className="text-[11px] text-graphite-400 italic px-2"
+      className="text-[11px] text-graphite-500 italic px-2"
       title="Rēķina PDF nav pievienots"
     >
       Bez PDF

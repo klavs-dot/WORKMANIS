@@ -190,7 +190,7 @@ export function AssetModal({
                       colorCfg.dot
                     )}
                   />
-                  <ChevronDown className="h-3.5 w-3.5 text-graphite-400" />
+                  <ChevronDown className="h-3.5 w-3.5 text-graphite-500" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[10rem]">
                   {(Object.keys(noteColorLabels) as AssetNoteColor[]).map(

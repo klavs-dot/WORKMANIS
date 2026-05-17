@@ -422,7 +422,7 @@ function SummaryTile({
     tone === "alert" ? "p-4 border-red-300 bg-red-50/50" : "p-4";
   return (
     <Card className={cardClass}>
-      <div className="text-[11px] uppercase tracking-wider text-graphite-400 font-medium">
+      <div className="text-[11px] uppercase tracking-wider text-graphite-500 font-medium">
         {label}
       </div>
       <div className={cn("text-[22px] font-semibold tabular mt-1", toneClass)}>

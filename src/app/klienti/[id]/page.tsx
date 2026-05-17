@@ -233,7 +233,7 @@ export default function ClientDetailPage({
                 </div>
                 {client.keywords.length > 0 && (
                   <div className="order-2 lg:order-1 w-full">
-                    <p className="text-[10.5px] uppercase tracking-wider text-graphite-400 font-medium mb-1.5 lg:text-right">
+                    <p className="text-[10.5px] uppercase tracking-wider text-graphite-500 font-medium mb-1.5 lg:text-right">
                       Atslēgvārdi
                     </p>
                     <div className="flex flex-wrap gap-1.5 lg:justify-end">
@@ -414,7 +414,7 @@ function DetailRow({
   return (
     <div className="flex items-start gap-2">
       <span className="text-graphite-500 min-w-[110px] flex items-center gap-1.5">
-        {Icon && <Icon className="h-3 w-3 text-graphite-400" />}
+        {Icon && <Icon className="h-3 w-3 text-graphite-500" />}
         {label}
       </span>
       <span
@@ -714,7 +714,7 @@ function TemplatesTab({
                       <Badge variant="muted" className="text-[10px]">
                         {isService ? "Pakalpojums" : "Prece"}
                       </Badge>
-                      <span className="text-[10.5px] text-graphite-400 uppercase">
+                      <span className="text-[10.5px] text-graphite-500 uppercase">
                         {tpl.language}
                       </span>
                     </div>
@@ -751,7 +751,7 @@ function TemplatesTab({
                 )}
               </p>
               {tpl.reference && (
-                <p className="mt-2 text-[11px] text-graphite-400">
+                <p className="mt-2 text-[11px] text-graphite-500">
                   Atsauce: {tpl.reference}
                 </p>
               )}
@@ -868,7 +868,7 @@ function NotesTab({ clientId }: { clientId: string }) {
                         <p className="text-[13px] text-graphite-800 leading-relaxed whitespace-pre-wrap">
                           {n.body}
                         </p>
-                        <p className="mt-2 text-[11px] text-graphite-400 tabular">
+                        <p className="mt-2 text-[11px] text-graphite-500 tabular">
                           {formatDate(n.createdAt)}
                           {n.updatedAt &&
                             ` · labota ${formatDate(n.updatedAt)}`}

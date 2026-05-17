@@ -565,7 +565,7 @@ function Checkbox({
 
 function EmptyRow({ text }: { text: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-graphite-200 px-3 py-3 text-[12px] text-graphite-400 italic">
+    <div className="rounded-lg border border-dashed border-graphite-200 px-3 py-3 text-[12px] text-graphite-500 italic">
       {text}
     </div>
   );

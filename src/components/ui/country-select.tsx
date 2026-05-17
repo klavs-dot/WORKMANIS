@@ -41,12 +41,12 @@ export function CountrySelect({
               {flagEmoji(selected.code)}
             </span>
             <span className="truncate">{selected.name}</span>
-            <span className="font-mono text-[10px] text-graphite-400 ml-1">
+            <span className="font-mono text-[10px] text-graphite-500 ml-1">
               {selected.code}
             </span>
           </span>
         ) : (
-          <span className="text-graphite-400">
+          <span className="text-graphite-500">
             {placeholder ?? "Izvēlēties valsti"}
           </span>
         )}
@@ -62,7 +62,7 @@ export function CountrySelect({
               {flagEmoji(c.code)}
             </span>
             <span className="flex-1">{c.name}</span>
-            <span className="font-mono text-[10px] text-graphite-400">
+            <span className="font-mono text-[10px] text-graphite-500">
               {c.code}
             </span>
             {value === c.code && <Check className="h-3.5 w-3.5 ml-1" />}

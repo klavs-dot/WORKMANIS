@@ -250,7 +250,7 @@ function EksportiTab() {
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5 min-w-[200px] flex-1">
             <Label className="flex items-center gap-1.5">
-              <Calendar className="h-3 w-3 text-graphite-400" />
+              <Calendar className="h-3 w-3 text-graphite-500" />
               Periods
             </Label>
             <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
@@ -379,7 +379,7 @@ function EksportiTab() {
           />
         </div>
 
-        <p className="mt-5 text-[11.5px] text-graphite-400 leading-relaxed">
+        <p className="mt-5 text-[11.5px] text-graphite-500 leading-relaxed">
           Piezīme: nākotnē eksporti tiks automātiski sinhronizēti ar
           pieslēgtu Google Sheets darbgrāmatu; grāmatvedis redzēs datus
           reālā laikā bez manuāla lejupielādes soļa.
@@ -557,13 +557,13 @@ function ExportCard({
             {description}
           </p>
           <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium tabular">
-            <span className="text-graphite-400 uppercase tracking-wider text-[9.5px] font-semibold">
+            <span className="text-graphite-500 uppercase tracking-wider text-[9.5px] font-semibold">
               Failu daudzums:
             </span>
             <span
               className={cn(
                 "tabular",
-                isEmpty ? "text-graphite-400" : "text-graphite-900"
+                isEmpty ? "text-graphite-500" : "text-graphite-900"
               )}
             >
               {count}
@@ -581,7 +581,7 @@ function ExportCard({
             <Download
               className={cn(
                 "h-3.5 w-3.5",
-                isEmpty ? "text-graphite-300" : "text-graphite-400"
+                isEmpty ? "text-graphite-300" : "text-graphite-500"
               )}
             />
           )}
@@ -679,7 +679,7 @@ function ZinojumiTab() {
                           <span className="font-medium text-graphite-900 truncate">
                             {d.title}
                           </span>
-                          <span className="text-[10px] uppercase tracking-wider text-graphite-400 font-semibold mt-0.5">
+                          <span className="text-[10px] uppercase tracking-wider text-graphite-500 font-semibold mt-0.5">
                             {d.language === "lv" ? "LAT" : "ENG"}
                             {!d.hasPhysicalSignature && (
                               <span className="ml-1.5 text-violet-500">
@@ -705,7 +705,7 @@ function ZinojumiTab() {
                         <span className="text-graphite-700">
                           {d.sender.displayName}
                         </span>
-                        <span className="text-graphite-400 mx-1">→</span>
+                        <span className="text-graphite-500 mx-1">→</span>
                         <span className="text-graphite-700">
                           {d.recipient.displayName}
                         </span>
@@ -718,7 +718,7 @@ function ZinojumiTab() {
                         onClick={() => setToDelete(d)}
                         title="Dzēst dokumentu"
                       >
-                        <X className="h-3.5 w-3.5 text-graphite-400" />
+                        <X className="h-3.5 w-3.5 text-graphite-500" />
                       </Button>
                     </TableCell>
                   </motion.tr>
@@ -1001,7 +1001,7 @@ function RikojumiTab() {
                         onClick={() => setToDelete(o)}
                         title="Dzēst rīkojumu"
                       >
-                        <X className="h-3.5 w-3.5 text-graphite-400" />
+                        <X className="h-3.5 w-3.5 text-graphite-500" />
                       </Button>
                     </TableCell>
                   </motion.tr>
@@ -1112,7 +1112,7 @@ function OrderDetailsSummary({ order }: { order: Order }) {
         <span className="text-graphite-600">
           {order.destinationFrom || "—"} → {order.destinationTo || "—"}
         </span>
-        <span className="text-graphite-400">
+        <span className="text-graphite-500">
           {" "}
           ({formatDate(order.tripStartDate)} – {formatDate(order.tripEndDate)})
         </span>
@@ -1132,7 +1132,7 @@ function OrderDetailsSummary({ order }: { order: Order }) {
           {formatDate(order.vacationStartDate)} – {formatDate(order.vacationEndDate)}
         </span>
         {order.vacationPayTiming && (
-          <span className="text-graphite-400">
+          <span className="text-graphite-500">
             {" · "}izmaksāt {order.vacationPayTiming === "before" ? "pirms" : "pēc"}
           </span>
         )}
@@ -1339,7 +1339,7 @@ function OrderModal({
                       <SelectItem key={e.id} value={e.id}>
                         {e.firstName} {e.lastName}
                         {e.position && (
-                          <span className="text-graphite-400 text-[11px]">
+                          <span className="text-graphite-500 text-[11px]">
                             {" · "}
                             {e.position}
                           </span>

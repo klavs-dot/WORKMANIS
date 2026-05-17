@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/business/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/primitives";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,7 +43,7 @@ import {
 import { formatDate, cn } from "@/lib/utils";
 
 export default function DarbiniekiPage() {
-  const { employees, addEmployee, updateEmployee, deleteEmployee } =
+  const { employees, addEmployee, updateEmployee, deleteEmployee, loading } =
     useEmployees();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -88,7 +89,20 @@ export default function DarbiniekiPage() {
           }
         />
 
-        {employees.length === 0 ? (
+        {loading && employees.length === 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <Card key={idx} className="p-5 space-y-3">
+                <Skeleton className="h-4 w-[60%]" />
+                <Skeleton className="h-3 w-[40%]" />
+                <div className="pt-2 space-y-1.5">
+                  <Skeleton className="h-3 w-[80%]" />
+                  <Skeleton className="h-3 w-[70%]" />
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : employees.length === 0 ? (
           <Card>
             <EmptyState
               icon={Users}
@@ -205,13 +219,13 @@ function EmployeeCard({
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-graphite-600">
           {employee.email && (
             <span className="inline-flex items-center gap-1 truncate max-w-full">
-              <Mail className="h-3 w-3 text-graphite-400 shrink-0" />
+              <Mail className="h-3 w-3 text-graphite-500 shrink-0" />
               <span className="truncate">{employee.email}</span>
             </span>
           )}
           {employee.phone && (
             <span className="inline-flex items-center gap-1 tabular">
-              <Phone className="h-3 w-3 text-graphite-400 shrink-0" />
+              <Phone className="h-3 w-3 text-graphite-500 shrink-0" />
               {employee.phone}
             </span>
           )}
@@ -344,13 +358,13 @@ function RecordRow({
       <Icon
         className={cn(
           "h-3 w-3 shrink-0",
-          empty ? "text-graphite-300" : "text-graphite-400"
+          empty ? "text-graphite-300" : "text-graphite-500"
         )}
       />
       <span
         className={cn(
           "truncate",
-          empty ? "italic text-graphite-400" : "text-graphite-700",
+          empty ? "italic text-graphite-500" : "text-graphite-700",
           mono && "font-mono text-[11px]"
         )}
       >

@@ -332,7 +332,7 @@ export function DocumentModal({
               </div>
               <div className="space-y-1.5">
                 <Label className="flex items-center gap-1.5">
-                  <Languages className="h-3 w-3 text-graphite-400" />
+                  <Languages className="h-3 w-3 text-graphite-500" />
                   {t.language}
                 </Label>
                 <Select
@@ -567,7 +567,7 @@ function PartyPicker({
       {kind === "company" && (
         <div className="rounded-md bg-white border border-graphite-200 px-2.5 py-1.5 text-[12px] text-graphite-800">
           {companyName ?? (
-            <span className="italic text-graphite-400">
+            <span className="italic text-graphite-500">
               Nav izvēlēts uzņēmums
             </span>
           )}
@@ -580,7 +580,7 @@ function PartyPicker({
           </SelectTrigger>
           <SelectContent>
             {clients.length === 0 ? (
-              <div className="px-2 py-1.5 text-[12px] text-graphite-400 italic">
+              <div className="px-2 py-1.5 text-[12px] text-graphite-500 italic">
                 Nav klientu
               </div>
             ) : (
@@ -600,7 +600,7 @@ function PartyPicker({
           </SelectTrigger>
           <SelectContent>
             {employees.length === 0 ? (
-              <div className="px-2 py-1.5 text-[12px] text-graphite-400 italic">
+              <div className="px-2 py-1.5 text-[12px] text-graphite-500 italic">
                 Nav darbinieku
               </div>
             ) : (
@@ -677,7 +677,7 @@ function DocumentPreview({
         {/* Sender / Recipient header block */}
         <div className="grid grid-cols-2 gap-6 mb-6 pb-4 border-b border-graphite-200">
           <div>
-            <div className="text-[9px] uppercase tracking-wider text-graphite-400 font-semibold mb-1">
+            <div className="text-[9px] uppercase tracking-wider text-graphite-500 font-semibold mb-1">
               {lang === "lv" ? "No" : "From"}
             </div>
             <div className="font-medium">{sender.displayName || "—"}</div>
@@ -688,7 +688,7 @@ function DocumentPreview({
             )}
           </div>
           <div>
-            <div className="text-[9px] uppercase tracking-wider text-graphite-400 font-semibold mb-1">
+            <div className="text-[9px] uppercase tracking-wider text-graphite-500 font-semibold mb-1">
               {lang === "lv" ? "Adresēts" : "To"}
             </div>
             <div className="font-medium">{recipient.displayName || "—"}</div>

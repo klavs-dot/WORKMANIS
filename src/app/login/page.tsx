@@ -65,7 +65,7 @@ export default async function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-[11px] text-graphite-400 leading-relaxed">
+        <p className="mt-6 text-[11px] text-graphite-500 leading-relaxed">
           Pierakstoties piekrītat, ka WORKMANIS izveidos savu Google Drive
           mapi un Sheets failus jūsu kontā. Piekļuve tiek dota tikai šiem
           failiem — pārējos dokumentus mēs neredzam.

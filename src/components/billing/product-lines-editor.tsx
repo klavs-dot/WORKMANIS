@@ -108,7 +108,7 @@ export function ProductLinesEditor({
               <button
                 onClick={() => removeLine(line.id)}
                 disabled={lines.length <= 1}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-graphite-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-graphite-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 title="Dzēst rindu"
               >
                 <Trash2 className="h-3.5 w-3.5" />

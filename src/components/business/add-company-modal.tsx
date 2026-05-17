@@ -325,7 +325,7 @@ export function AddCompanyModal({
                 uzņēmuma faili tiks izveidoti tā Google Drive kontā.
               </p>
             </div>
-            <div className="flex flex-col gap-1.5 items-center text-[11px] text-graphite-400 max-w-xs mx-auto">
+            <div className="flex flex-col gap-1.5 items-center text-[11px] text-graphite-500 max-w-xs mx-auto">
               <div className="flex items-center gap-1.5">
                 <FolderPlus className="h-3 w-3" />
                 WORKMANIS/accounts/…/companies/

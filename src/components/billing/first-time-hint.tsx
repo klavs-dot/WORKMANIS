@@ -161,13 +161,13 @@ export function FirstTimeHint() {
             <p className="mt-3 text-[11.5px] text-graphite-500 flex items-center gap-1">
               Šī palīdzība pazudīs, tiklīdz pievienosi pirmo rēķinu vai
               maksājumu.
-              <ArrowRight className="h-3 w-3 text-graphite-400" />
+              <ArrowRight className="h-3 w-3 text-graphite-500" />
             </p>
           </div>
           <button
             type="button"
             onClick={handleDismiss}
-            className="shrink-0 text-graphite-400 hover:text-graphite-700 p-1"
+            className="shrink-0 text-graphite-500 hover:text-graphite-700 p-1"
             title="Vairs nerādīt šim uzņēmumam"
             aria-label="Aizvērt palīdzību"
           >

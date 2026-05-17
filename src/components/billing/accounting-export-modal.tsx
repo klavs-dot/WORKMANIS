@@ -210,7 +210,7 @@ export function AccountingExportModal({
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                       >
-                        <Download className="h-4 w-4 text-graphite-400" />
+                        <Download className="h-4 w-4 text-graphite-500" />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -222,7 +222,7 @@ export function AccountingExportModal({
 
         {/* Footer info */}
         <div className="rounded-lg border border-graphite-100 bg-graphite-50/50 p-3 flex items-start gap-2.5 mt-4">
-          <Info className="h-3.5 w-3.5 text-graphite-400 mt-0.5 shrink-0" />
+          <Info className="h-3.5 w-3.5 text-graphite-500 mt-0.5 shrink-0" />
           <p className="text-[11.5px] text-graphite-500 leading-relaxed">
             Šie dati vēlāk tiks eksportēti no Google Sheets / sistēmas
             integrācijas. Pašreizējā versijā eksports tiek simulēts priekšējās
