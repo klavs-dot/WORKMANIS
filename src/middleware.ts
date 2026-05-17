@@ -13,10 +13,21 @@
  *   /gramatvediba     → accountant login
  *   /api/auth/*       → NextAuth callback URLs
  *
- * Role scoping:
+ * Role scoping (page paths):
  *   warehouse_manager → only /noliktava, /demo-produkcija,
- *                       /gatava-produkcija, /api/*
- *   accountant + owner → all pages
+ *                       /gatava-produkcija (redirected to /noliktava)
+ *   accountant        → everything EXCEPT owner-only pages
+ *                       (redirected to /parskats)
+ *   owner             → all pages
+ *
+ * Role scoping (API paths):
+ *   warehouse_manager → only warehouse APIs + shared owner-info /
+ *                       companies/list (needed for ctx)
+ *   accountant        → everything EXCEPT owner-only APIs
+ *   owner             → all APIs
+ *
+ * Defence-in-depth: individual route handlers also verify role
+ * via session.role checks; this middleware is the first gate.
  */
 
 import NextAuth from "next-auth";
@@ -27,11 +38,43 @@ const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = ["/login", "/atbildigais", "/gramatvediba"];
 
-const WAREHOUSE_MANAGER_ALLOWED_PREFIXES = [
+const WAREHOUSE_MANAGER_ALLOWED_PAGE_PREFIXES = [
   "/noliktava",
   "/demo-produkcija",
   "/gatava-produkcija",
 ];
+
+const WAREHOUSE_MANAGER_ALLOWED_API_PREFIXES = [
+  "/api/warehouse",
+  "/api/owner-info",
+  "/api/companies/list",
+  "/api/health",
+];
+
+const OWNER_ONLY_PAGE_PREFIXES = [
+  "/iestatijumi",
+  "/uznemumi",
+  "/debug-log",
+];
+
+const OWNER_ONLY_API_PREFIXES = [
+  "/api/external-users",
+  "/api/owner-setup",
+  "/api/companies/delete",
+  "/api/companies/oauth",
+  "/api/companies/repair",
+  "/api/companies/schema-check",
+  "/api/payments/delete-all",
+  "/api/payments/fix-signs",
+  "/api/payments/reclassify-all",
+  "/api/audit-log",
+];
+
+function matchesPrefix(pathname: string, prefixes: readonly string[]) {
+  return prefixes.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
+}
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -52,14 +95,34 @@ export default auth((req) => {
   }
 
   const role = (req.auth as { role?: string }).role;
+  const isApi = pathname.startsWith("/api/");
+
+  // Owner-only paths/APIs gate first — applies to accountant AND
+  // warehouse_manager.
+  if (role !== "owner") {
+    if (isApi && matchesPrefix(pathname, OWNER_ONLY_API_PREFIXES)) {
+      return NextResponse.json(
+        { error: "Owner role required" },
+        { status: 403 }
+      );
+    }
+    if (!isApi && matchesPrefix(pathname, OWNER_ONLY_PAGE_PREFIXES)) {
+      const fallback = role === "warehouse_manager" ? "/noliktava" : "/parskats";
+      return NextResponse.redirect(new URL(fallback, req.nextUrl.origin));
+    }
+  }
+
   if (role === "warehouse_manager") {
-    if (pathname.startsWith("/api/")) {
+    if (isApi) {
+      if (!matchesPrefix(pathname, WAREHOUSE_MANAGER_ALLOWED_API_PREFIXES)) {
+        return NextResponse.json(
+          { error: "Forbidden for warehouse_manager role" },
+          { status: 403 }
+        );
+      }
       return NextResponse.next();
     }
-    const allowed = WAREHOUSE_MANAGER_ALLOWED_PREFIXES.some(
-      (p) => pathname === p || pathname.startsWith(p + "/")
-    );
-    if (!allowed) {
+    if (!matchesPrefix(pathname, WAREHOUSE_MANAGER_ALLOWED_PAGE_PREFIXES)) {
       return NextResponse.redirect(
         new URL("/noliktava", req.nextUrl.origin)
       );

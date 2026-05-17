@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SessionProvider } from "next-auth/react";
 import { ToastProvider } from "@/lib/toast-context";
+import { ConfirmProvider } from "@/lib/confirm-context";
 import { CompanyProvider } from "@/lib/company-context";
 import { BillingProvider } from "@/lib/billing-store";
 import { AssetProvider } from "@/lib/assets-store";
@@ -31,6 +32,7 @@ export default function RootLayout({
         <SessionProvider>
           <LoggerInstaller />
           <ToastProvider>
+           <ConfirmProvider>
             <CompanyProvider>
               <BillingProvider>
                 <AssetProvider>
@@ -50,6 +52,7 @@ export default function RootLayout({
                 </AssetProvider>
               </BillingProvider>
             </CompanyProvider>
+           </ConfirmProvider>
           </ToastProvider>
         </SessionProvider>
       </body>

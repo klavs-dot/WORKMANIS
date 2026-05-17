@@ -38,6 +38,7 @@ import {
 import { useCompany } from "@/lib/company-context";
 import { usePayments, type BankPayment } from "@/lib/payments-store";
 import { pushToastGlobally } from "@/lib/toast-context";
+import { useConfirm } from "@/lib/confirm-context";
 import { cn } from "@/lib/utils";
 
 interface OrphanPaymentsBannerProps {
@@ -191,6 +192,7 @@ export function OrphanPaymentsBanner({
 function OrphanRow({ payment }: { payment: BankPayment }) {
   const { activeCompany } = useCompany();
   const { refresh: refreshPayments } = usePayments();
+  const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [classifyOpen, setClassifyOpen] = useState(false);
@@ -202,14 +204,14 @@ function OrphanRow({ payment }: { payment: BankPayment }) {
 
   const handleFlipSign = async () => {
     if (flipping || !activeCompany?.id) return;
-    if (
-      !confirm(
-        isIncoming
-          ? `Patiešām pārveidot par izejošo? Maksājums ${payment.counterparty} ${absAmount.toFixed(2)} EUR pārvietosies uz Izejošie tabu.`
-          : `Patiešām pārveidot par ienākošo? Maksājums ${payment.counterparty} ${absAmount.toFixed(2)} EUR pārvietosies uz Ienākošie tabu.`
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: isIncoming
+        ? "Pārveidot par izejošo?"
+        : "Pārveidot par ienākošo?",
+      description: `Maksājums ${payment.counterparty} ${absAmount.toFixed(2)} EUR pārvietosies uz ${isIncoming ? "Izejošie" : "Ienākošie"} tabu.`,
+      confirmLabel: "Pārveidot",
+    });
+    if (!ok) return;
     setFlipping(true);
     try {
       const res = await fetch(

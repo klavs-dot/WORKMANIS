@@ -59,6 +59,7 @@ import {
   type WarehouseSection,
 } from "@/lib/warehouse-store";
 import { useCustomCategories } from "@/lib/custom-categories";
+import { useConfirm } from "@/lib/confirm-context";
 import { LoadingRobot } from "./loading-robot";
 
 // Emoji palette for the custom category picker. Categories aren't
@@ -101,6 +102,7 @@ export function InventoryPageLayout({
 }) {
   const { loading, createItem, updateItem, deleteItem, changeStock } =
     useWarehouse();
+  const confirm = useConfirm();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortMode>("name");
@@ -345,17 +347,37 @@ export function InventoryPageLayout({
                       <span
                         role="button"
                         tabIndex={0}
+                        aria-label={`Dzēst kategoriju ${c.label}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (
-                            window.confirm(
-                              `Dzēst kategoriju «${c.label}»?`
-                            )
-                          ) {
-                            handleRemoveCategory(c.id);
+                          void (async () => {
+                            const ok = await confirm({
+                              title: `Dzēst kategoriju «${c.label}»?`,
+                              description:
+                                "Kategorijā esošie noliktavas ieraksti netiks dzēsti, tikai zaudēs šo iezīmi.",
+                              destructive: true,
+                              confirmLabel: "Dzēst",
+                            });
+                            if (ok) handleRemoveCategory(c.id);
+                          })();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void (async () => {
+                              const ok = await confirm({
+                                title: `Dzēst kategoriju «${c.label}»?`,
+                                description:
+                                  "Kategorijā esošie noliktavas ieraksti netiks dzēsti, tikai zaudēs šo iezīmi.",
+                                destructive: true,
+                                confirmLabel: "Dzēst",
+                              });
+                              if (ok) handleRemoveCategory(c.id);
+                            })();
                           }
                         }}
-                        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded text-graphite-500 hover:bg-graphite-200 hover:text-graphite-900"
+                        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded text-graphite-500 hover:bg-graphite-200 hover:text-graphite-900 focus:outline-none focus:ring-2 focus:ring-graphite-400"
                       >
                         <X className="h-3 w-3" />
                       </span>

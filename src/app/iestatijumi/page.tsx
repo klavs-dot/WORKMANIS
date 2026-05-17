@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useCompany } from "@/lib/company-context";
+import { useConfirm } from "@/lib/confirm-context";
+import { useToast } from "@/lib/toast-context";
 
 // Sesija 7 — restructured. Removed sections that duplicated other
 // pages or had no real functionality:
@@ -541,6 +543,7 @@ function ExternalUsersManager({
   role: "accountant" | "warehouse_manager";
 }) {
   const { companies } = useCompany();
+  const confirm = useConfirm();
   const [users, setUsers] = useState<
     Array<{
       id: string;
@@ -587,13 +590,14 @@ function ExternalUsersManager({
   }, [role]);
 
   const handleDelete = async (id: string) => {
-    if (
-      !window.confirm(
-        "Vai tiešām atņemt piekļuvi? Lietotājs vairs nevarēs ielogoties."
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Atņemt piekļuvi?",
+      description:
+        "Lietotājs vairs nevarēs ielogoties. Šo darbību nevar atsaukt.",
+      destructive: true,
+      confirmLabel: "Atņemt piekļuvi",
+    });
+    if (!ok) return;
     try {
       const r = await fetch(`/api/external-users?id=${id}`, {
         method: "DELETE",
@@ -602,7 +606,7 @@ function ExternalUsersManager({
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
       void reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
+      setError(err instanceof Error ? err.message : "Neizdevās dzēst");
     }
   };
 
@@ -913,6 +917,7 @@ const WORKMANIS_STORAGE_KEYS = [
 ] as const;
 
 function DataManagementSettings() {
+  const { pushError } = useToast();
   const [resetOpen, setResetOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<{
@@ -1098,7 +1103,7 @@ function DataManagementSettings() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       if (!parsed || typeof parsed !== "object" || !parsed.data) {
-        alert(
+        pushError(
           "Nederīgs faila formāts. Failam jābūt WORKMANIS dublējumam ar 'data' lauku."
         );
         return;
@@ -1125,7 +1130,7 @@ function DataManagementSettings() {
       setPendingImport(validData);
       setImportOpen(true);
     } catch (e) {
-      alert(`Neizdevās nolasīt JSON failu: ${(e as Error).message}`);
+      pushError(`Neizdevās nolasīt JSON failu: ${(e as Error).message}`);
     }
   };
 

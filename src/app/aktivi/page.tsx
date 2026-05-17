@@ -32,6 +32,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/lib/confirm-context";
 
 const ICON_MAP: Record<
   string,
@@ -105,6 +106,7 @@ export default function AktiviPage() {
   const { categories: customCategories, add, remove } =
     useCustomCategories("aktivi");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const confirm = useConfirm();
 
   const allTabs: TabDef[] = useMemo(
     () => [
@@ -198,17 +200,37 @@ export default function AktiviPage() {
                       <span
                         role="button"
                         tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (
-                            window.confirm(
-                              `Dzēst kategoriju «${t.label}»?`
-                            )
-                          ) {
-                            handleRemoveCategory(t.key);
+                        aria-label={`Dzēst kategoriju ${t.label}`}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void (async () => {
+                              const ok = await confirm({
+                                title: `Dzēst kategoriju «${t.label}»?`,
+                                description:
+                                  "Kategorijā esošie aktīvi netiks dzēsti, tikai zaudēs šo iezīmi.",
+                                destructive: true,
+                                confirmLabel: "Dzēst",
+                              });
+                              if (ok) handleRemoveCategory(t.key);
+                            })();
                           }
                         }}
-                        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded text-graphite-500 hover:bg-graphite-200 hover:text-graphite-900"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void (async () => {
+                            const ok = await confirm({
+                              title: `Dzēst kategoriju «${t.label}»?`,
+                              description:
+                                "Kategorijā esošie aktīvi netiks dzēsti, tikai zaudēs šo iezīmi.",
+                              destructive: true,
+                              confirmLabel: "Dzēst",
+                            });
+                            if (ok) handleRemoveCategory(t.key);
+                          })();
+                        }}
+                        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded text-graphite-500 hover:bg-graphite-200 hover:text-graphite-900 focus:outline-none focus:ring-2 focus:ring-graphite-400"
                       >
                         <X className="h-3 w-3" />
                       </span>

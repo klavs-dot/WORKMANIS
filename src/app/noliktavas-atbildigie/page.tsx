@@ -34,6 +34,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useCompany } from "@/lib/company-context";
+import { useConfirm } from "@/lib/confirm-context";
 
 interface ExternalUser {
   id: string;
@@ -45,6 +46,7 @@ interface ExternalUser {
 
 export default function NoliktavasAtbildigieePage() {
   const { companies } = useCompany();
+  const confirm = useConfirm();
   const [users, setUsers] = useState<ExternalUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,13 +77,14 @@ export default function NoliktavasAtbildigieePage() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (
-      !window.confirm(
-        "Vai tiešām atņemt piekļuvi? Atbildīgais vairs nevarēs ielogoties."
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Atņemt piekļuvi?",
+      description:
+        "Atbildīgais vairs nevarēs ielogoties. Šo darbību nevar atsaukt.",
+      destructive: true,
+      confirmLabel: "Atņemt piekļuvi",
+    });
+    if (!ok) return;
     try {
       const r = await fetch(`/api/external-users?id=${id}`, {
         method: "DELETE",
@@ -90,7 +93,7 @@ export default function NoliktavasAtbildigieePage() {
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
       void reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
+      setError(err instanceof Error ? err.message : "Neizdevās dzēst");
     }
   };
 

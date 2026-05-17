@@ -56,6 +56,7 @@ import type {
 import { useCompany } from "@/lib/company-context";
 import type { Company } from "@/lib/types";
 import { useToast } from "@/lib/toast-context";
+import { useConfirm } from "@/lib/confirm-context";
 import { useNetwork } from "@/lib/network-store";
 import type { BusinessContactCategory } from "@/lib/network-types";
 import {
@@ -250,7 +251,8 @@ export function IzejosieTab() {
   const { received, addReceived, updateReceived, deleteReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
     useBilling();
   const { activeCompany } = useCompany();
-  const { pushSuccess } = useToast();
+  const { pushSuccess, pushError } = useToast();
+  const confirm = useConfirm();
   const network = useNetwork();
   const [isDragging, setIsDragging] = useState(false);
   // Queue of all files dropped (and not yet approved). Persists
@@ -817,15 +819,12 @@ export function IzejosieTab() {
                           variant="ghost"
                           size="icon-sm"
                           onClick={async () => {
-                            // Delete confirmation. Native confirm
-                            // is fine here — destructive action,
-                            // user actively triggered, and a styled
-                            // dialog would be overkill for what's
-                            // primarily a cleanup action for bad
-                            // imports.
-                            const ok = window.confirm(
-                              `Dzēst rēķinu no ${p.supplier || "(bez piegādātāja)"}? Šo darbību nevar atsaukt.`
-                            );
+                            const ok = await confirm({
+                              title: "Dzēst rēķinu?",
+                              description: `Rēķins no ${p.supplier || "(bez piegādātāja)"}. Šo darbību nevar atsaukt.`,
+                              destructive: true,
+                              confirmLabel: "Dzēst",
+                            });
                             if (!ok) return;
                             try {
                               await deleteReceived(p.id);
@@ -835,10 +834,11 @@ export function IzejosieTab() {
                                 err instanceof Error
                                   ? err.message
                                   : "Dzēšana neizdevās";
-                              window.alert(msg);
+                              pushError(msg);
                             }
                           }}
                           title="Dzēst rēķinu"
+                          aria-label="Dzēst rēķinu"
                           className="text-red-600 hover:text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />

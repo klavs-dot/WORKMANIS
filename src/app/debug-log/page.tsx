@@ -37,6 +37,7 @@ import {
   type LogEntry,
   type LogLevel,
 } from "@/lib/client-logger";
+import { useConfirm } from "@/lib/confirm-context";
 import { Trash2, Copy, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +58,7 @@ const LEVEL_COLOR: Record<LogLevel, string> = {
 export default function DebugLogPage() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<"all" | LogLevel>("all");
+  const confirm = useConfirm();
 
   const refresh = () => setEntries(getLog());
 
@@ -105,12 +107,15 @@ export default function DebugLogPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  if (
-                    window.confirm("Dzēst visus log ierakstus?")
-                  ) {
-                    clearLog();
-                  }
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: "Dzēst visus log ierakstus?",
+                    description:
+                      "Visi diagnostikas ieraksti tiks neatgriezeniski izdzēsti no šī pārlūka.",
+                    destructive: true,
+                    confirmLabel: "Dzēst",
+                  });
+                  if (ok) clearLog();
                 }}
               >
                 <Trash2 className="h-3.5 w-3.5 text-red-600" />

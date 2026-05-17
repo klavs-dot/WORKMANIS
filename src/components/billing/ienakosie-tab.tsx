@@ -53,6 +53,8 @@ import { PnAktsButton } from "@/components/billing/pn-akts-button";
 import { InvoiceFileActions } from "@/components/billing/invoice-file-actions";
 import { OrphanPaymentsBanner, PaymentStatusPill } from "@/components/billing/orphan-payments-banner";
 import { AutoCreatedBadge } from "@/components/billing/auto-created-badge";
+import { useConfirm } from "@/lib/confirm-context";
+import { useToast } from "@/lib/toast-context";
 
 // ============================================================
 // FUTURE: Google Sheets integration
@@ -64,6 +66,8 @@ import { AutoCreatedBadge } from "@/components/billing/auto-created-badge";
 export function IenakosieTab() {
   const { issued, attachDeliveryNote, attachIssuedPN, detachIssuedPN, updateIssued, deleteIssued } =
     useBilling();
+  const confirm = useConfirm();
+  const { pushError } = useToast();
 
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [editingNumber, setEditingNumber] = useState<string | undefined>();
@@ -257,9 +261,12 @@ export function IenakosieTab() {
                             <DropdownMenuItem
                               className="text-red-600 focus:text-red-700"
                               onSelect={async () => {
-                                const ok = window.confirm(
-                                  `Dzēst rēķinu Nr. ${inv.number || "(bez numura)"} klientam ${inv.client || "(nezināms)"}? Šo darbību nevar atsaukt.`
-                                );
+                                const ok = await confirm({
+                                  title: "Dzēst rēķinu?",
+                                  description: `Nr. ${inv.number || "(bez numura)"} klientam ${inv.client || "(nezināms)"}. Šo darbību nevar atsaukt.`,
+                                  destructive: true,
+                                  confirmLabel: "Dzēst",
+                                });
                                 if (!ok) return;
                                 try {
                                   await deleteIssued(inv.id);
@@ -268,7 +275,7 @@ export function IenakosieTab() {
                                     err instanceof Error
                                       ? err.message
                                       : "Dzēšana neizdevās";
-                                  window.alert(msg);
+                                  pushError(msg);
                                 }
                               }}
                             >
