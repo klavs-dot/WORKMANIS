@@ -1,18 +1,18 @@
-export type InvoiceStatus =
-  | "apmaksāts"
-  | "gaida"
-  | "termiņš_beidzies"
-  | "melnraksts";
-
-export type PaymentStatus =
-  | "sagatavots"
-  | "gaida_apstiprinājumu"
-  | "nosūtīts"
-  | "apmaksāts";
-
-export type SubscriptionStatus = "aktīvs" | "pauzēts" | "atcelts";
-
-export type Periodicity = "mēnesis" | "gads" | "ceturksnis";
+/**
+ * Core shared types.
+ *
+ * NOTE: many entity types in this app live in their domain-specific
+ * stores rather than here:
+ *   - IssuedInvoice / ReceivedInvoice → src/lib/billing-store.tsx
+ *   - BankPayment → src/lib/payments-store.tsx
+ *   - Employee → src/lib/employees-store.tsx
+ *   - Client → src/lib/billing-types.ts
+ *   - Distributor / BusinessContact / OnlineLink → src/lib/network-types.ts
+ *   - InventoryItem / Movement → src/lib/warehouse-store.tsx
+ *
+ * This file keeps only the cross-cutting types used in multiple
+ * places (Company + its requisites, language picker enum).
+ */
 
 export interface CompanyRequisites {
   legalName?: string;
@@ -40,6 +40,7 @@ export interface CompanyRequisites {
   brandColor?: string;
 }
 
+/** Language token for the copy-requisites action. */
 export type CopyFormat = "lv" | "en";
 
 export interface Company extends CompanyRequisites {
@@ -58,78 +59,8 @@ export interface Company extends CompanyRequisites {
    *  rather than via logoUrl. logoUrl is kept for legacy/external
    *  hosting; logoDriveId is the preferred path going forward. */
   logoDriveId?: string;
-  activeInvoices?: number;
-  subscriptions?: number;
-  monthlySpend?: number;
   /** Backend fields (only present when hydrated from Sheets backend) */
   folderDriveId?: string;
   sheetId?: string;
   slug?: string;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  regNumber: string;
-  vatNumber: string;
-  iban: string;
-  country: string;
-  countryCode: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  lastInvoiceDate?: string;
-  totalAmount: number;
-  category?: string;
-}
-
-export interface Invoice {
-  id: string;
-  number: string;
-  supplierId: string;
-  supplierName: string;
-  date: string;
-  dueDate: string;
-  amount: number;
-  vat: number;
-  total: number;
-  status: InvoiceStatus;
-  companyId: string;
-  companyName: string;
-  description?: string;
-  notes?: string;
-  iban?: string;
-}
-
-export interface Subscription {
-  id: string;
-  service: string;
-  category: string;
-  price: number;
-  periodicity: Periodicity;
-  nextPayment: string;
-  companyId: string;
-  companyName: string;
-  status: SubscriptionStatus;
-  icon?: string;
-}
-
-export interface Payment {
-  id: string;
-  recipient: string;
-  iban: string;
-  amount: number;
-  dueDate: string;
-  status: PaymentStatus;
-  companyId: string;
-  companyName: string;
-  reference?: string;
-}
-
-export interface Alert {
-  id: string;
-  type: "warning" | "danger" | "info";
-  title: string;
-  description: string;
-  timestamp: string;
 }
