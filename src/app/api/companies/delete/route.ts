@@ -100,6 +100,12 @@ export async function DELETE(request: Request) {
         { status: 401 }
       );
     }
+    if (session.role && session.role !== "owner") {
+      return NextResponse.json(
+        { error: "Only the owner may delete companies" },
+        { status: 403 }
+      );
+    }
 
     const url = new URL(request.url);
     const companyId = url.searchParams.get("company_id");

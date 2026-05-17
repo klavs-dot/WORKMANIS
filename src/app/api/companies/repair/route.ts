@@ -41,6 +41,12 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
+    if (session.role && session.role !== "owner") {
+      return NextResponse.json(
+        { error: "Only the owner may repair the company schema" },
+        { status: 403 }
+      );
+    }
 
     const url = new URL(request.url);
     const companyId = url.searchParams.get("company_id");

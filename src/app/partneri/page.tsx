@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/primitives";
+import { Label, TableSkeleton } from "@/components/ui/primitives";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -114,6 +114,7 @@ export default function PartneriPage() {
     addOnlineLink,
     updateOnlineLink,
     deleteOnlineLink,
+    loading,
   } = useNetwork();
 
   const [tab, setTab] = useState<TabKey>("razotaji");
@@ -206,6 +207,7 @@ export default function PartneriPage() {
             {isOnlineLinks ? (
               <OnlineLinksTable
                 links={onlineLinks}
+                loading={loading}
                 onNew={() => {
                   setEditingLink(null);
                   setLinkModalOpen(true);
@@ -220,6 +222,7 @@ export default function PartneriPage() {
               <ContactsTable
                 items={contactItems}
                 currentTab={currentContactTab!}
+                loading={loading}
                 onNew={openNewEntry}
                 onOpen={(c) => {
                   setDetail(c);
@@ -473,6 +476,7 @@ function TabButton({
 function ContactsTable({
   items,
   currentTab,
+  loading,
   onNew,
   onOpen,
   onEdit,
@@ -480,12 +484,36 @@ function ContactsTable({
 }: {
   items: BusinessContact[];
   currentTab: { key: BusinessContactCategory; label: string; icon: LucideIcon; emptyDesc: string };
+  loading: boolean;
   onNew: () => void;
   onOpen: (c: BusinessContact) => void;
   onEdit: (c: BusinessContact) => void;
   onDelete: (c: BusinessContact) => void;
 }) {
   const Icon = currentTab.icon;
+
+  if (loading && items.length === 0) {
+    return (
+      <Card className="overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Nosaukums</TableHead>
+              <TableHead>Valsts</TableHead>
+              <TableHead>Kontaktpersona</TableHead>
+              <TableHead>E-pasts</TableHead>
+              <TableHead>Telefons</TableHead>
+              <TableHead>Komentārs</TableHead>
+              <TableHead className="w-10"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableSkeleton rows={6} columns={7} />
+          </TableBody>
+        </Table>
+      </Card>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -605,15 +633,37 @@ function ContactsTable({
 
 function OnlineLinksTable({
   links,
+  loading,
   onNew,
   onEdit,
   onDelete,
 }: {
   links: OnlineLink[];
+  loading: boolean;
   onNew: () => void;
   onEdit: (l: OnlineLink) => void;
   onDelete: (l: OnlineLink) => void;
 }) {
+  if (loading && links.length === 0) {
+    return (
+      <Card className="overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Nosaukums preces</TableHead>
+              <TableHead>Links</TableHead>
+              <TableHead>Komentārs</TableHead>
+              <TableHead className="w-10"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableSkeleton rows={6} columns={4} />
+          </TableBody>
+        </Table>
+      </Card>
+    );
+  }
+
   if (links.length === 0) {
     return (
       <Card>

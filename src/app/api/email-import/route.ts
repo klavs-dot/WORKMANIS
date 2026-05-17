@@ -121,6 +121,12 @@ export async function POST(request: Request) {
       { status: 401 }
     );
   }
+  if (session.role && session.role !== "owner") {
+    return NextResponse.json(
+      { error: "Only the owner may import emails" },
+      { status: 403 }
+    );
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {

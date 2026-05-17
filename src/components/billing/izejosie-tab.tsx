@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/primitives";
+import { Label, TableSkeleton } from "@/components/ui/primitives";
 import {
   Table,
   TableHeader,
@@ -248,7 +248,7 @@ function saveDrafts(companyId: string, drafts: QueueItem[]) {
 }
 
 export function IzejosieTab() {
-  const { received, addReceived, updateReceived, deleteReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN } =
+  const { received, addReceived, updateReceived, deleteReceived, markReceivedPaid, setReceivedMeta, attachReceivedPN, detachReceivedPN, loading } =
     useBilling();
   const { activeCompany } = useCompany();
   const { pushSuccess, pushError } = useToast();
@@ -704,7 +704,24 @@ export function IzejosieTab() {
             Gaida apstiprinājumu bankā vai jau apmaksāti
           </p>
         </div>
-        {received.length === 0 ? (
+        {loading && received.length === 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Nosaukums</TableHead>
+                <TableHead>Rēķina numurs</TableHead>
+                <TableHead className="text-right">Summa</TableHead>
+                <TableHead>Termiņš</TableHead>
+                <TableHead>Kategorija</TableHead>
+                <TableHead>Statuss</TableHead>
+                <TableHead className="w-[200px] text-right">Darbības</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableSkeleton rows={6} columns={7} />
+            </TableBody>
+          </Table>
+        ) : received.length === 0 ? (
           <div className="p-12 text-center text-[13px] text-graphite-500">
             Vēl nav sagatavots neviens maksājums
           </div>

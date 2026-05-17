@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/primitives";
+import { Label, TableSkeleton } from "@/components/ui/primitives";
 import {
   Table,
   TableHeader,
@@ -50,7 +50,7 @@ import { useNetwork } from "@/lib/network-store";
 import type { DistributorAgent } from "@/lib/network-types";
 
 export default function DistributoriPage() {
-  const { distributors, addDistributor, updateDistributor, deleteDistributor } =
+  const { distributors, addDistributor, updateDistributor, deleteDistributor, loading } =
     useNetwork();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -101,7 +101,23 @@ export default function DistributoriPage() {
           transition={{ duration: 0.4 }}
         >
           <Card className="overflow-hidden">
-            {distributors.length === 0 ? (
+            {loading && distributors.length === 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Nosaukums</TableHead>
+                    <TableHead>Valsts</TableHead>
+                    <TableHead>Adrese</TableHead>
+                    <TableHead>Rekvizīti</TableHead>
+                    <TableHead>Komentārs</TableHead>
+                    <TableHead className="w-10"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableSkeleton rows={6} columns={6} />
+                </TableBody>
+              </Table>
+            ) : distributors.length === 0 ? (
               <EmptyState
                 icon={Handshake}
                 title="Vēl nav pievienots neviens ieraksts"

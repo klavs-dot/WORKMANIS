@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/primitives";
+import { Label, TableSkeleton } from "@/components/ui/primitives";
 import { IssuedStatusBadge } from "@/components/business/billing-status-badges";
 import { InvoiceModal } from "./invoice-modal";
 import { useBilling } from "@/lib/billing-store";
@@ -64,7 +64,7 @@ import { useToast } from "@/lib/toast-context";
 // ============================================================
 
 export function IenakosieTab() {
-  const { issued, attachDeliveryNote, attachIssuedPN, detachIssuedPN, updateIssued, deleteIssued } =
+  const { issued, attachDeliveryNote, attachIssuedPN, detachIssuedPN, updateIssued, deleteIssued, loading } =
     useBilling();
   const confirm = useConfirm();
   const { pushError } = useToast();
@@ -141,7 +141,25 @@ export function IenakosieTab() {
         transition={{ duration: 0.4 }}
       >
         <Card className="overflow-hidden">
-          {issued.length === 0 ? (
+          {loading && issued.length === 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Klients</TableHead>
+                  <TableHead>Rēķina numurs</TableHead>
+                  <TableHead className="text-right">Summa</TableHead>
+                  <TableHead>Termiņš</TableHead>
+                  <TableHead>Statuss</TableHead>
+                  <TableHead className="text-right w-[220px]">
+                    Darbības
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableSkeleton rows={6} columns={6} />
+              </TableBody>
+            </Table>
+          ) : issued.length === 0 ? (
             <div className="p-12 text-center text-[13px] text-graphite-500">
               Vēl nav izrakstīts neviens rēķins
             </div>
