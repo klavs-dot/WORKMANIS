@@ -29,43 +29,60 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         ownerEmail: { label: "Uzņēmuma e-pasts", type: "email" },
       },
       async authorize(credentials) {
-        const email = (credentials?.email as string | undefined)?.trim();
-        const password = (credentials?.password as string | undefined) ?? "";
-        const ownerEmail = (
-          credentials?.ownerEmail as string | undefined
-        )?.trim();
+        try {
+          const email = (credentials?.email as string | undefined)?.trim();
+          const password =
+            (credentials?.password as string | undefined) ?? "";
+          const ownerEmail = (
+            credentials?.ownerEmail as string | undefined
+          )?.trim();
 
-        if (!email || !password || !ownerEmail) {
-          throw new Error(
-            "Aizpildi visus laukus: e-pasts, parole, uzņēmuma e-pasts"
+          console.log(
+            `[auth/external] attempt email=${email} owner=${ownerEmail}`
           );
-        }
 
-        // Dynamic import — keeps googleapis/bcrypt out of the
-        // initial auth.ts module graph, so edge bundles that
-        // import auth.config don't even transitively touch them.
-        const { validateExternalUserLogin } = await import(
-          "@/lib/external-users-login"
-        );
-        const result = await validateExternalUserLogin({
-          email,
-          password,
-          ownerEmail,
-        });
-        if (!result) {
-          throw new Error(
-            "Nepareizs e-pasts vai parole. Pārbaudi, ka uzņēmuma e-pasts ir pareizs."
+          if (!email || !password || !ownerEmail) {
+            console.warn("[auth/external] missing field");
+            return null;
+          }
+
+          const { validateExternalUserLogin } = await import(
+            "@/lib/external-users-login"
           );
-        }
+          const result = await validateExternalUserLogin({
+            email,
+            password,
+            ownerEmail,
+          });
+          if (!result) {
+            console.warn(
+              `[auth/external] validation failed for ${email}`
+            );
+            return null;
+          }
 
-        return {
-          id: result.id,
-          email: result.email,
-          name: result.email,
-          role: result.role,
-          ownerEmail: result.ownerEmail,
-          allowedCompanyIds: result.allowedCompanyIds,
-        } as unknown as { id: string; email: string; name: string };
+          console.log(
+            `[auth/external] OK ${email} role=${result.role}`
+          );
+
+          return {
+            id: result.id,
+            email: result.email,
+            name: result.email,
+            role: result.role,
+            ownerEmail: result.ownerEmail,
+            allowedCompanyIds: result.allowedCompanyIds,
+          } as unknown as { id: string; email: string; name: string };
+        } catch (err) {
+          // CRITICAL: never let authorize throw — Auth.js v5
+          // catches throws here and reports as 'Configuration'
+          // server error which is opaque and hard to debug.
+          // Logging + return null gives the user a normal
+          // 'invalid credentials' UX without the scary error
+          // page.
+          console.error("[auth/external] authorize crashed:", err);
+          return null;
+        }
       },
     }),
   ],

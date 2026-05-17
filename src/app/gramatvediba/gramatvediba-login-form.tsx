@@ -48,12 +48,6 @@ export function GramatvedibaLoginForm() {
         </div>
       )}
 
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-        <strong>Piezīme:</strong> Login funkcionalitāte vēl tiek
-        izstrādāta. Šobrīd login mēģinājumi atgriež kļūdu, kamēr nav
-        ieviesta delegēta Sheets piekļuve.
-      </div>
-
       <div className="space-y-1.5">
         <Label htmlFor="email">E-pasta adrese</Label>
         <Input
