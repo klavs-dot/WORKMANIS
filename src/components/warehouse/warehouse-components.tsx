@@ -240,7 +240,7 @@ export function InventoryCard({
           (kept the action panel buttons compact). */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6 p-4">
         {/* Thumbnail — fixed width, 2x previous size */}
-        <ItemThumbnail src={item.imageUrl} />
+        <ItemThumbnail src={item.imageUrl} name={item.name} />
 
         {/* Name + supplier — flexible, takes remaining horizontal space */}
         <div className="flex-1 min-w-0 lg:max-w-[340px]">
@@ -347,10 +347,14 @@ function DataCell({
   );
 }
 
-function ItemThumbnail({ src }: { src: string }) {
+function ItemThumbnail({ src, name }: { src: string; name?: string }) {
   if (!src) {
     return (
-      <div className="h-32 w-32 shrink-0 rounded-lg bg-graphite-100 flex items-center justify-center">
+      <div
+        className="h-32 w-32 shrink-0 rounded-lg bg-graphite-100 flex items-center justify-center"
+        aria-label={name ? `${name} (bez attēla)` : "Nav attēla"}
+        role="img"
+      >
         <ImageIcon className="h-9 w-9 text-graphite-400" />
       </div>
     );
@@ -371,7 +375,7 @@ function ItemThumbnail({ src }: { src: string }) {
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={normalizedSrc}
-      alt=""
+      alt={name ?? "Noliktavas vienības attēls"}
       className="h-32 w-32 shrink-0 rounded-lg object-cover bg-graphite-100"
       onError={(e) => {
         // If image fails to load, hide it; the layout will collapse
@@ -564,7 +568,7 @@ export function InventoryFormModal({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={imageUrl}
-                    alt=""
+                    alt={name ? `Bildes priekšskatījums: ${name}` : "Bildes priekšskatījums"}
                     className="h-full w-full object-cover"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.opacity = "0.3";
