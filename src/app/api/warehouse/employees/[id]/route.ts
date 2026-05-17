@@ -51,17 +51,20 @@ function parseUpdateBody(
     patch.password = bcrypt.hashSync(b.password, 10);
   }
   if (typeof b.role === "string") patch.role = b.role;
-  if (typeof b.active === "boolean") patch.active = b.active ? "1" : "0";
+  // Booleans encode as "TRUE"/"FALSE" to match the rest of the schema.
+  if (typeof b.active === "boolean") patch.active = b.active ? "TRUE" : "FALSE";
 
   return patch;
 }
 
 function rowToApi(row: Record<string, unknown>): ApiEmployee {
+  const activeRaw = String(row.active ?? "").toLowerCase();
   return {
     id: row.id as string,
     email: (row.email as string) ?? "",
     role: (row.role as string) ?? "Noliktavas atbildīgais",
-    active: row.active === "1" || row.active === "true",
+    active:
+      activeRaw === "true" || activeRaw === "1" || activeRaw === "yes",
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

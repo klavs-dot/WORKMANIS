@@ -74,21 +74,29 @@ function parseCreateBody(body: unknown): EmployeeRow | null {
     email: (b.email as string).trim().toLowerCase(),
     password: bcrypt.hashSync(b.password as string, 10),
     role: typeof b.role === "string" ? b.role : "Noliktavas atbildīgais",
+    // Booleans encode as "TRUE"/"FALSE" to match the convention used
+    // by 20_employees.ovp_passed/safety_passed and
+    // 50_documents.signed/has_physical_signature. Reader still
+    // accepts legacy "1"/"0" rows for backwards compatibility.
     active:
       typeof b.active === "boolean"
         ? b.active
-          ? "1"
-          : "0"
-        : "1",
+          ? "TRUE"
+          : "FALSE"
+        : "TRUE",
   };
 }
 
 function rowToApi(row: Record<string, unknown>): ApiEmployee {
+  const activeRaw = String(row.active ?? "").toLowerCase();
   return {
     id: row.id as string,
     email: (row.email as string) ?? "",
     role: (row.role as string) ?? "Noliktavas atbildīgais",
-    active: row.active === "1" || row.active === "true",
+    // Accept both the new "TRUE"/"FALSE" convention and legacy
+    // "1"/"true" values so old rows continue to deserialise.
+    active:
+      activeRaw === "true" || activeRaw === "1" || activeRaw === "yes",
     createdAt: (row.created_at as string) ?? "",
     updatedAt: (row.updated_at as string) ?? "",
   };

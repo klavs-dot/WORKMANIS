@@ -199,6 +199,13 @@ export const COMPANY_TABS = [
       "iban",
     ],
   },
+  // DEFERRED — schema-only, no API endpoint reads or writes these
+  // tabs today. Kept so existing sheets that already have these tabs
+  // pass schema-check, but the related features (contract tracking,
+  // separate bank-account rows, compliance certificates) live as
+  // "future session" work. See docs/EXTERNAL_USERS_GAP.md for the
+  // current refactor priorities — these schemas are lower priority
+  // than wiring external-user data access.
   {
     name: "21_contracts",
     idPrefix: "con",
@@ -219,11 +226,16 @@ export const COMPANY_TABS = [
     ],
   },
   {
+    // DEFERRED — bank accounts live on the employee row today
+    // (bank_accounts JSON), not as separate rows here. Keep for
+    // when split-table normalisation is wanted.
     name: "22_bank_accounts",
     idPrefix: "ban",
     cols: ["employee_id", "iban", "bic", "bank_name", "is_primary", "label"],
   },
   {
+    // DEFERRED — compliance certs (occupational safety, drug tests,
+    // background checks) tracking ground for a future session.
     name: "23_compliance",
     idPrefix: "cmp",
     cols: [
@@ -346,6 +358,9 @@ export const COMPANY_TABS = [
     ],
   },
   {
+    // DEFERRED — pieņemšanas-nodošanas akti (handover certificates)
+    // currently live as `pn_akts` JSON on the invoice rows. This
+    // separate table is reserved for the eventual normalisation.
     name: "32_pn_akti",
     idPrefix: "pn",
     cols: [
@@ -361,6 +376,8 @@ export const COMPANY_TABS = [
     ],
   },
   {
+    // DEFERRED — delivery notes (pavadzīmes) currently embed on the
+    // invoice as `delivery_note` JSON. Same normalisation story.
     name: "33_delivery_notes",
     idPrefix: "del",
     cols: [
@@ -521,6 +538,10 @@ export const COMPANY_TABS = [
     ],
   },
   {
+    // DEFERRED — accounting metadata (category, account code, depr
+    // period, accountant's explanation) lives on 31_invoices_in
+    // directly today. This separate tab is reserved for a future
+    // schema split when accounting needs its own audit history.
     name: "38_accounting_meta",
     idPrefix: "met",
     cols: [
