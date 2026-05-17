@@ -178,16 +178,22 @@ export function InvoiceModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vat.mode]);
 
-  // Current content object
-  const content: InvoiceContent =
-    kind === "pakalpojums"
-      ? {
-          kind: "pakalpojums",
-          description: svcDescription,
-          amount: svcAmount,
-          vatPercent: svcVatPercent,
-        }
-      : { kind: "prece", lines };
+  // Current content object — memoised so its identity is stable
+  // until one of the underlying fields changes. Without useMemo the
+  // object literal would be rebuilt on every render, busting the
+  // totals useMemo below and triggering a re-renders cascade.
+  const content = useMemo<InvoiceContent>(
+    () =>
+      kind === "pakalpojums"
+        ? {
+            kind: "pakalpojums",
+            description: svcDescription,
+            amount: svcAmount,
+            vatPercent: svcVatPercent,
+          }
+        : { kind: "prece", lines },
+    [kind, svcDescription, svcAmount, svcVatPercent, lines]
+  );
 
   const totals = useMemo(
     () => calculateTotals(content, vat.appliesVAT),

@@ -3,11 +3,8 @@
 /**
  * /demo — Demo produkcija (warehouse module).
  *
- * Replaces the older per-company demo-units page. The previous
- * implementation lives at _old-demo-units.tsx.bak in this folder
- * for reference until the warehouse module is fully validated.
- *
- * If you need to roll back: rename .bak → page.tsx and restart.
+ * Thin wrapper around the shared <InventoryPageLayout /> bound to
+ * the warehouse store's demoProduction collection.
  */
 
 import { InventoryPageLayout } from "@/components/warehouse/inventory-page-layout";

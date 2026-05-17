@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { SessionProvider } from "next-auth/react";
 import { ReducedMotionProvider } from "@/components/layout/reduced-motion-provider";
 import { ToastProvider } from "@/lib/toast-context";
@@ -20,6 +20,23 @@ export const metadata: Metadata = {
   title: "WORKMANIS — Komandcentrs. Seko biznesam.",
   description:
     "Komandcentrs visu tavu uzņēmumu pārvaldībai — rēķini, maksājumi, noliktava un grāmatvedība vienuviet.",
+  // Disallow indexing — this is a private SaaS app, not public content.
+  // Prevents the login page from showing up in search results.
+  robots: { index: false, follow: false },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Allow user scaling for accessibility; clamp the upper bound so
+  // accidental pinch-zooms don't push the layout into unusable
+  // states. iOS Safari's safe-area handling needs viewport-fit too.
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d0e10" },
+  ],
 };
 
 export default function RootLayout({
