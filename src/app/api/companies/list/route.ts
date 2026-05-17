@@ -18,6 +18,10 @@
 import { NextResponse } from "next/server";
 import { google } from "googleapis";
 import { auth } from "@/auth";
+import {
+  getServiceAccountSheetsClient,
+  getOwnerSheetId,
+} from "@/lib/service-account";
 
 const ROOT_FOLDER_NAME = "WORKMANIS";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -25,7 +29,36 @@ const SHEETS_MIME = "application/vnd.google-apps.spreadsheet";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user?.email || !session.accessToken) {
+  if (!session?.user?.email) {
+    return NextResponse.json(
+      { error: "Not authenticated" },
+      { status: 401 }
+    );
+  }
+
+  // Sesija 7 Faze 2 part 3 — branch by role.
+  //
+  // Owner: walk Drive with their OAuth token to find their
+  //   account-master sheet, then read 01_companies. Same as
+  //   before (the existing flow).
+  //
+  // External user (accountant / warehouse_manager): no OAuth
+  //   token to walk Drive with. Use the service account, look
+  //   up the OWNER's sheet ID from session.ownerEmail, and
+  //   read 01_companies from there. For warehouse_manager,
+  //   filter to allowedCompanyIds (accountant sees all).
+  const role = session.role ?? "owner";
+
+  if (role !== "owner") {
+    return readCompaniesViaServiceAccount(
+      session.ownerEmail ?? "",
+      role,
+      session.allowedCompanyIds ?? []
+    );
+  }
+
+  // Owner flow needs accessToken
+  if (!session.accessToken) {
     return NextResponse.json(
       { error: "Not authenticated" },
       { status: 401 }
@@ -94,6 +127,81 @@ export async function GET() {
       {
         error:
           err instanceof Error ? err.message : "Unknown error listing companies",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Sesija 7 — read companies for an external user via service
+ * account. The session carries ownerEmail (set at login time)
+ * which is looked up in OWNER_SHEET_REGISTRY to find the
+ * account-master sheet ID. Service account must have been
+ * granted read access to that sheet during the setup wizard.
+ *
+ * For warehouse_manager role, filter to allowedCompanyIds.
+ * For accountant role, return all (empty array means 'all').
+ */
+async function readCompaniesViaServiceAccount(
+  ownerEmail: string,
+  role: string,
+  allowedCompanyIds: string[]
+) {
+  if (!ownerEmail) {
+    console.warn("[list-companies] external user has no ownerEmail");
+    return NextResponse.json({ companies: [] });
+  }
+
+  const sheetId = getOwnerSheetId(ownerEmail);
+  if (!sheetId) {
+    console.warn(
+      `[list-companies] no sheet registered for owner=${ownerEmail}`
+    );
+    return NextResponse.json({ companies: [] });
+  }
+
+  const sheets = await getServiceAccountSheetsClient();
+  if (!sheets) {
+    console.error("[list-companies] service account not configured");
+    return NextResponse.json(
+      { error: "Sistēmas konfigurācija nepilnīga" },
+      { status: 500 }
+    );
+  }
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "01_companies!A:Z",
+    });
+    const rows = response.data.values ?? [];
+    if (rows.length < 2) return NextResponse.json({ companies: [] });
+
+    const header = rows[0] as string[];
+    const dataRows = rows.slice(1);
+
+    let companies = dataRows
+      .map((r) => parseCompanyRow(header, r as string[]))
+      .filter((c) => c !== null && !c.deletedAt) as CompanyRow[];
+
+    // Filter for warehouse_manager — restrict to allowed companies
+    if (role === "warehouse_manager" && allowedCompanyIds.length > 0) {
+      companies = companies.filter((c) =>
+        allowedCompanyIds.includes(c.id)
+      );
+    }
+
+    return NextResponse.json({ companies });
+  } catch (err) {
+    console.error(
+      `[list-companies] failed reading owner sheet ${sheetId}:`,
+      err
+    );
+    return NextResponse.json(
+      {
+        error:
+          "Nevarēja nolasīt uzņēmumu sarakstu. Pārbaudi, vai sheet ir koplietots ar service account.",
       },
       { status: 500 }
     );
